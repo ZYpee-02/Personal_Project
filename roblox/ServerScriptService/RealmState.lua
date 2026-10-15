@@ -2,7 +2,22 @@
 local Realm = {}
 Realm.__index = Realm
 
+local activities = {
+    { id = "starfall", name = "STARFALL SCRAMBLE", instruction = "Collect falling stars around the crystal ring.", goal = 0, teamPerMember = 20 },
+    { id = "sprint", name = "SKYBRIDGE SPRINT", instruction = "Race twelve checkpoints to the finish arch.", goal = 12, teamPerMember = 10 },
+    { id = "relay", name = "HEARTSEED RELAY", instruction = "Carry energy between the shrines and heartseed.", goal = 0, teamPerMember = 16 },
+}
+
+local function pace(username, round, activity)
+    local hash = round * 193 + #activity * 37
+    for i = 1, #username do hash = (hash * 31 + string.byte(username, i)) % 65521 end
+    return (activity == "sprint" and 0.42 or 0.55) + (hash % 401) / 1000
+end
+
 function Realm.new(config, now)
+    for _, key in ipairs({ "GatheringSeconds", "VotingSeconds", "StormSeconds", "ResultSeconds" }) do
+        assert(type(config[key]) == "number" and config[key] > 0 and config[key] < math.huge, key .. " must be a finite positive duration")
+    end
     return setmetatable({
         config = config,
         phase = "gathering",
@@ -24,6 +39,14 @@ function Realm.new(config, now)
         message = "The rift is quiet. Welcome a traveler to your sky island.",
         blessing = "",
         blessingUntil = 0,
+        activity = activities[1],
+        activityStarted = now,
+        activityEntrants = 0,
+        teamScore = 0,
+        teamTarget = 0,
+        winners = {},
+        giftSequence = 0,
+        lastGift = { username = "", kind = "", count = 0, sequence = 0 },
     }, Realm)
 end
 
@@ -35,8 +58,11 @@ function Realm:addCrew(username, userId)
         username = username, userId = userId, slot = #self.crewOrder + 1,
         balance = 0, roundMoney = 0, participated = false,
         gifts = 0, effect = "", effectUntil = 0,
+        roundWins = 0, score = 0, distance = 0, activityEntered = false,
+        enteredAt = self.lastTick, pace = 0, finishedAt = 0,
     }
     table.insert(self.crewOrder, key)
+    if self.config.AutoActivities and self.phase == "storm" and self.lastTick < self.deadline then self:enterActivity(self.crew[key], self.lastTick) end
     self.message = username .. " stepped through the star gate."
     return true, self.crew[key]
 end
@@ -44,7 +70,22 @@ end
 function Realm:rate(member)
     return math.min(self.config.MaxMoneyPerSecond or 100,
         (self.config.BaseMoneyPerSecond or 5) + self.wins * (self.config.WinMoneyPerSecond or 2)
-        + (member.participated and (self.config.VoteMoneyPerSecond or 3) or 0))
+        + (member.participated and (self.config.VoteMoneyPerSecond or 3) or 0)
+        + (member.activityEntered and self.phase == "storm" and (self.config.ActivityMoneyPerSecond or 2) or 0)
+        + member.roundWins * (self.config.RoundWinMoneyPerSecond or 1))
+end
+
+function Realm:credit(member, amount)
+    local credited = math.max(0, math.min(amount, (self.config.MaxBalance or 1000000000) - member.balance))
+    member.balance = member.balance + credited
+    member.roundMoney = member.roundMoney + credited
+end
+
+function Realm:enterActivity(member, now)
+    member.activityEntered, member.enteredAt = true, now
+    member.pace = pace(member.username, self.round, self.activity.id)
+    self.activityEntrants = self.activityEntrants + 1
+    self.teamTarget = self.activityEntrants * self.activity.teamPerMember
 end
 
 function Realm:tick(now)
@@ -55,12 +96,39 @@ function Realm:tick(now)
     if self.phase == "voting" or self.phase == "storm" then
         for _, key in ipairs(self.crewOrder) do
             local member = self.crew[key]
-            local amount = math.min(self:rate(member) * elapsed, (self.config.MaxBalance or 1000000000) - member.balance)
-            member.balance = member.balance + amount
-            member.roundMoney = member.roundMoney + amount
+            self:credit(member, self:rate(member) * elapsed)
+            if self.config.AutoActivities and self.phase == "storm" and member.activityEntered then
+                local distance = math.max(0, earningEnd - member.enteredAt) * member.pace
+                if self.activity.goal > 0 then distance = math.min(self.activity.goal, distance) end
+                local score = math.floor(distance + 0.000001)
+                self:credit(member, math.max(0, score - member.score) * (self.config.CoinsPerPoint or 2))
+                member.distance, member.score = distance, score
+                if self.activity.goal > 0 and distance >= self.activity.goal then
+                    member.finishedAt = member.enteredAt + self.activity.goal / member.pace
+                end
+            end
         end
     end
+    self.teamScore = 0
+    for _, key in ipairs(self.crewOrder) do self.teamScore = self.teamScore + self.crew[key].score end
     self.lastTick = now
+end
+
+function Realm:activityLeaderboard()
+    local rows = {}
+    for _, key in ipairs(self.crewOrder) do
+        local member = self.crew[key]
+        if member.activityEntered then
+            table.insert(rows, { username = member.username, score = member.score, distance = member.distance, finishedAt = member.finishedAt, slot = member.slot })
+        end
+    end
+    table.sort(rows, function(a, b)
+        if a.score ~= b.score then return a.score > b.score end
+        if a.finishedAt > 0 and b.finishedAt > 0 and a.finishedAt ~= b.finishedAt then return a.finishedAt < b.finishedAt end
+        if a.distance ~= b.distance then return a.distance > b.distance end
+        return a.slot < b.slot
+    end)
+    return rows
 end
 
 function Realm:leaderboard(roundOnly)
@@ -107,6 +175,8 @@ function Realm:gift(username, kind, count, now)
     member.gifts = member.gifts + count
     member.effect, member.effectUntil = kind, now + 18
     self:bless(kind, now)
+    self.giftSequence = self.giftSequence + 1
+    self.lastGift = { username = member.username, kind = kind, count = count, sequence = self.giftSequence }
     self.message = username .. " received " .. kind .. " x" .. count .. " (simulated)."
     return true, self.message
 end
@@ -135,29 +205,52 @@ function Realm:advance(now)
     if self.phase == "gathering" then
         self.phase = "voting"
         self.round = self.round + 1
+        self.activity = activities[((self.round - 1) % #activities) + 1]
+        self.activityEntrants, self.teamScore, self.teamTarget = 0, 0, 0
         self.votes = {}
         self.totals = { ward = 0, sail = 0 }
         for _, key in ipairs(self.crewOrder) do
             self.crew[key].roundMoney = 0
             self.crew[key].participated = false
+            self.crew[key].activityEntered = false
+            self.crew[key].score, self.crew[key].distance, self.crew[key].finishedAt = 0, 0, 0
         end
         self.requiredVotes = math.max(1, math.ceil(#self.crewOrder / 3))
         self.deadline = now + self.config.VotingSeconds
-        self.message = "A storm rift is opening. Raise a ward, or sail through it?"
+        self.message = self.config.AutoActivities and (self.activity.name .. " begins soon. Vote Ward or Sail for the scenery!")
+            or "A storm rift is opening. Raise a ward, or sail through it?"
     elseif self.phase == "voting" then
         self.phase = "storm"
+        self.activityStarted = now
+        if self.config.AutoActivities then
+            for _, key in ipairs(self.crewOrder) do self:enterActivity(self.crew[key], now) end
+        end
         self.choice = self.totals.sail > self.totals.ward and "sail" or "ward"
         self.success = self.totals.ward + self.totals.sail >= self.requiredVotes
         self.deadline = now + self.config.StormSeconds
-        self.message = self.choice == "ward" and "The crew raises a starlight ward!" or "The island rides the storm winds!"
+        self.message = self.config.AutoActivities and self.activity.instruction
+            or (self.choice == "ward" and "The crew raises a starlight ward!" or "The island rides the storm winds!")
     elseif self.phase == "storm" then
         self.phase = "result"
+        self.winners = {}
+        if self.config.AutoActivities then
+            local ranking = self:activityLeaderboard()
+            for i = 1, math.min(3, #ranking) do
+                local row = ranking[i]
+                local prize = (self.config.RoundPrizes or { 120, 75, 40 })[i] or 0
+                self:credit(self.crew[string.lower(row.username)], prize)
+                table.insert(self.winners, { username = row.username, score = row.score, prize = prize, slot = row.slot })
+            end
+            if ranking[1] then self.crew[string.lower(ranking[1].username)].roundWins = self.crew[string.lower(ranking[1].username)].roundWins + 1 end
+            self.success = self.success or (self.activityEntrants > 0 and self.teamScore >= self.teamTarget)
+        end
         self.lastRound = self:leaderboard(true)
         self.storms = self.storms + 1
         if self.success then self.wins = self.wins + 1 end
         self.deadline = now + self.config.ResultSeconds
         self.message = self.success and "Together, you saved a star shard. Your realm grows!"
             or "The rift faded. Gather more voices for the next crossing."
+        if self.winners[1] then self.message = self.winners[1].username .. " wins " .. self.activity.name .. "! +$" .. self.winners[1].prize end
     else
         self.phase = "gathering"
         self.deadline = now + self.config.GatheringSeconds
@@ -176,12 +269,17 @@ function Realm:snapshot(now)
             username = member.username, balance = member.balance, roundMoney = member.roundMoney,
             perSecond = self:rate(member), gifts = member.gifts,
             effect = now < member.effectUntil and member.effect or "",
+            slot = member.slot, score = member.score, distance = member.distance, pace = member.pace,
+            roundWins = member.roundWins, activityEntered = member.activityEntered,
+            finished = member.finishedAt > 0,
         })
     end
     local lastRound = {}
     for _, row in ipairs(self.lastRound) do
         table.insert(lastRound, { username = row.username, money = row.money, perSecond = row.perSecond, gifts = row.gifts, slot = row.slot })
     end
+    local winners = {}
+    for _, row in ipairs(self.winners) do table.insert(winners, { username = row.username, score = row.score, prize = row.prize, slot = row.slot }) end
     return {
         phase = self.phase, seconds = math.max(0, math.ceil(self.deadline - now)),
         round = self.round, crew = crew, wins = self.wins, storms = self.storms,
@@ -190,6 +288,13 @@ function Realm:snapshot(now)
         blessing = now < self.blessingUntil and self.blessing or "",
         members = members, leaderboard = self:leaderboard(false), roundLeaders = self:leaderboard(true),
         lastRound = lastRound, followers = self.followerCount,
+        earning = self.phase == "voting" or self.phase == "storm",
+        now = now, deadline = self.deadline, activityStarted = self.activityStarted,
+        autoActivities = self.config.AutoActivities == true,
+        activity = { id = self.activity.id, name = self.activity.name, instruction = self.activity.instruction, goal = self.activity.goal },
+        activityLeaders = self:activityLeaderboard(), winners = winners,
+        teamScore = self.teamScore, teamTarget = self.teamTarget,
+        lastGift = { username = self.lastGift.username, kind = self.lastGift.kind, count = self.lastGift.count, sequence = self.lastGift.sequence },
     }
 end
 

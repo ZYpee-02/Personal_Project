@@ -5,10 +5,16 @@ from offline_sources import sources
 ROOT = Path(__file__).resolve().parents[1]
 order = ["Config", "RealmState", "World", "Realm"]
 scripts = sorted(sources(), key=lambda row: (row[0] == "StarterPlayerScripts", order.index(row[2])))
-intro = '''# Riftbound Live: install five separate scripts manually
+intro = '''# Riftbound Live Phase 2: complete raw scripts and manual replacement
 
 Use the Script Editor and Explorer. Do not paste this document or any script into
 the Command Bar. There is no generated installer or serialized source wrapper.
+
+**Updating the working Phase 1 game?** Save a backup of your Studio place, stop
+Play, and replace the ENTIRE source of each of the five existing instances below.
+Keep their names, types and parents. Replace all five together; do not mix versions
+or add duplicates. Restore any custom HostUserIds into the new Config afterward.
+See `docs/PHASE2_REPLACEMENT.md` for the exact update and first-three-round checklist.
 
 ## Step-by-step
 
@@ -30,15 +36,17 @@ the Command Bar. There is no generated installer or serialized source wrapper.
    before pressing Play. Do not keep duplicate Realm server/client scripts active.
 8. Press **Play**, not Run. The server creates the islands, stand-in avatars, event
    objects and money/round state; the LocalScript builds the player HUD.
-9. Open **Keeper Tools**, enter `Alice_01`, and click **Open the Star Gate**. Repeat
-   with `Bobby_02`. Usernames label locally built avatars; no account is fetched.
-10. Click **Awaken a Storm**. Use the main Ward/Sail buttons for your player, or
-    enter a joined username in Keeper Tools and use **Vote as: Ward / Sail**.
-    Watch balances/leaderboards during voting and the storm. Base income is $5/s;
-    voting adds $3/s that round. Successful rounds add $2/s for subsequent rounds.
-11. With a joined username in the input, try **Gift bloom**, **Gift aurora** and
-    **Gift giant**. They expire after 18 seconds and do not change income or votes.
-    **Simulate Follow** counts a session-only follow. All events are offline demos.
+9. Wait: six clearly named Demo_ travelers arrive automatically in Studio. After
+   12 seconds gathering and 8 seconds optional voting, they compete for 30 seconds.
+   A 10-second result/celebration phase follows, then the next round starts itself.
+10. Watch three rounds: Starfall Scramble, Skybridge Sprint, then Heartseed Relay.
+    No votes, clicks or Keeper Tools are needed. Demo gifts/follows also run in Studio.
+    Usernames label local procedural avatars; no real account/outfit is downloaded.
+11. Optional **TEST TOOLS** can add a username, start gathering early, simulate votes,
+    gifts or a follow. **ROAM VIEW** restores normal character camera controls;
+    **STREAM VIEW** returns to the centered 9:16 view. Keep tools closed for capture.
+    Base income is $5/s in voting/competition, plus $2/s for automatic activity,
+    a $3/s voting bonus, checkpoint bounties and podium prizes. Gifts stay cosmetic.
 12. Stop and Play again to confirm all money, crew, gifts, follows and shards reset.
 
 Expected Explorer tree:
