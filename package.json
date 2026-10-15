@@ -1,0 +1,20 @@
+{
+  "name": "riftbound-live",
+  "version": "0.2.2",
+  "private": true,
+  "description": "A collaborative fantasy sky island experience for Roblox and live audiences.",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "node bridge/server.js",
+    "build": "python3 scripts/build_manual_guide.py && python3 scripts/build_place.py && python3 scripts/build_bundle.py",
+    "test": "node --test tests/*.test.js",
+    "test:browser": "node scripts/smoke_dashboard.js",
+    "check": "npm test && npm run build",
+    "check:luau": "npm run build && python3 scripts/check_luau.py"
+  },
+  "devDependencies": {
+    "fengari": "0.1.4",
+    "luaparse": "0.3.1"
+  }
+}
