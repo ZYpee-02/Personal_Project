@@ -1,0 +1,8 @@
+node_modules/
+.local/
+dist/
+*.rbxl
+*.rbxl.lock
+*.rbxlx.lock
+.env
+__pycache__/

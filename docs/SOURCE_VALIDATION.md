@@ -1,0 +1,53 @@
+# Raw Luau source validation
+
+The manual game consists of exactly:
+
+| File | Type | Parent | Instance name |
+| --- | --- | --- | --- |
+| Config.lua | ModuleScript | ServerScriptService | Config |
+| RealmState.lua | ModuleScript | ServerScriptService | RealmState |
+| World.lua | ModuleScript | ServerScriptService | World |
+| Realm.server.lua | Script | ServerScriptService | Realm |
+| Realm.client.lua | LocalScript | StarterPlayer/StarterPlayerScripts | Realm |
+
+All are actual source under `roblox/`, without an enclosing source string or JSON.
+Their complete source also appears in `MANUAL_STUDIO_SETUP.md` as five independent
+Luau code blocks, identical to the files. There is no Command Bar installation path.
+
+## Dependency checks
+
+The server uses `require(script.Parent.Config)`, `require(script.Parent.RealmState)`
+and `require(script.Parent.World)`. The three names must be extension-free sibling
+ModuleScripts. Config returns its configuration table; RealmState and World return
+their module tables. The client has no requires: it waits for the Riftbound folder
+and Snapshot, Action and Notice events that the server creates in ReplicatedStorage.
+
+Tests verify these dependencies, the final return in each module, matching remote
+names, raw code-block identity, offline restrictions and the absence of the retired
+generator from the active build. The optional starter ZIP contains those exact
+raw files, under their proper service folders, without an installer.
+
+## Native Luau compiler
+
+The official `luau-lang/luau` revision used for native syntax/bytecode compilation is
+`8387cfb461b38ce09e37c1e4c2811538ef1bf5cb`. It was obtained over HTTPS and built with
+`make config=release luau-compile -j2`. The prepared binary is retained in ignored
+`.local/tools/luau-compile` for repeated checks.
+
+`npm run check:luau` builds the manual deliverables, then invokes `luau-compile --null`
+on the five raw files and five script sources extracted from the optional XML place:
+10 compilation targets. The normal tests also parse all five as plain Lua and
+exercise the real RealmState module using Fengari. Neither executes Roblox services.
+
+For a fresh development machine, set LUAU_COMPILE to a trusted official binary, or:
+
+```sh
+git clone https://github.com/luau-lang/luau.git /tmp/riftbound-luau
+git -C /tmp/riftbound-luau checkout 8387cfb461b38ce09e37c1e4c2811538ef1bf5cb
+make -C /tmp/riftbound-luau config=release luau-compile -j2
+LUAU_COMPILE=/tmp/riftbound-luau/build/release/luau-compile npm run check:luau
+```
+
+Studio users need none of these development tools. Use the Script Editor to paste
+one complete file per instance. Rendering, physics, GUI layout, character scaling
+and the actual Studio session still require the Windows/macOS manual playtest.

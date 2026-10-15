@@ -1,0 +1,11 @@
+{
+  "name": "RiftboundLive",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": { "$className": "ServerScriptService", "$path": "roblox/ServerScriptService" },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": { "$className": "StarterPlayerScripts", "$path": "roblox/StarterPlayerScripts" }
+    }
+  }
+}
