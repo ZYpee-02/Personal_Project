@@ -28,10 +28,10 @@ test('all three server requires resolve to the documented sibling ModuleScripts'
   const client = read('roblox/StarterPlayerScripts/Realm.client.lua');
   assert.doesNotMatch(client, /\brequire\s*\(/);
   for (const remote of ['Snapshot', 'Action', 'Notice']) {
-    assert.ok(client.includes(`WaitForChild("${remote}")`));
-    assert.ok(server.includes(`= "${remote}", remotes`));
+    assert.ok(client.includes(`WaitForChild("${remote}", 5)`));
+    assert.ok(server.includes(`channel("${remote}")`));
   }
-  assert.ok(client.includes('WaitForChild("Riftbound")'));
+  assert.ok(client.includes('WaitForChild("Riftbound", 10)'));
   assert.ok(server.includes('"Riftbound", ReplicatedStorage'));
 });
 

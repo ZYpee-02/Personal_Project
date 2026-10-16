@@ -14,7 +14,11 @@ the Command Bar. There is no generated installer or serialized source wrapper.
 Play, and replace the ENTIRE source of each of the five existing instances below.
 Keep their names, types and parents. Replace all five together; do not mix versions
 or add duplicates. Restore any custom HostUserIds into the new Config afterward.
-See `docs/PHASE2_REPLACEMENT.md` for the exact update and first-three-round checklist.
+For the startup repair, **Realm.server.lua and Realm.client.lua changed**; replace
+both together. The three supplied modules are unchanged from Phase 2. If your
+Studio copies may be mixed or incomplete, restore all five from this document.
+See `docs/STARTUP_FIX.md` for the comparison, exact replacement and error diagnosis;
+`docs/PHASE2_REPLACEMENT.md` covers the first-three-round checklist.
 
 ## Step-by-step
 
@@ -67,6 +71,10 @@ ModuleScripts above. Config, RealmState and World each return their module table
 The client requires no modules; it waits for `ReplicatedStorage.Riftbound` and its
 Snapshot, Action and Notice RemoteEvents, which the server creates automatically.
 Do not create those remotes or install anything from `integrations/` manually.
+The corrected server creates them BEFORE loading modules and publishes Ready only
+after a successful world build and first render. The client shows loading progress
+and a bounded error panel. Success in SERVER Output starts with `[Riftbound] Ready`.
+Check the server Realm is enabled with RunContext Legacy, and has no duplicates.
 
 All game data is in memory, with `PersistenceEnabled = false`. These sources have
 no save-service access, HTTP calls, external asset fetches, or TikTok connection.

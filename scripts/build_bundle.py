@@ -16,6 +16,7 @@ with ZipFile(target, "w", ZIP_DEFLATED) as archive:
         ("README.md", "README.md"),
         ("docs/PLAYTEST.md", "docs/PLAYTEST.md"),
         ("docs/PHASE2_REPLACEMENT.md", "docs/PHASE2_REPLACEMENT.md"),
+        ("docs/STARTUP_FIX.md", "docs/STARTUP_FIX.md"),
         ("docs/OFFLINE_SAFETY.md", "docs/OFFLINE_SAFETY.md"),
         ("docs/SOURCE_VALIDATION.md", "docs/SOURCE_VALIDATION.md"),
     ]:

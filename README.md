@@ -1,4 +1,4 @@
-# Riftbound Live — Phase 2 / autonomous offline playtest v0.3.0
+# Riftbound Live — Phase 2 / autonomous offline playtest v0.3.1
 
 A fantasy sky-island Roblox game with username joining, local viewer avatars,
 automatic competitions, moving avatars, live leaderboards, money-per-second earnings, and
@@ -12,6 +12,13 @@ Replace all five complete sources in their existing instances using
 `MANUAL_STUDIO_SETUP.md` contains all five full raw Luau code blocks. With defaults,
 Studio seeds six clearly labeled demo travelers and runs rounds/gifts unattended.
 No Keeper Tools are needed. Real TikTok integration remains disabled.
+
+**Missing map/HUD or infinite wait for Riftbound?** The startup repair changes
+the server and client scripts together. It publishes channels before module loads,
+checks dependencies/settings, and shows startup errors on screen. Follow
+[the exact startup replacement and diagnosis guide](docs/STARTUP_FIX.md). The
+three module sources are unchanged Phase 2 files; restore all five if copies
+are mixed. No Roblox Studio playtest has been performed in this cloud workspace.
 
 ## Manual setup in Roblox Studio
 
