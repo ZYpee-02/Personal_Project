@@ -1,5 +1,9 @@
 # Phase 2 startup repair and replacement
 
+This documents the earlier startup repair. The later presentation update changes
+World.lua and Realm.client.lua again; follow [PRESENTATION_REPLACEMENT.md](PRESENTATION_REPLACEMENT.md)
+and the current complete sources for the working game's display improvements.
+
 The supplied Output shows a **Client** CorePackages/UIBlox FoundationProvider
 warning and a client waiting for `ReplicatedStorage.Riftbound`. The UI warning is
 inside Roblox's UI packages, not these five scripts. Neither message identifies

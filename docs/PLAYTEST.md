@@ -1,18 +1,18 @@
 # Phase 2 Studio acceptance checklist — NOT executed in the cloud
 
-The existing Phase 1 game was reported working by the user. That does not validate
-this Phase 2 scene. This checklist requires Roblox Studio on Windows/macOS. Keep
+The user reported Phase 2 gameplay running, with overlapping UI and world labels.
+This presentation update has not been playtested here. Use Studio on Windows/macOS. Keep
 HTTP Requests and Studio API Services access **disabled** throughout the test.
 
 ## Replace and boot
 
 - [ ] Back up the working place; stop Play and follow PHASE2_REPLACEMENT.md.
-- [ ] Replace all five complete raw sources in the existing instances; no duplicates.
+- [ ] For the presentation update, replace World.lua and Realm.client.lua together per PRESENTATION_REPLACEMENT.md. Restore all five if mixed; no duplicates.
 - [ ] Verify Config/RealmState/World are ModuleScripts and the two Realm instances are Script/LocalScript in their documented parents.
 - [ ] Server Realm is enabled with RunContext Legacy; client Realm is enabled. No duplicate Realm scripts or saved runtime Riftbound folders.
 - [ ] Press Play; there are no Output errors and no request to publish/enable APIs.
 - [ ] SERVER Output prints `[Riftbound] Ready`; runtime Riftbound attributes show Ready=true and StartupState=ready. A startup failure shows its stage/original error, not an infinite wait.
-- [ ] Scene has animated clouds/runes/stars, shrines, raised track, podiums and both large boards.
+- [ ] Scene has animated clouds/runes/stars, shrines, raised track and podiums. Both world money boards are on opposite side islands and only visible nearby in Roam View.
 - [ ] Portal visibly delivers six Demo_ rigs and the actual player's crew stand-in.
 
 ## Prove autoplay with no tools or votes
@@ -41,12 +41,17 @@ HTTP Requests and Studio API Services access **disabled** throughout the test.
 
 ## Framing, controls, compatibility
 
-- [ ] Observe at 390×844, 720×1280, 1080×1920 and desktop landscape using the device emulator/capture crop.
+- [ ] Observe at 320×568, 390×844, 720×1280, 1080×1920, 1200×1920 and 1920×1080 using the device emulator/capture crop. The small 844×390 landscape view only checks fitting; its portrait crop is too small for a readable stream.
 - [ ] Centered 9:16 HUD, countdown, names, points and earnings are readable; lower reserved strip stays clear.
-- [ ] Automatic camera includes the main track, inner ring, shrines and podiums; check top-board clipping.
-- [ ] ROAM VIEW restores the normal camera; STREAM VIEW returns smoothly to the arena.
+- [ ] Top Earners and Round Leaders remain separate in the lower dock; long 20-character names and large numbers truncate within their own cells.
+- [ ] Voting buttons and winner/prize/status share the round dock without intersecting; gift notices use one top strip. No result banner covers racers.
+- [ ] Camera includes the entire main island, routes, giant rigs and podiums inside the clear center; results do not zoom into a crowd. Check actual projections/clipping.
+- [ ] STREAM VIEW hides duplicate world/scenery labels and native Humanoid names. At most four avatar labels and two earnings rows are visible; verify real occlusion and crossings.
+- [ ] Name and earnings rows stay separate at normal/giant scale; selected names rotate, with winner/gift/leader priority. Some crowded names should hide.
+- [ ] ROAM VIEW restores the normal camera/FOV and native names; nearby world boards appear. STREAM VIEW returns immediately to the fitted arena.
 - [ ] Walk/jump across bridges and test player respawn/falling in Roam View.
 - [ ] TEST TOOLS starts closed; all earlier username, vote, follow and gift controls still work.
+- [ ] TEST TOOLS hides both leaderboards while open and restores them when closed; header and round dock remain separate.
 - [ ] Invalid/duplicate usernames are rejected, and switching a vote never adds another voice.
 - [ ] Disable OfflineDemoEnabled: no seeded fake audience or automatic gifts, but player crew and rounds still work.
 - [ ] Disable AutoSimulateGifts: seeded crew still compete without automatic effects.
