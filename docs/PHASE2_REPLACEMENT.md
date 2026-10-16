@@ -4,10 +4,15 @@ Use this with your already-working Riftbound Live place. These are complete raw
 Luau files, not patches, JSON, escaped source strings, or a Command Bar installer.
 The five-script architecture and all three require paths stay unchanged.
 
+**Current presentation update:** Replace World.lua and Realm.client.lua together
+using [PRESENTATION_REPLACEMENT.md](PRESENTATION_REPLACEMENT.md). Config, RealmState
+and the server Realm are unchanged from the working startup repair. The full
+five-file baseline below remains available if your copies are mixed.
+
 **Startup repair:** See [STARTUP_FIX.md](STARTUP_FIX.md) for the comparison and
 diagnosis of the missing Riftbound folder. Only Realm.server.lua/Realm.client.lua
-changed in that repair; replace both together. The three modules supplied here
-are unchanged Phase 2 sources. Restore all five if your Studio copies are uncertain.
+changed in that earlier repair. The current presentation update also changes World.
+Use the current complete sources rather than restoring old World/client copies.
 
 ## Replace all five files
 
@@ -62,10 +67,11 @@ at once after a stall. It bounds income to each current phase deadline.
 - Rigs visibly arrive and walk, with moving arms/legs and smooth positional updates.
 - Starfall follows the inner collection ring; Sprint uses the raised checkpoint
   course; Relay carries a glowing orb between shrines and heartseed.
-- Avatar labels show session money and current income. Green `+$` pops reflect
-  actual credited deltas. Idle/result phases show $0/s and pay no passive income.
-- Two world billboards show session and round money leaders. The portrait HUD
-  shows session earners and competition point leaders. Result prizes/points freeze.
+- Selected avatar names and green `+$` pops stay compact and reflect credited
+  deltas. The round dock shows the leading earner's current $/s; idle/results
+  pay no passive money.
+- Nearby side-island boards show session/round money in roam. Stream hides those
+  duplicates and uses two separate bottom panels for earners/competition points.
 - Podium order agrees with competition results; giants return to normal size;
   auras, aurora ribbons, star showers, drifting clouds, runes and celebration motes
   are visible, readable and do not obscure every avatar.
@@ -77,9 +83,9 @@ at once after a stall. It bounds income to each current phase deadline.
 
 The LocalScript fits a centered **480×854 (approximately 9:16)** safe canvas to the
 viewport. In a landscape Roblox window, center-crop the game capture to 9:16 in
-your stream software. The custom camera aims at the main arena, with closer podium
-framing during results. Camera framing is fixed; the character can still exist and
-move while watching the show. Test clipping in Studio's phone/device emulator.
+your stream software. The camera fits the main island/routes/giant envelope into
+the clear center and recalculates on resize. Results retain the wide view. The
+character can still move while watching. Test clipping in Studio's device emulator.
 
 The header starts below the upper safe margin; the bottom 136 logical pixels
 (y=718–854) are left free for a stream application's lower controls. Actual TikTok

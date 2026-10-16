@@ -43,7 +43,9 @@ function methods:Destroy() self.Parent = nil; self.Destroyed = true end
 function methods:FireAllClients(...) self.OnClientEvent:Fire(...) end
 function methods:FireClient(...) end
 nodeMeta.__index = function(self, key)
-    return methods[key] or self._properties[key] or self:FindFirstChild(key)
+    if methods[key] then return methods[key] end
+    if self._properties[key] ~= nil then return self._properties[key] end
+    return self:FindFirstChild(key)
 end
 nodeMeta.__newindex = function(self, key, value)
     if key == "Parent" then

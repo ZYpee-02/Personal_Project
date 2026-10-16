@@ -33,15 +33,16 @@ end
 
 local function label(adornee, text, offset, color, width)
     local gui = Instance.new("BillboardGui")
-    gui.Name, gui.Size = "Caption", UDim2.fromOffset(width or 300, 55)
-    gui.StudsOffset, gui.MaxDistance = offset or Vector3.new(0, 5, 0), 300
-    gui.AlwaysOnTop = false
+    gui.Name, gui.Size = "Caption", UDim2.fromOffset(width or 180, 24)
+    gui:SetAttribute("RiftboundLabelKind", "scenery")
+    gui.StudsOffset, gui.MaxDistance = offset or Vector3.new(0, 5, 0), 70
+    gui.AlwaysOnTop, gui.Enabled = false, false
     gui.Parent = adornee
     local t = Instance.new("TextLabel")
     t.Size, t.BackgroundTransparency = UDim2.fromScale(1, 1), 1
-    t.Font, t.TextSize = Enum.Font.GothamBold, 16
+    t.Font, t.TextSize = Enum.Font.GothamBold, 14
     t.Text, t.TextColor3 = text, color or colors.mint
-    t.TextStrokeTransparency = 0.65
+    t.TextStrokeTransparency, t.TextWrapped, t.TextTruncate = 0.65, false, Enum.TextTruncate.AtEnd
     t.Parent = gui
 end
 
@@ -124,13 +125,17 @@ function World.build(config)
     end
     core = crystal(Vector3.new(0, 42, 0), 2, colors.mint)
     label(core, "THE HEARTSEED", Vector3.new(0, 8, 0), colors.gold)
-    local scoreAnchor = part("Round leaderboard", Vector3.new(1, 1, 1), CFrame.new(0, 62, 7), colors.gold)
+    local scoreAnchor = part("Round leaderboard", Vector3.new(1, 1, 1), CFrame.new(-85, 44, -20), colors.gold)
     scoreAnchor.Transparency, scoreAnchor.CanCollide = 1, false
     local scoreGui = Instance.new("BillboardGui")
-    scoreGui.Size, scoreGui.MaxDistance, scoreGui.Parent = UDim2.fromOffset(520, 210), 200, scoreAnchor
+    scoreGui.Name = "RoundBoard"
+    scoreGui:SetAttribute("RiftboundLabelKind", "worldBoard")
+    scoreGui.AlwaysOnTop, scoreGui.Enabled = false, false
+    scoreGui.Size, scoreGui.MaxDistance, scoreGui.Parent = UDim2.fromOffset(300, 124), 95, scoreAnchor
     scoreText = Instance.new("TextLabel")
     scoreText.Size, scoreText.BackgroundTransparency = UDim2.fromScale(1, 1), 1
-    scoreText.Font, scoreText.TextSize, scoreText.TextColor3 = Enum.Font.GothamBold, 23, colors.gold
+    scoreText.Font, scoreText.TextSize, scoreText.TextColor3 = Enum.Font.GothamBold, 18, colors.gold
+    scoreText.TextWrapped, scoreText.TextTruncate = false, Enum.TextTruncate.AtEnd
     scoreText.TextStrokeTransparency, scoreText.Text, scoreText.Parent = 0.3, "TOP EARNERS\nWaiting for the next round", scoreGui
     gate = part("Star gate", Vector3.new(1, 16, 16), CFrame.new(0, 43, -25) * CFrame.Angles(0, math.pi / 2, 0), colors.violet, Enum.Material.Neon)
     gate.Shape, gate.CanCollide, gate.Transparency = Enum.PartType.Cylinder, false, 0.62
@@ -189,13 +194,17 @@ function World.build(config)
         local height = ({ 4, 2.5, 1.5 })[rank]
         part("Winner podium " .. rank, Vector3.new(7, height, 7), CFrame.new(x, 34.5 + height / 2, 14), rank == 1 and colors.gold or colors.stone)
     end
-    local sessionAnchor = part("Session board", Vector3.new(1, 1, 1), CFrame.new(0, 73, -7), colors.mint)
+    local sessionAnchor = part("Session board", Vector3.new(1, 1, 1), CFrame.new(87, 48, 21), colors.mint)
     sessionAnchor.Transparency, sessionAnchor.CanCollide = 1, false
     local sessionGui = Instance.new("BillboardGui")
-    sessionGui.Size, sessionGui.MaxDistance, sessionGui.Parent = UDim2.fromOffset(650, 170), 230, sessionAnchor
+    sessionGui.Name = "SessionBoard"
+    sessionGui:SetAttribute("RiftboundLabelKind", "worldBoard")
+    sessionGui.AlwaysOnTop, sessionGui.Enabled = false, false
+    sessionGui.Size, sessionGui.MaxDistance, sessionGui.Parent = UDim2.fromOffset(300, 124), 95, sessionAnchor
     sessionText = Instance.new("TextLabel")
     sessionText.Size, sessionText.BackgroundTransparency = UDim2.fromScale(1, 1), 1
-    sessionText.Font, sessionText.TextSize, sessionText.TextColor3 = Enum.Font.GothamBlack, 28, colors.mint
+    sessionText.Font, sessionText.TextSize, sessionText.TextColor3 = Enum.Font.GothamBold, 18, colors.mint
+    sessionText.TextWrapped, sessionText.TextTruncate = false, Enum.TextTruncate.AtEnd
     sessionText.TextStrokeTransparency, sessionText.Parent = 0.25, sessionGui
     for i = 1, 8 do
         local model = Instance.new("Model")
@@ -275,17 +284,28 @@ function World.arrive(model, slot, username)
     end
     model.Parent = root
     local head = model:FindFirstChild("Head")
-    label(head, username .. "\n$0 | $5/s", Vector3.new(0, 3, 0), colors.gold, 250)
-    local pop = Instance.new("BillboardGui")
-    pop.Name, pop.Size, pop.StudsOffset, pop.MaxDistance = "EarningsPop", UDim2.fromOffset(180, 46), Vector3.new(0, 5, 0), 300
-    pop.AlwaysOnTop, pop.Parent = true, head
+    -- One bounded label per traveler: name and earnings occupy separate rows.
+    -- The client selects visible labels and keeps their screen rectangles apart.
+    local caption = Instance.new("BillboardGui")
+    caption.Name, caption.Size = "Caption", UDim2.fromOffset(156, 52)
+    caption:SetAttribute("RiftboundLabelKind", "avatar")
+    caption:SetAttribute("ViewerUsername", username)
+    caption.StudsOffset, caption.MaxDistance = Vector3.new(0, 3, 0), 1200
+    caption.AlwaysOnTop, caption.Enabled, caption.Parent = false, false, head
+    local nameText = Instance.new("TextLabel")
+    nameText.Name, nameText.Size, nameText.Position = "NameLabel", UDim2.fromScale(1, 20 / 52), UDim2.fromScale(0, 32 / 52)
+    nameText.BackgroundTransparency, nameText.Font, nameText.TextSize = 1, Enum.Font.GothamBold, 16
+    nameText.Text, nameText.TextColor3, nameText.TextStrokeTransparency = username, colors.gold, 0.5
+    nameText.TextWrapped, nameText.TextTruncate, nameText.Parent = false, Enum.TextTruncate.AtEnd, caption
     local popText = Instance.new("TextLabel")
-    popText.Size, popText.BackgroundTransparency = UDim2.fromScale(1, 1), 1
-    popText.TextColor3, popText.Font, popText.TextSize = colors.mint, Enum.Font.GothamBlack, 24
-    popText.TextStrokeTransparency, popText.TextTransparency, popText.Parent = 0.4, 1, pop
+    popText.Name, popText.Size, popText.Position = "Earned", UDim2.fromScale(1, 20 / 52), UDim2.fromScale(0, 12 / 52)
+    popText.BackgroundTransparency = 1
+    popText.TextColor3, popText.Font, popText.TextSize = colors.mint, Enum.Font.GothamBold, 16
+    popText.TextStrokeTransparency, popText.TextTransparency, popText.Text = 0.4, 1, ""
+    popText.TextWrapped, popText.TextTruncate, popText.Parent = false, Enum.TextTruncate.AtEnd, caption
     avatars[string.lower(username)] = {
         model = model, slot = slot, arrivedAt = os.clock(), frame = model:GetPivot(),
-        balance = 0, pop = pop, popText = popText, scale = 1,
+        balance = 0, popText = popText, scale = 1,
     }
 end
 
@@ -350,15 +370,13 @@ function World.render(state, now)
         local record = avatars[string.lower(member.username)]
         if record then
             local model = record.model
-            local caption = model.Head.Caption:FindFirstChildOfClass("TextLabel")
-            caption.Text = string.format("%s\n$%s | $%d/s", member.username, number(member.balance), state.earning and member.perSecond or 0)
             local delta = member.balance - record.balance
             if delta >= 0.5 and now >= (record.nextPop or 0) then
                 if record.fade then record.fade:Cancel(); record.rise:Cancel() end
                 record.popText.Text, record.popText.TextTransparency = "+$" .. number(delta), 0
-                record.pop.StudsOffset = Vector3.new(0, 4.5, 0)
+                record.popText.Position = UDim2.fromScale(0, 12 / 52)
                 record.fade = TweenService:Create(record.popText, TweenInfo.new(0.95), { TextTransparency = 1 })
-                record.rise = TweenService:Create(record.pop, TweenInfo.new(0.95), { StudsOffset = Vector3.new(0, 7, 0) })
+                record.rise = TweenService:Create(record.popText, TweenInfo.new(0.95), { Position = UDim2.fromScale(0, 4 / 52) })
                 record.fade:Play(); record.rise:Play()
                 record.balance, record.nextPop = member.balance, now + 1.05
             end

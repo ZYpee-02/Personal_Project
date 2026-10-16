@@ -75,3 +75,20 @@ settings, missing Phase 2 exports, failed World construction/render, and animati
 failure shutdown. Client-bootstrap tests check its loading/error GUI contract with
 mocked Instances, including no server, original module errors, readiness timeout
 and wrong remote classes. Neither test suite executes Roblox's actual UI/engine.
+
+## Presentation checks
+
+`tests/presentation.test.js` exercises the actual layout/camera math at 320×568,
+390×844, 720×1280, 1080×1920, 1920×1080, 844×390 and 1200×1920. It checks panel
+separation, reserved regions and projected main-arena bounds. It also runs the
+entire client and World source with mocked Instances, vector/CFrame arithmetic,
+GUI rectangles and services, using actual Config/RealmState and 18 long-name
+travelers. Those tests cover phase UI, text row sizes/truncation settings, camera
+stability, label budgets/intersections, tools actions, late label attributes,
+nearby roam boards, native nameplates and money/gift effects.
+
+These mocks do not rasterize fonts, render Roblox geometry, implement true model
+scaling/occlusion, tween over time or measure performance. Numeric font sizes and
+rectangle fitting are not visual readability approval. Use
+[PRESENTATION_REPLACEMENT.md](PRESENTATION_REPLACEMENT.md) and the Studio checklist
+to verify those remaining behaviors on the intended capture/device.

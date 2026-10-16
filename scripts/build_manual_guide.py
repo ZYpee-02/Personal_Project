@@ -14,10 +14,12 @@ the Command Bar. There is no generated installer or serialized source wrapper.
 Play, and replace the ENTIRE source of each of the five existing instances below.
 Keep their names, types and parents. Replace all five together; do not mix versions
 or add duplicates. Restore any custom HostUserIds into the new Config afterward.
-For the startup repair, **Realm.server.lua and Realm.client.lua changed**; replace
-both together. The three supplied modules are unchanged from Phase 2. If your
-Studio copies may be mixed or incomplete, restore all five from this document.
-See `docs/STARTUP_FIX.md` for the comparison, exact replacement and error diagnosis;
+**Updating the working Phase 2 game to the presentation fix?** Replace the ENTIRE
+source of **World.lua and Realm.client.lua** together. Config, RealmState and the
+server Realm are unchanged from the working startup repair. All five complete
+files are provided below in case your copies are mixed. Follow
+`docs/PRESENTATION_REPLACEMENT.md` for exact replacement and resolution checks.
+`docs/STARTUP_FIX.md` documents the earlier startup repair;
 `docs/PHASE2_REPLACEMENT.md` covers the first-three-round checklist.
 
 ## Step-by-step
@@ -48,7 +50,7 @@ See `docs/STARTUP_FIX.md` for the comparison, exact replacement and error diagno
     Usernames label local procedural avatars; no real account/outfit is downloaded.
 11. Optional **TEST TOOLS** can add a username, start gathering early, simulate votes,
     gifts or a follow. **ROAM VIEW** restores normal character camera controls;
-    **STREAM VIEW** returns to the centered 9:16 view. Keep tools closed for capture.
+    **STREAM VIEW** returns to the fitted 9:16 arena view. Keep tools closed for capture.
     Base income is $5/s in voting/competition, plus $2/s for automatic activity,
     a $3/s voting bonus, checkpoint bounties and podium prizes. Gifts stay cosmetic.
 12. Stop and Play again to confirm all money, crew, gifts, follows and shards reset.
@@ -75,6 +77,12 @@ The corrected server creates them BEFORE loading modules and publishes Ready onl
 after a successful world build and first render. The client shows loading progress
 and a bounded error panel. Success in SERVER Output starts with `[Riftbound] Ready`.
 Check the server Realm is enabled with RunContext Legacy, and has no duplicates.
+
+The presentation update keeps a clear central arena area, puts both leaderboards
+in separate bottom panels, and reuses the bottom round dock for results. Stream
+view hides duplicate world/scenery boards and limits projected avatar labels to
+four names/two earnings rows. Roam view restores nearby world boards. Camera
+distance adapts to the viewport; no result zoom or central winner banner is used.
 
 All game data is in memory, with `PersistenceEnabled = false`. These sources have
 no save-service access, HTTP calls, external asset fetches, or TikTok connection.

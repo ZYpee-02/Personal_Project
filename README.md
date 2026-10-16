@@ -1,4 +1,4 @@
-# Riftbound Live — Phase 2 / autonomous offline playtest v0.3.1
+# Riftbound Live — Phase 2 / autonomous offline playtest v0.3.2
 
 A fantasy sky-island Roblox game with username joining, local viewer avatars,
 automatic competitions, moving avatars, live leaderboards, money-per-second earnings, and
@@ -13,12 +13,20 @@ Replace all five complete sources in their existing instances using
 Studio seeds six clearly labeled demo travelers and runs rounds/gifts unattended.
 No Keeper Tools are needed. Real TikTok integration remains disabled.
 
+**Presentation update:** Replace **World.lua and Realm.client.lua** together using
+[the exact presentation replacement guide](docs/PRESENTATION_REPLACEMENT.md).
+Leaderboards now occupy separate bottom panels, results reuse the lower dock,
+and the center stays clear for a viewport-fitted arena camera. Stream view hides
+duplicate world boards and limits projected names/earnings. All five complete raw
+sources remain in `MANUAL_STUDIO_SETUP.md`. Config, RealmState and the server
+script are unchanged from the working startup repair.
+
 **Missing map/HUD or infinite wait for Riftbound?** The startup repair changes
 the server and client scripts together. It publishes channels before module loads,
 checks dependencies/settings, and shows startup errors on screen. Follow
-[the exact startup replacement and diagnosis guide](docs/STARTUP_FIX.md). The
-three module sources are unchanged Phase 2 files; restore all five if copies
-are mixed. No Roblox Studio playtest has been performed in this cloud workspace.
+[the earlier startup diagnosis guide](docs/STARTUP_FIX.md). Restore all five from
+the current manual guide if copies are mixed. No Roblox Studio playtest has been
+performed in this cloud workspace; the user reported the preceding Phase 2 running.
 
 ## Manual setup in Roblox Studio
 
@@ -99,9 +107,11 @@ Round money resets on the next vote, while session balances last until Stop. Inc
 uses elapsed time and bounded phase deadlines, not a fixed assumed frame rate.
 
 The HUD shows session money leaders and competition point leaders. Two large world
-boards show session and round money leaders. The top three walk to podiums with a
-winner banner, crown/cheering motion and pooled procedural celebration particles.
-Labels show actual current $/s, with +$ pops for real credited deltas. Team shards
+boards show session and round money leaders nearby in roam view; duplicate world
+boards are hidden in stream view. The top three walk to podiums with a
+winner/prize in the lower dock, crown/cheering motion and pooled celebration motes.
+The dock shows the leading earner's current $/s; selected avatar labels show
+names and +$ pops for real credited deltas. Team shards
 add crystals to the garden (maximum 24 visible). Empty rounds safely keep running.
 
 The centered portrait HUD/camera fits 480×854 logical pixels and reserves the lower
