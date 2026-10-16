@@ -10,11 +10,11 @@ intro = '''# Riftbound Live: Skybridge Sprint complete raw scripts and manual re
 Use the Script Editor and Explorer. Do not paste this document or any script into
 the Command Bar. There is no generated installer or serialized source wrapper.
 
-**Round-transition update v5.1 (Studio confirmation required):** If cinematic-v5
+**Close overview update v6 (Studio confirmation required):** If cinematic-v5/v5.1
 already runs, replace ONLY **Realm.client.lua**, the Realm LocalScript under
-StarterPlayer → StarterPlayerScripts. It fixes per-frame overview diagnostics/scans
-and adds TEST TOOLS → HOLD CAMERA to keep the view fixed across automatic rounds.
-Follow `docs/CAMERA_FIX.md` for the next-round comparison. The gray cause is unconfirmed.
+StarterPlayer → StarterPlayerScripts. It replaces the distant recurring overview
+with a close full-course view and retains the scan/log throttle fix and HOLD CAMERA.
+Follow `docs/CAMERA_FIX.md` for the visual check. Native rendering remains unverified.
 
 Older physical Skybridge Sprint installations need the v5 baseline too: **World.lua** in the
 ServerScriptService World ModuleScript, **Realm.server.lua** in the normal
@@ -92,16 +92,18 @@ The presentation update keeps a clear central arena area, puts both leaderboards
 in separate bottom panels, and reuses the bottom round dock for results. Stream
 view hides duplicate world/scenery boards and limits projected avatar labels to
 four names/two earnings rows. Roam view restores nearby world boards. The fixed
-camera validates every bounds snapshot, stays above/outside the course, limits
-Sprint distance to 850 studs, and restores vertical FOV and Focus every render frame.
-The v3 Sprint overview aims at (0,68,45), with FOV 55, heading 0 and elevation 55
-degrees, using actual course regions to fit the frame and zero local translation.
+camera validates every bounds snapshot and stays above/outside the course.
+The v6 overview fits the course at 100–210 studs from Focus, with every display-volume
+corner within 290 studs, using a 35-degree elevation and 85–120-degree vertical FOV.
+Normal portrait/desktop views stay around 175–180 studs. It replaces the old distant
+pose on every overview beat and round transition. Optical-axis Focus is explicit;
+there is no post-lookAt local translation. Racing/podium close-ups keep FOV 55.
 Stream View applies local daylight and hides the ward/rift spheres that cover
 the course. Roam restores the previous light properties and local shell opacity;
 server effects and game state are unchanged.
 Temporary `[Riftbound camera]` diagnostics check actual local geometry as well as
 the streaming policy, actual CFrame/Focus, all six anchor sightlines and lens enclosures.
-See docs/CAMERA_FIX.md for current evidence and the held-camera round-transition test.
+See docs/CAMERA_FIX.md for current evidence and close-overview verification.
 Missing geometry with engine streaming enabled can trigger
 at most three native Roblox stream requests per Stream View session; none run
 when streaming is disabled or the course is present. No external bridge is used.

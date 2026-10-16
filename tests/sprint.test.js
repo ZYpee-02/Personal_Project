@@ -203,10 +203,10 @@ for lane=1,5 do for cp=0,12 do
 end end
 for _,size in ipairs({{320,568},{390,844},{720,1280},{1080,1920},{1920,1080},{844,390},{1200,1920}}) do
     local w,h=size[1],size[2]
-    local d,shift,up,back,cy,cx,cz,yaw=arenaCamera(w,h,box)
+    local d,shift,up,back,cy,cx,cz,yaw,_,_,_,fov=arenaCamera(w,h,box)
     local focus=Vector3.new(cx,cy,cz)
     camera.CFrame=CFrame.lookAt(focus+Vector3.new(math.sin(yaw)*back*d,up*d,math.cos(yaw)*back*d),focus)*CFrame.new(0,-shift,0)
-    setViewport(w,h); camera.FieldOfView=55
+    setViewport(w,h); camera.FieldOfView=fov
     local s,ox,oy=viewportLayout(w,h); local area=screenRect(Layout.arena,s,ox,oy)
     for _,object in ipairs(workspace.RiftboundRealm.SkybridgeSprint:GetDescendants()) do
       if object:IsA("BasePart") then

@@ -69,7 +69,7 @@ local STREAM_HIDE_WARD = true -- Set false to test the closer camera without hid
 local STREAM_HIDE_RIFT = true -- The large sphere crosses the sightline to the finish gate.
 local STREAM_DAYLIGHT = true -- Local presentation only; Roam restores the previous lighting.
 local STREAM_CLEAR_EFFECTS = true -- Reversible local Atmosphere/PostEffect isolation on EVERY Play.
-local STREAM_CINEMATIC = true -- False retains the original fixed full-course overview.
+local STREAM_CINEMATIC = true -- False retains the close full-course overview.
 local Lighting = game:GetService("Lighting")
 
 -- BEGIN PRESENTATION MATH (pure geometry, also exercised by automated checks)
@@ -142,7 +142,7 @@ local function cameraBounds(bounds, physicalSprint)
     end
     return box, "server bounds verified"
 end
--- Fixed heading/elevation; only aspect-ratio fitting changes the distance. Always
+-- Fixed heading/elevation; aspect-ratio fitting adjusts distance and lens width. Always
 -- return a finite, bounded solution, even before a usable viewport/snapshot exists.
 local function arenaCamera(width, height, receivedBounds, physicalSprint)
     local bounds, reason = cameraBounds(receivedBounds, physicalSprint)
@@ -154,22 +154,16 @@ local function arenaCamera(width, height, receivedBounds, physicalSprint)
     local fov = sprint and 55 or 50
     local tanV = math.tan(math.rad(fov) / 2)
     local tanH = tanV * width / height
-    local elevation = math.rad(sprint and 55 or 52)
+    local elevation = math.rad(sprint and 35 or 52)
     local up, back = math.sin(elevation), math.cos(elevation)
     local centerY = (bounds.minY + bounds.maxY) / 2
     local centerX, centerZ = (bounds.minX + bounds.maxX) / 2, (bounds.minZ + bounds.maxZ) / 2
-    -- A higher view reveals the route instead of foreshortening it behind the
-    -- start platform. Keep the heading aligned with the long axis for portrait.
-    if sprint then centerX, centerY, centerZ = 0, 68, 45 end
+    -- Keep the lens near the course. The old start-biased 55-degree overview
+    -- put the finish about 400 studs away while close shots remained visible.
+    if sprint then centerX, centerY, centerZ = 0, 71, -3 end
     local yaw = math.rad(sprint and 0 or bounds.yaw)
     local volumes = { bounds }
-    if sprint then
-        local canonical = true
-        for _, axis in ipairs({ "X", "Y", "Z" }) do
-            if bounds["min" .. axis] ~= SprintBounds["min" .. axis] or bounds["max" .. axis] ~= SprintBounds["max" .. axis] then canonical = false end
-        end
-        if canonical then volumes = SprintVolumes end
-    end
+    if sprint then volumes = SprintVolumes end -- Padding does not move the authored course.
     local c, sn = math.cos(yaw), math.sin(yaw)
     local function project(x, y, z, d, shift)
         local across = c * (x - centerX) - sn * (z - centerZ)
@@ -180,7 +174,7 @@ local function arenaCamera(width, height, receivedBounds, physicalSprint)
         return width / 2 + across * width / (2 * tanH * depth),
             height / 2 - (localY + shift) * height / (2 * tanV * depth), depth
     end
-    local shiftRatio = sprint and 0 or (0.5 - (area.y + area.h / 2) / height) * 2 * tanV
+    local shiftRatio = (0.5 - (area.y + area.h / 2) / height) * 2 * tanV
     local function fitsCourse(distance)
         for _, volume in ipairs(volumes) do
             for _, x in ipairs({ volume.minX, volume.maxX }) do
@@ -196,17 +190,42 @@ local function arenaCamera(width, height, receivedBounds, physicalSprint)
         end
         return true
     end
-    local near, far = sprint and 170 or 120, 850
-    local fitted = fitsCourse(far)
-    if fitted then
-        for _ = 1, 24 do
-            local middle = (near + far) / 2
-            if fitsCourse(middle) then far = middle else near = middle end
+    local far, fitted = sprint and 210 or 850, false
+    for angle = sprint and 85 or 50, sprint and 120 or 50, 5 do
+        fov, tanV = angle, math.tan(math.rad(angle) / 2)
+        tanH = tanV * width / height
+        shiftRatio = (0.5 - (area.y + area.h / 2) / height) * 2 * tanV
+        local near, candidate = sprint and 100 or 120, sprint and 210 or 850
+        local fitsAtLimit = fitsCourse(candidate)
+        if fitsAtLimit then
+            for _ = 1, 24 do
+                local middle = (near + candidate) / 2
+                if fitsCourse(middle) then candidate = middle else near = middle end
+            end
         end
+        far, fitted = candidate, fitsAtLimit
+        if not sprint then break end
+        -- Prefer <=180 studs and <=260 to every course/jump corner. Narrow
+        -- viewports can widen to 120 degrees, with hard limits of 210/290.
+        local shift = shiftRatio * far
+        local lensY, lensZ = centerY + up * far - back * shift, centerZ + back * far + up * shift
+        local reach = 0
+        for _, volume in ipairs(volumes) do
+            for _, x in ipairs({ volume.minX, volume.maxX }) do for _, y in ipairs({ volume.minY, volume.maxY }) do for _, z in ipairs({ volume.minZ, volume.maxZ }) do
+                reach = math.max(reach, math.sqrt(x * x + (y - lensY)^2 + (z - lensZ)^2))
+            end end end
+        end
+        fitted = fitted and lensY >= 112 and reach <= 290
+        if fitted and far <= 180 and reach <= 260 then break end
     end
-    -- Never repeat the old unbounded zoom-out on an impossible fit. Keep a safe
-    -- view and report it; extreme/narrow viewports can be resized by the operator.
-    return far, shiftRatio * far, up, back, centerY, centerX, centerZ, yaw, bounds, reason, fitted and viewportReady, fov
+    local shift = shiftRatio * far
+    if sprint then
+        -- Move lens AND Focus together along screen-up, then look directly at
+        -- that optical-axis Focus. No post-lookAt local translation is applied.
+        centerY, centerZ = centerY - back * shift, centerZ + up * shift
+        shift = 0
+    end
+    return far, shift, up, back, centerY, centerX, centerZ, yaw, bounds, reason, fitted and viewportReady, fov
 end
 local function containsPartBounds(object, point)
     local p = object.CFrame:PointToObjectSpace(point)
@@ -901,8 +920,8 @@ resize = function()
     if reason ~= boundsReason then nextCameraDiagnostic = 0 end
     overviewTarget, overviewFocus, overviewDistance, overviewFov = target, focus, distance, fov
     cameraTarget, cameraFocus, activeBounds = directorFrame or target, directorFrame and cameraFocus or focus, bounds
-    boundsReason, cameraDistance, cameraFitted = reason, distance, fitted
-    cameraFov = fov
+    boundsReason, cameraFitted = reason, fitted
+    if not directorFrame then cameraDistance, cameraFov = distance, fov end
     if streamCamera and gui.Enabled then setCamera(true) end
 end
 
@@ -957,9 +976,9 @@ local function cameraDiagnostics(now)
         end)
     end
     if not CAMERA_DIAGNOSTICS or not camera then return end
-    print(string.format("[Riftbound camera] presentation=cinematic-v5.1 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
+    print(string.format("[Riftbound camera] presentation=near-course-v6 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
         tostring(STREAM_DAYLIGHT and streamCamera and gui.Enabled), Lighting.ClockTime, Lighting.Brightness, Lighting.ExposureCompensation))
-    print(string.format("[Riftbound render] revision=cinematic-v5.1 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
+    print(string.format("[Riftbound render] revision=near-course-v6 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
         directorShot, tostring(STREAM_CLEAR_EFFECTS), tostring(renderCheckEnabled), parts > 0 and minOpacity or 0, parts > 0 and sumOpacity / parts or 0, maxOpacity, maximumPositionDrift, maximumAimDrift))
     local atmosphereCount, effectCount, enclosureCount = 0, 0, 0
     for _, record in pairs(suspendedEffects) do

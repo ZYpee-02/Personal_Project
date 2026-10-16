@@ -9,7 +9,7 @@ const config = read('roblox/ServerScriptService/Config.lua');
 const domain = read('roblox/ServerScriptService/RealmState.lua');
 const world = read('roblox/ServerScriptService/World.lua');
 const mathSource = client.split('-- BEGIN PRESENTATION MATH')[1].split('\n').slice(1).join('\n').split('-- END PRESENTATION MATH')[0];
-const resolutions = [[320,568],[390,844],[720,1280],[1080,1920],[1920,1080],[844,390],[1200,1920],[2160,3840],[250,1000],[1000,250]];
+const resolutions = [[320,568],[390,844],[720,1280],[1080,1920],[1920,1080],[844,390],[1200,1920],[2160,3840],[250,1000],[1000,250],[923.2,427.2],[1158,536]];
 const sizes = resolutions.map(([w,h]) => `{${w},${h}}`).join(',');
 const modules = `
 local Config=(function() ${config} end)()
@@ -24,13 +24,15 @@ local function assertFraming(w,h)
     local area=screenRect(Layout.arena,s,ox,oy)
     local p=camera.CFrame.Position
     assert(finite(p.X) and finite(p.Y) and finite(p.Z),"nonfinite camera")
-    assert(p.Y>=112 and p.Y<=900 and math.abs(p.X)<700 and math.abs(p.Z)<700,"unsafe camera position")
-    assert((p-Vector3.new(0,71,-3)).Magnitude<950,"runaway camera")
+    assert(p.Y>=112 and p.Y<=200 and math.abs(p.X)<700 and math.abs(p.Z)<700,"unsafe camera position")
+    assert((p-Vector3.new(0,71,-3)).Magnitude<230,"runaway camera")
     local toCenter=Vector3.new(0,71,-3)-p
     assert(camera.CFrame.LookVector:Dot(toCenter)*(1/toCenter.Magnitude)>0.97,"camera faces away from the course")
     for _,volume in ipairs(SprintVolumes) do
     for _,x in ipairs({volume.minX,volume.maxX}) do for _,y in ipairs({volume.minY,volume.maxY}) do for _,z in ipairs({volume.minZ,volume.maxZ}) do
-        local point,onScreen=camera:WorldToViewportPoint(Vector3.new(x,y,z))
+        local corner=Vector3.new(x,y,z)
+        assert((corner-p).Magnitude<=290,"overview exceeds near-course distance budget")
+        local point,onScreen=camera:WorldToViewportPoint(corner)
         assert(onScreen and point.Z>1 and point.X>=area.x and point.X<=area.x+area.w
             and point.Y>=area.y and point.Y<=area.y+area.h,"course escaped the unobstructed arena rectangle")
     end end end
@@ -39,7 +41,7 @@ end
 `;
 
 for (const [w,h] of resolutions) {
-  test(`fixed camera contains the entire course and rejects corrupt bounds at ${w}x${h}`, () => runLua(presentationEngine + mathSource + geometryAssertions + `
+  test(`near overview contains the entire course within 290 studs and rejects corrupt bounds at ${w}x${h}`, () => runLua(presentationEngine + mathSource + geometryAssertions + `
 setViewport(${w},${h}); camera.FieldOfView=55
 local cases={
     {"missing"},{"empty",{}},{"wrong type","bad"},{"boolean",false},
@@ -55,11 +57,12 @@ local cases={
     {"correct",courseBox}
 }
 for _,item in ipairs(cases) do
-    local d,shift,up,back,cy,cx,cz,yaw,box,reason,fitted=arenaCamera(${w},${h},item[2],true)
-    assert(d>=170 and d<=850 and fitted,item[1].." failed bounded fit")
-    assert(cy==68 and cx==0 and cz==45 and yaw==0,"fixed course center/heading changed")
+    local d,shift,up,back,cy,cx,cz,yaw,box,reason,fitted,fov=arenaCamera(${w},${h},item[2],true)
+    assert(d>=100 and d<=210 and fitted and fov>=85 and fov<=120,item[1].." failed bounded fit")
+    assert(cx==0 and yaw==0 and shift==0,"overview must keep its optical-axis Focus")
     if item[1]~="correct" then assert(string.find(reason,"fallback",1,true),"bad bounds not identified") end
     local focus=Vector3.new(cx,cy,cz)
+    camera.FieldOfView=fov
     camera.CFrame=CFrame.lookAt(focus+Vector3.new(math.sin(yaw)*back*d,up*d,math.cos(yaw)*back*d),focus)*CFrame.new(0,-shift,0)
     assertFraming(${w},${h})
 end
@@ -68,8 +71,8 @@ end
 
 test('zero, nonfinite, tiny and extreme viewports yield a bounded fallback instead of an exponential zoom', () => runLua(presentationEngine + mathSource + `
 for _,size in ipairs({{0,0},{0,844},{390,0},{0/0,844},{math.huge,844},{1,1},{1,10000},{10000,1},{40000,40000}}) do
-    local d,shift,up,back,cy,cx,cz,yaw,box,reason,fitted=arenaCamera(size[1],size[2],nil,true)
-    assert(finite(d) and finite(shift) and d<850 and cy==68 and cx==0 and cz==45 and not fitted)
+    local d,shift,up,back,cy,cx,cz,yaw,box,reason,fitted,fov=arenaCamera(size[1],size[2],nil,true)
+    assert(finite(d) and finite(shift) and d<=210 and finite(cy) and cx==0 and finite(cz) and not fitted)
 end
 `));
 
@@ -129,11 +132,12 @@ end
 test('full client repairs same-activity bounds, camera overrides, Focus and FOV mode on every phase', () => runLua(clientScene + `
 assertFraming(390,844) -- before the first snapshot, already aiming at the raised Sprint course
 local baseline=camera.CFrame.Position
+local baselineFocus,baselineFov=camera.Focus.Position,camera.FieldOfView
 publish(courseBox)
 assert((camera.CFrame.Position-baseline).Magnitude<0.00001)
 local padded={minX=-32,maxX=32,minY=50,maxY=92,minZ=-86,maxZ=80,yaw=60}
 publish(padded)
-assert((camera.CFrame.Position-baseline).Magnitude>1,"new bounds ignored within the same activity")
+assert((camera.CFrame.Position-baseline).Magnitude<0.00001,"padding moved a fixed authored course")
 publish({minX=-10000,maxX=10000,minY=-1000,maxY=-900,minZ=-82,maxZ=76,yaw=60})
 assert((camera.CFrame.Position-baseline).Magnitude<0.00001,"invalid box retained the last bad view")
 assert(logged("outside course envelope; fallback"))
@@ -146,9 +150,9 @@ for _,time in ipairs({12,20,100,110}) do
     camera.CameraType=Enum.CameraType.Custom
     renderStep(0.13)
     assertFraming(390,844)
-    assert(camera.CameraType==Enum.CameraType.Scriptable and camera.FieldOfView==55
+    assert(camera.CameraType==Enum.CameraType.Scriptable and camera.FieldOfView==baselineFov
         and camera.FieldOfViewMode==Enum.FieldOfViewMode.Vertical)
-    assert((camera.Focus.Position-Vector3.new(0,68,45)).Magnitude<0.00001)
+    assert((camera.Focus.Position-baselineFocus).Magnitude<0.00001)
     assert((camera.CFrame.Position-baseline).Magnitude<0.00001,"phase moved the fixed spectator view")
 end
 assert(logged("phase=voting") and logged("phase=storm") and logged("phase=result"))
@@ -186,7 +190,7 @@ local course=workspace.RiftboundRealm.SkybridgeSprint
 course.Parent=nil -- model policy still Persistent, but geometry missing on this mock client
 local requests=0
 function methods:RequestStreamAroundAsync(focus,timeout)
-    assert(self==player and focus.X==0 and focus.Y==68 and focus.Z==45 and timeout==5)
+    assert(self==player and focus.X==0 and focus.Y>=40 and focus.Y<=88 and math.abs(focus.Z)<=82 and timeout==5)
     requests=requests+1
 end
 for _,time in ipairs({0,10,20,30,40,50,60,70}) do
@@ -236,13 +240,13 @@ assert(logged("ray=Foreground blocker at 1.0 studs"))
 assertFraming(390,844)
 `));
 
-test('higher Sprint overview directly looks at its on-course focus with zero local translation at ten viewports', () => runLua(clientScene + `
+test('close Sprint overview keeps Focus on its optical axis and stays outside native realm geometry', () => runLua(clientScene + `
 publish(courseBox)
 for _,size in ipairs({${sizes}}) do
     setViewport(size[1],size[2]); renderStep(0.13)
     local d,shift,up,back,cy,cx,cz,yaw=arenaCamera(size[1],size[2],courseBox,true)
     assert(shift==0,"Sprint retained a local CFrame offset")
-    local aim=Vector3.new(0,68,45)
+    local aim=Vector3.new(cx,cy,cz)
     local expected=CFrame.lookAt(aim+Vector3.new(math.sin(yaw)*back*d,up*d,math.cos(yaw)*back*d),aim)
     assert((camera.CFrame.Position-expected.Position).Magnitude<0.0001)
     assert(camera.CFrame.LookVector:Dot((aim-camera.CFrame.Position)*(1/d))>0.99999,"actual CFrame misses actual Focus")
@@ -255,10 +259,10 @@ for _,size in ipairs({${sizes}}) do
     end
 end
 setViewport(1080,1920)
-local a=camera:WorldToViewportPoint(Vector3.new(0,68,60))
-local b=camera:WorldToViewportPoint(Vector3.new(0,68,-60))
+local a=camera:WorldToViewportPoint(Vector3.new(0,64,63)) -- actual start
+local b=camera:WorldToViewportPoint(Vector3.new(0,80,-60)) -- actual finish arch
 local scale=viewportLayout(1080,1920)
-assert(math.abs(a.Y-b.Y)/scale>210,"route is still foreshortened into a small platform")
+assert(math.abs(a.Y-b.Y)/scale>190,"start-to-arch route became too small in the close overview")
 assert(logged("aimDot=1.000000 focusError=0.000"))
 `));
 
@@ -353,7 +357,8 @@ ward.LocalTransparencyModifier=0.4
 renderStep(0.13)
 assert(ward.LocalTransparencyModifier==0.4,"ward test toggle still modifies ward")
 assertFraming(390,844)
-assert((camera.Focus.Position-Vector3.new(0,68,45)).Magnitude<0.0001)
+local aim=camera.Focus.Position-camera.CFrame.Position
+assert(camera.CFrame.LookVector:Dot(aim*(1/aim.Magnitude))>0.99999)
 `);
 });
 
@@ -435,7 +440,7 @@ assert(lighting.ClockTime==18.3 and lighting.Brightness==2 and lighting.Exposure
 `);
 });
 
-test('all key-anchor sightlines reveal an accessory obstruction behind the start focus', () => runLua(clientScene + `
+test('all key-anchor sightlines reveal an accessory obstruction beyond the optical focus', () => runLua(clientScene + `
 RaycastParams={new=function() return {} end}
 local avatar=instance("Model","Traveler_ObstructingOutfit",workspace.RiftboundRealm)
 local outfit=instance("Accessory","OversizedHat",avatar)
@@ -446,7 +451,7 @@ function methods:GetFullName()
     return table.concat(names,".")
 end
 function methods:Raycast(origin,direction,params)
-    if direction.Z < -250 then return {Instance=handle,Position=origin+direction*0.8} end
+    if origin.Z+direction.Z < -55 then return {Instance=handle,Position=origin+direction*0.8} end
 end
 publish(courseBox)
 assert(logged("anchor=START platform world=(0.0,64.0,63.0)"))
@@ -666,7 +671,12 @@ local overview=camera.CFrame.Position
 assertFraming(390,844)
 now=23; publish(courseBox)
 assert(logged("shot=racing pack") and (camera.CFrame.Position-overview).Magnitude>50)
-assert(logged("revision=cinematic-v5") and logged("presentation=cinematic-v5"))
+assert(logged("revision=near-course-v6") and logged("presentation=near-course-v6"))
+local trackingFrame,trackingFov=camera.CFrame,camera.FieldOfView
+local refreshed=state:snapshot(now); refreshed.cameraBounds=courseBox
+remotes.Snapshot.OnClientEvent:Fire(refreshed)
+assert(camera.FieldOfView==trackingFov and (camera.CFrame.Position-trackingFrame.Position).Magnitude<0.0001,
+    "snapshot applied the wider overview lens to a close tracking shot")
 local function racerFramed(model)
     local point,visible=camera:WorldToViewportPoint(model.PrimaryPart.Position)
     local s,ox,oy=viewportLayout(camera.ViewportSize.X,camera.ViewportSize.Y)

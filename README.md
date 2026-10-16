@@ -5,10 +5,10 @@ verified checkpoints/finish times, fictional earnings, leaderboards, cosmetic gi
 and a portrait spectator camera. All state stays in memory. DataStoreService,
 custom HTTP and TikTok networking are disabled.
 
-**Already running cinematic-v5? Replace only Realm.client.lua**, the Realm
+**Already running cinematic-v5/v5.1? Replace only Realm.client.lua**, the Realm
 LocalScript under StarterPlayer → StarterPlayerScripts, using
-[the camera/round-transition guide](docs/CAMERA_FIX.md). v5.1 fixes repeated overview
-diagnostics/scans and adds HOLD CAMERA to isolate the gray next-round view.
+[the camera/round-transition guide](docs/CAMERA_FIX.md). v6 replaces the recurring gray
+distant overview with a close full-course view and retains the v5.1 throttle fix.
 Older physical Sprint installations also need the v5 World/server sources described
 in that guide. The reported gray screen still requires Studio confirmation.
 For a fresh install or an upgrade from before physical Sprint, install all five
@@ -106,7 +106,13 @@ observed avatar roots; results cut to arrived podium winners and a winner close-
 Close views fit avatar/jump envelopes into the clear HUD rectangle at 65–220 studs;
 missing/invalid targets or an impossible fit use the bounded overview. Shot changes
 cut directly; camera tracking between cuts is smoothed. Set STREAM_CINEMATIC=false
-for the original fixed overview.
+for the new close full-course overview.
+
+The overview uses a 35-degree elevation and adapts vertical FOV from 85 to 120
+degrees to fit the course while staying nearby. Normal portrait/desktop views sit
+around 175–180 studs from Focus, with every display-volume corner within 260 studs.
+Very narrow layouts permit up to 210/290 studs. The former 321-stud overview is no
+longer used, including gathering, voting, racing overview beats and fallback shots.
 
 Stream View applies a reversible local daylight/fog profile and temporarily removes
 Atmospheres and disables PostEffects, including Bloom, from Lighting/current Camera.
@@ -124,7 +130,7 @@ TEST TOOLS → HOLD CAMERA freezes the current Stream View position, aim, Focus 
 FOV across round changes while gameplay continues. Toggle it again or enter Roam
 to restore automatic shots. This is an optional diagnostic; it starts disabled.
 
-Diagnostics identify **cinematic-v5.1**, the round, selected shot, effect-isolation counts,
+Diagnostics identify **near-course-v6**, the round, selected shot, effect-isolation counts,
 actual CFrame/Focus/rendered frame, opacity, enclosing objects and anchor sightlines.
 Overview refitting preserves the ten-second diagnostic and quarter-second lens-scan
 limits; phase/shot changes can request an immediate diagnostic.
