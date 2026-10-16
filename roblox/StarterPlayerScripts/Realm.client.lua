@@ -273,6 +273,8 @@ local cameraFov = 55
 local hiddenWard, originalWardTransparency = nil, 0
 local hiddenRift, originalRiftTransparency = nil, 0
 local cameraPositionDrift, cameraAimDrift = 0, 0
+local maximumPositionDrift, maximumAimDrift = 0, 0
+local renderCheckEnabled, renderCheckFolder, nearProbe, farProbe = false, nil, nil, nil
 local savedStreamLighting
 local streamLighting = {
     ClockTime = 14, Brightness = 3, ExposureCompensation = 0.25,
@@ -369,9 +371,44 @@ button(controls, "VoteSail", "VOTE AS: SAIL", { x = 222, y = 252, w = 194, h = 3
 text(controls, "Hint", "Testing only. All rounds advance automatically.", { x = 16, y = 312, w = 400, h = 24 }, 14, muted)
 text(controls, "Hint2", "Gifts/follows are simulated. Progress resets on Stop.", { x = 16, y = 342, w = 400, h = 24 }, 13, muted)
 text(controls, "Hint3", "Close tools to restore the leaderboard dock.", { x = 16, y = 372, w = 400, h = 24 }, 14, mint)
+local renderCheckButton
+renderCheckButton = button(controls, "RenderCheck", "RENDER CHECK: OFF", { x = 16, y = 410, w = 400, h = 36 }, function()
+    renderCheckEnabled = not renderCheckEnabled
+    renderCheckButton.Text = renderCheckEnabled and "RENDER CHECK: ON" or "RENDER CHECK: OFF"
+    nextCameraDiagnostic = 0
+    showTools(false)
+    notify(renderCheckEnabled and "RENDER CHECK / near PINK + distant GREEN cubes" or "RENDER CHECK / removed")
+end)
 local keeper = button(canvas, "KeeperToggle", "TEST TOOLS", { x = 342, y = 18, w = 114, h = 30 }, function() showTools(not controls.Visible) end)
 keeper.TextSize = 11
 local cameraButton
+local function updateRenderCheck()
+    local camera = workspace.CurrentCamera
+    local active = renderCheckEnabled and streamCamera and gui.Enabled and camera ~= nil
+    if not active then
+        if renderCheckFolder then renderCheckFolder:Destroy() end
+        renderCheckFolder, nearProbe, farProbe = nil, nil, nil
+        return
+    end
+    if not renderCheckFolder then
+        renderCheckFolder = Instance.new("Folder")
+        renderCheckFolder.Name, renderCheckFolder.Parent = "RiftboundLocalRenderCheck", workspace
+        local function probe(name, size, color)
+            local part = Instance.new("Part")
+            part.Name, part.Size, part.Color = name, size, color
+            part.Anchored, part.CanCollide, part.CanTouch, part.CanQuery = true, false, false, false
+            part.Material, part.Transparency, part.LocalTransparencyModifier = Enum.Material.Neon, 0, 0
+            part.CastShadow, part.Parent = false, renderCheckFolder
+            return part
+        end
+        nearProbe = probe("Near_PINK_12_studs", Vector3.new(0.6, 0.6, 0.6), Color3.fromRGB(255, 30, 180))
+        farProbe = probe("Course_GREEN", Vector3.new(8, 8, 8), Color3.fromRGB(80, 255, 40))
+    end
+    -- Native 3D parts, NOT AlwaysOnTop adornments or GUI stand-ins. The near
+    -- cube tests this camera's rendering; the far cube tests course-distance draw.
+    nearProbe.CFrame = camera.CFrame * CFrame.new(-1.2, 0, -12)
+    farProbe.CFrame = CFrame.new(0, 104, 0)
+end
 local function updateStreamLighting()
     if STREAM_DAYLIGHT and streamCamera and gui.Enabled then
         if not savedStreamLighting then
@@ -431,8 +468,10 @@ end
 local function setCamera(enabled)
     if enabled and not streamCamera then
         nextCameraDiagnostic, streamRequests, nextStreamRequest = 0, 0, 0
+        maximumPositionDrift, maximumAimDrift = 0, 0
     end
     streamCamera = enabled
+    updateRenderCheck()
     updateStreamScenery()
     updateStreamLighting()
     if cameraButton then cameraButton.Text = enabled and "ROAM VIEW" or "STREAM VIEW" end
@@ -641,12 +680,16 @@ local function cameraDiagnostics(now)
     local realm = workspace:FindFirstChild("RiftboundRealm")
     local sprint = not latestState or latestState.physicalSprint ~= false
     local course = sprint and realm and realm:FindFirstChild("SkybridgeSprint") or (not sprint and realm)
-    local parts, opaque = 0, 0
+    local parts, opaque, visibleParts = 0, 0, 0
+    local minOpacity, maxOpacity, sumOpacity = 1, 0, 0
     if course then
         for _, object in ipairs(course:GetDescendants()) do
             if object:IsA("BasePart") then
                 parts = parts + 1
-                if (object.Transparency or 0) < 0.95 and (object.LocalTransparencyModifier or 0) < 0.95 then opaque = opaque + 1 end
+                local opacity = (1 - (object.Transparency or 0)) * (1 - (object.LocalTransparencyModifier or 0))
+                minOpacity, maxOpacity, sumOpacity = math.min(minOpacity, opacity), math.max(maxOpacity, opacity), sumOpacity + opacity
+                if opacity >= 0.95 then opaque = opaque + 1 end
+                if opacity > 0.05 then visibleParts = visibleParts + 1 end
             end
         end
     end
@@ -667,7 +710,7 @@ local function cameraDiagnostics(now)
     -- Persistent is the server's replication policy, not evidence of local
     -- geometry readiness. Check actual parts/anchors before calling it loaded.
     -- buildSprint currently authors 155 BaseParts, including all sixty lane pads.
-    local missingGeometry = not course or opaque == 0 or (sprint and (anchors < 6 or parts < 155))
+    local missingGeometry = not course or visibleParts == 0 or (sprint and (anchors < 6 or parts < 155))
     if workspace.StreamingEnabled and missingGeometry and not streamRequestPending and streamRequests < 3 and now >= nextStreamRequest then
         streamRequestPending, streamRequests, nextStreamRequest = true, streamRequests + 1, now + 15
         local requestFocus = cameraFocus
@@ -684,6 +727,17 @@ local function cameraDiagnostics(now)
     if not CAMERA_DIAGNOSTICS or not camera then return end
     print(string.format("[Riftbound camera] presentation=course-overview-v3 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
         tostring(STREAM_DAYLIGHT and streamCamera and gui.Enabled), Lighting.ClockTime, Lighting.Brightness, Lighting.ExposureCompensation))
+    print(string.format("[Riftbound render] revision=render-check-v4 probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
+        tostring(renderCheckEnabled), parts > 0 and minOpacity or 0, parts > 0 and sumOpacity / parts or 0, maxOpacity, maximumPositionDrift, maximumAimDrift))
+    maximumPositionDrift, maximumAimDrift = 0, 0
+    local renderOk, renderFrame = pcall(function() return camera:GetRenderCFrame() end)
+    if renderOk then
+        local rp = renderFrame.Position
+        print(string.format("[Riftbound render] renderedPosition=(%.1f,%.1f,%.1f) renderedPositionDelta=%.3f renderedAimDelta=%.6f",
+            rp.X, rp.Y, rp.Z, (rp - camera.CFrame.Position).Magnitude, 1 - renderFrame.LookVector:Dot(camera.CFrame.LookVector)))
+    else
+        print("[Riftbound render] GetRenderCFrame unavailable")
+    end
     local p, f, box = camera.CFrame.Position, camera.Focus.Position, activeBounds
     local ok, hit = pcall(function() return workspace:Raycast(p, f - p) end)
     local hitText = ok and "clear" or "unavailable"
@@ -737,6 +791,9 @@ local function cameraDiagnostics(now)
         end
         print(string.format("[Riftbound camera] anchor=%s world=(%.1f,%.1f,%.1f) screen=(%.1f,%.1f) projected=%s sightline=%s",
             object.Name, object.Position.X, object.Position.Y, object.Position.Z, point.X, point.Y, tostring(onScreen), obstacle))
+        print(string.format("[Riftbound render] anchor=%s Transparency=%.3f LocalTransparencyModifier=%.3f effectiveOpacity=%.3f",
+            object.Name, object.Transparency or 0, object.LocalTransparencyModifier or 0,
+            (1 - (object.Transparency or 0)) * (1 - (object.LocalTransparencyModifier or 0))))
     end
     print(string.format("[Riftbound camera] bounds=(%.1f..%.1f,%.1f..%.1f,%.1f..%.1f) yaw=%d %s; streaming=%s realm=%s policy=%s parts=%d opaque=%d anchors=%d/6 projected=%d geometry=%s ray=%s requests=%d/3",
         box.minX, box.maxX, box.minY, box.maxY, box.minZ, box.maxZ, box.yaw, boundsReason,
@@ -773,9 +830,11 @@ RunService:BindToRenderStep("RiftboundPortraitCamera", Enum.RenderPriority.Last.
         if camera.ViewportSize.X ~= cameraWidth or camera.ViewportSize.Y ~= cameraHeight then resize() end
         cameraPositionDrift = (camera.CFrame.Position - cameraTarget.Position).Magnitude
         cameraAimDrift = 1 - camera.CFrame.LookVector:Dot(cameraTarget.LookVector)
+        maximumPositionDrift, maximumAimDrift = math.max(maximumPositionDrift, cameraPositionDrift), math.max(maximumAimDrift, cameraAimDrift)
         applyCamera(camera)
         cameraDiagnostics(os.clock())
     end
+    updateRenderCheck()
     labelAccumulator = labelAccumulator + dt
     if labelAccumulator >= 0.12 then labelAccumulator = 0; updateLabels(os.clock()) end
 end)

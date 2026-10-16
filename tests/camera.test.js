@@ -452,3 +452,59 @@ assert(logged("sightline=Workspace.RiftboundRealm.Traveler_ObstructingOutfit.Ove
 assert(logged("anchor=Sprint podium 3"))
 assert(logged("filteredRay=clear"),"test did not demonstrate the old focus-ray blind spot")
 `));
+
+test('render probes are opt-in local geometry, follow the current camera and clean up in Roam/disabled HUD', () => runLua(clientScene + `
+publish(courseBox)
+assert(not workspace:FindFirstChild("RiftboundLocalRenderCheck"))
+local baseline=camera.CFrame.Position
+local cash=state:snapshot(now).leaderboard[1].money
+local actionCount=#actions
+canvas.KeeperToggle.Activated:Fire()
+canvas.TestTools.RenderCheck.Activated:Fire(); renderStep(0.13)
+assert(not canvas.TestTools.Visible,"drawer covers the diagnostic view")
+local folder=workspace.RiftboundLocalRenderCheck
+local pink=folder.Near_PINK_12_studs
+local green=folder.Course_GREEN
+assert(#folder:GetChildren()==2)
+assert((pink.Position-camera.CFrame:PointToWorldSpace(Vector3.new(-1.2,0,-12))).Magnitude<0.0001)
+assert((green.Position-Vector3.new(0,104,0)).Magnitude<0.0001)
+for _,part in ipairs({pink,green}) do
+    assert(part.Anchored and not part.CanCollide and not part.CanTouch and not part.CanQuery)
+    assert(part.Transparency==0 and part.LocalTransparencyModifier==0)
+    local point,visible=camera:WorldToViewportPoint(part.Position)
+    assert(visible and point.Z>0,"probe offscreen")
+end
+assert((camera.CFrame.Position-baseline).Magnitude<0.0001)
+setViewport(1080,1920); renderStep(0.13)
+assert((pink.Position-camera.CFrame:PointToWorldSpace(Vector3.new(-1.2,0,-12))).Magnitude<0.0001)
+canvas.CameraToggle.Activated:Fire()
+assert(not workspace:FindFirstChild("RiftboundLocalRenderCheck"))
+canvas.CameraToggle.Activated:Fire(); renderStep(0.13)
+assert(workspace:FindFirstChild("RiftboundLocalRenderCheck"))
+playerGui.RiftboundHUD.Enabled=false; renderStep(0.13)
+assert(not workspace:FindFirstChild("RiftboundLocalRenderCheck"))
+playerGui.RiftboundHUD.Enabled=true; renderStep(0.13)
+canvas.TestTools.RenderCheck.Activated:Fire(); renderStep(0.13)
+assert(not workspace:FindFirstChild("RiftboundLocalRenderCheck"))
+assert(#actions==actionCount and state:snapshot(now).leaderboard[1].money==cash,"diagnostic altered gameplay")
+`));
+
+test('render diagnostics report composed opacity, rendered camera offset and drift between log frames', () => runLua(clientScene + `
+local start=workspace.RiftboundRealm.SkybridgeSprint["START platform"]
+start.Transparency=0.9; start.LocalTransparencyModifier=0.9
+function methods:GetRenderCFrame() return self.CFrame*CFrame.new(0,2,0) end
+publish(courseBox)
+assert(logged("anchor=START platform Transparency=0.900 LocalTransparencyModifier=0.900 effectiveOpacity=0.010"))
+assert(logged("renderedPositionDelta=2.000 renderedAimDelta=0.000000"))
+assert(logged("parts=155 opaque=154"))
+camera.CFrame=CFrame.new(0,-500,0)
+renderStep(0.13) -- no log due yet: drift must survive to the next reporting frame
+now=11; renderStep(0.13)
+local found=false
+for _,line in ipairs(logs) do
+    local drift=string.match(line,"intervalPositionDrift=([%d%.]+)")
+    if drift and tonumber(drift)>100 then found=true end
+end
+assert(found,"inter-frame camera conflict was lost before diagnostics")
+assertFraming(390,844)
+`));

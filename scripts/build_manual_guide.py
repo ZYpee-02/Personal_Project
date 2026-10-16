@@ -10,7 +10,7 @@ intro = '''# Riftbound Live: Skybridge Sprint complete raw scripts and manual re
 Use the Script Editor and Explorer. Do not paste this document or any script into
 the Command Bar. There is no generated installer or serialized source wrapper.
 
-**Fixed spectator camera update:** If physical Skybridge Sprint already runs,
+**Stream View diagnostic update (not a confirmed visual fix):** If physical Skybridge Sprint already runs,
 replace ONLY the entire **Realm.client.lua** source in the existing **Realm
 LocalScript under StarterPlayer → StarterPlayerScripts**. Keep the other four
 scripts and your Config settings. Follow `docs/CAMERA_FIX.md` for exact replacement,

@@ -7,7 +7,8 @@ custom HTTP and TikTok networking are disabled.
 
 **Already running physical Sprint? Replace only Realm.client.lua** using
 [the fixed spectator camera guide](docs/CAMERA_FIX.md). Keep your working four
-server files and Config settings. For a fresh install or an upgrade from before
+server files and Config settings. The latest client adds an opt-in RENDER CHECK;
+the reported Stream View disappearance still needs Studio diagnosis. For a fresh install or an upgrade from before
 physical Sprint, install all five using [the Sprint guide](docs/SPRINT_REPLACEMENT.md).
 `MANUAL_STUDIO_SETUP.md` contains all five complete raw sources. No Command Bar
 installer is used.

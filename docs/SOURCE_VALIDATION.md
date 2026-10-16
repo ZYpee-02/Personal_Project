@@ -158,3 +158,13 @@ tests cover daylight restoration, preserving gift Ambient colors, the daylight
 A/B flag, and a mock accessory blocking a finish anchor while the start ray stays
 clear. Full instance paths make that previously unobserved obstruction identifiable.
 These calculations/mocks do not prove native rendering, lighting or occlusion.
+
+## Render check v4
+
+The render-check tests verify opt-in, client-only near/far neon parts, screen
+projection, following the current camera, cleanup in Roam/disabled HUD and no
+gameplay actions or economy changes. The mock exercises GetRenderCFrame offsets,
+composed part opacity (including 0.9/0.9 = 1% opacity) and maximum drift retention
+between log intervals. The existing camera fitting is unchanged. These checks
+do not establish that native Roblox draws either cube or the course. User Studio
+reports remain required; the issue is not claimed fixed.
