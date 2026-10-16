@@ -1,5 +1,8 @@
 # v8 — winding Skybridge obstacle trail
 
+**Historical v8 guide.** The current fantasy skyblock layout uses
+[the v9 two-file replacement](FANTASY_SKYBLOCK_REPLACEMENT.md).
+
 ![Plan of the winding course](SKYBRIDGE_ROUTE.svg)
 
 This is a route plan, not a captured Roblox render. The actual course is generated

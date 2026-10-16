@@ -5,13 +5,13 @@ from offline_sources import sources
 ROOT = Path(__file__).resolve().parents[1]
 order = ["Config", "RealmState", "World", "Realm"]
 scripts = sorted(sources(), key=lambda row: (row[0] == "StarterPlayerScripts", order.index(row[2])))
-intro = '''# Riftbound Live v8 — complete raw scripts for the winding race show
+intro = '''# Riftbound Live v9 — complete raw scripts for the fantasy skyblock show
 
-**Existing v7/v7.1 installation:** replace World and the client Realm together.
-See docs/WINDING_TRAIL_REPLACEMENT.md for the two-file winding trail update.
+**Existing v7/v8 installation:** replace World and the client Realm together.
+See docs/FANTASY_SKYBLOCK_REPLACEMENT.md for the two-file fantasy world update.
 For older installations, follow the full five-source installation below.
 
-**Replace all FIVE complete sources together.** The long course, state contract,
+**For a fresh or pre-v7 installation, replace all FIVE complete sources together.** The long course, state contract,
 entrance queue and section director must match. Follow docs/RACE_SHOW_REPLACEMENT.md
 for exact behavior, offline/verified join modes and the native Studio checklist.
 No Command Bar installer, serialized code wrapper or new game module is used.
@@ -30,7 +30,7 @@ No Command Bar installer, serialized code wrapper or new game module is used.
    Preserve configured HostUserIds in Config. Edit the saved StarterPlayerScripts
    template, not Players → your name → PlayerScripts (the runtime copy).
 5. Save, then press Play. Expect server [Riftbound] Ready and client diagnostics
-   presentation=race-show-v8. Watch at least three automatic rounds, then Stop/Play
+   presentation=race-show-v9. Watch at least three automatic rounds, then Stop/Play
    again to verify the saved source and fresh-start behavior.
 
 ```text
@@ -51,7 +51,7 @@ no publication, plugin, Node bridge or external TikTok connection is needed.
 
 ## Expected show
 
-The winding route is 1,280.9 studs with 48 measured gates across Starting Dash, Moving Bridges,
+The fantasy route is 1,280.9 studs with 48 measured gates across Starting Dash, Moving Bridges,
 Hazard Zone and Final Sprint. Five server-owned Humanoids use the same movement
 settings. The 120-second deadline does not manufacture winners: actual checkpoint
 observations and a finish-plane crossing determine times, DNFs and rewards. The
@@ -63,6 +63,12 @@ shows another racer, covers the final stretch and celebrates podium winners. It
 uses medium shots and a close starting-grid fallback, never a whole-route zoom-out.
 ROAM VIEW and STREAM VIEW remain available. The named template Baseplate is hidden
 locally in Stream and restored in Roam. Light/effect/shell isolation remains reversible.
+
+Five lanes use 16-stud pitch and tested moving-support clearance. Mossy slate,
+timber bridges, marble ruins, floating meadows, trees, crystals, portals, waterfalls
+and clouds replace the plastic trail. Decorations have no collision. Medium race
+shots favor the lead and two nearby competitors; tagged scenery can fade locally
+when it obscures racers. Native geometry, physics, lighting and FPS need Studio checks.
 
 TEST TOOLS → OFFLINE JOIN creates a local labeled stand-in with no account request.
 ROBLOX JOIN / VERIFY ACCOUNT uses a bounded native Roblox username lookup and optional

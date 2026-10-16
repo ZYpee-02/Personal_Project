@@ -113,7 +113,7 @@ for i=1,4 do assert(sections[i]) end
 
 test('S-shaped trail changes direction and support shape, with hurdles aligned independently to every lane',()=>runLua(base+`
 local course=workspace.RiftboundRealm.SkybridgeSprint
-assert(course:GetAttribute('CourseRevision')=='show-v8-winding')
+assert(course:GetAttribute('CourseRevision')=='show-v9-skyblock')
 assert(math.abs(World.sprintPoint(3,6).X-64)<0.001 and math.abs(World.sprintPoint(3,18).X+64)<0.001)
 assert(math.abs(World.sprintPoint(3,30).X-64)<0.001 and math.abs(World.sprintPoint(3,42).X+64)<0.001)
 assert(course['Lane 3 checkpoint 3'].Size.X~=course['Lane 3 checkpoint 14'].Size.X)
@@ -204,7 +204,7 @@ local function framed(name)
 end
 `;
 
-test('director keeps all five racers framed on both outside bends in portrait and landscape',()=>runLua(cameras+`
+test('director keeps the lead and two neighboring racers close on both outside bends in portrait and landscape',()=>runLua(cameras+`
 state:advance(12); state:advance(20); now=20; World.sprintStep(state,20)
 for _,size in ipairs({{390,844},{1080,1920},{1158,536}}) do
     setViewport(size[1],size[2])
@@ -215,7 +215,11 @@ for _,size in ipairs({{390,844},{1080,1920},{1158,536}}) do
             workspace.RiftboundRealm['Traveler_Runner_'..i]:PivotTo(CFrame.new(World.sprintPoint(i,cp)))
         end
         publish(20+cp*1.8)
-        for i=1,5 do framed('Runner_'..i) end
+        for i=1,3 do framed('Runner_'..i) end
+        local root=workspace.RiftboundRealm.Traveler_Runner_1.PrimaryPart.Position
+        local bottom=camera:WorldToViewportPoint(root)
+        local top=camera:WorldToViewportPoint(root+Vector3.new(0,5.5,0))
+        assert(math.abs(top.Y-bottom.Y)>camera.ViewportSize.Y*.025,'pack shot made the lead avatar too small')
         assert(camera.FieldOfView==55,'bend fell back to a distant starting-grid shot')
     end
 end

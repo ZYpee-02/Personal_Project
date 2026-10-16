@@ -18,7 +18,7 @@ local Realm=(function() ${domain} end)()
 local World=(function() ${world} end)()
 `;
 const geometryAssertions = `
-local courseBox={minX=-140,maxX=140,minY=54,maxY=110,minZ=-1120,maxZ=82,yaw=60}
+local courseBox={minX=-170,maxX=170,minY=54,maxY=110,minZ=-1140,maxZ=82,yaw=60}
 local function assertFraming(w,h)
     local s,ox,oy=viewportLayout(w,h)
     local area=screenRect(Layout.arena,s,ox,oy)
@@ -374,13 +374,13 @@ canvas.CameraToggle.Activated:Fire(); assert(rift.LocalTransparencyModifier==0.2
 `));
 
 test('Stream daylight restores on Roam and leaves animated gift ambient color unchanged', () => runLua(clientScene + `
-assert(lighting.ClockTime==14 and lighting.Brightness==3 and lighting.ExposureCompensation==0.25)
-assert(lighting.GlobalShadows==false and lighting.EnvironmentDiffuseScale==1)
+assert(lighting.ClockTime==14 and lighting.Brightness==2.5 and lighting.ExposureCompensation==0.05)
+assert(lighting.GlobalShadows==true and lighting.EnvironmentDiffuseScale==1)
 local ambient=Color3.fromRGB(140,70,160)
 lighting.Ambient=ambient
 lighting.ClockTime=0; lighting.ExposureCompensation=-5
 renderStep(0.13)
-assert(lighting.ClockTime==14 and lighting.ExposureCompensation==0.25 and lighting.Ambient==ambient)
+assert(lighting.ClockTime==14 and lighting.ExposureCompensation==0.05 and lighting.Ambient==ambient)
 canvas.CameraToggle.Activated:Fire()
 assert(lighting.ClockTime==14 and lighting.Brightness==2.5 and lighting.ExposureCompensation==0)
 assert(lighting.GlobalShadows==true and lighting.EnvironmentDiffuseScale==0 and lighting.EnvironmentSpecularScale==1)
@@ -625,7 +625,7 @@ for (const [w,h] of [[320,568],[390,844],[1080,1920],[1920,1080]]) {
 setViewport(${w},${h})
 local points={Vector3.new(-12,68,40),Vector3.new(12,68,25)}
 local cf,focus,d,fov=cinematicCamera(${w},${h},points,35,40)
-assert(cf and d>=90 and d<=180)
+assert(cf and d>=85 and d<=150)
 camera.CFrame,camera.Focus,camera.FieldOfView=cf,CFrame.new(focus),fov
 local s,ox,oy=viewportLayout(${w},${h}); local area=screenRect(Layout.arena,s,ox,oy)
 for _,p in ipairs(points) do

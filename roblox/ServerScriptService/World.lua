@@ -5,7 +5,8 @@ local World = {}
 local root, core, gate, rift, shield, constellation, bloom, winds, scoreText
 local monuments = {}
 local avatars = {}
-local scenery = { clouds = {}, runes = {}, ribbons = {}, particles = {}, stars = {}, shrines = {}, sprintObstacles = {}, movingBridges = {}, sprintPads = {}, sprintHurdles = {} }
+local scenery = { clouds = {}, runes = {}, ribbons = {}, particles = {}, stars = {}, shrines = {}, sprintObstacles = {}, movingBridges = {}, sprintPads = {}, sprintHurdles = {}, waterfalls = {} }
+local fantasyFolder
 local settings = {}
 local sceneState
 local lastFrame = 0
@@ -87,9 +88,10 @@ end
 -- Winding route: 48 sequential gates; only Humanoid physics moves race roots.
 local sectionNames = { "STARTING DASH", "MOVING BRIDGES", "HAZARD ZONE", "FINAL SPRINT" }
 local TRAIL_AMPLITUDE, TRAIL_STRIDE = 64, 24
+local LANE_PITCH = 16 -- World-X translation; enough clearance even at the tightest bend.
 function World.cameraBounds(state)
     if state.physicalSprint then
-        return { minX = -140, maxX = 140, minY = 54, maxY = 110, minZ = -1120, maxZ = 82, yaw = 60 }
+        return { minX = -170, maxX = 170, minY = 54, maxY = 110, minZ = -1140, maxZ = 82, yaw = 60 }
     end
 end
 function World.courseInfo()
@@ -99,13 +101,13 @@ function World.courseInfo()
         length = length + Vector3.new(delta.X, 0, delta.Z).Magnitude
         headings[cp] = math.deg(math.atan(delta.X/delta.Z)) -- Z is strictly decreasing.
     end
-    return { revision = "show-v8-winding", checkpoints = 48, length = length, stride = 24,
+    return { revision = "show-v9-skyblock", checkpoints = 48, length = length, stride = 24, lanePitch = LANE_PITCH,
         sections = sectionNames, headings = headings, finishZ = -1092, gate = { x = -64, y = 80, z = 66 } }
 end
 function World.sprintPoint(lane, checkpoint)
     local cp = math.max(0, math.min(48, checkpoint))
     local rise = math.floor(cp / 12) * 3 + (cp < 48 and (cp % 4 >= 2 and 1 or 0) or 0)
-    return Vector3.new((lane - 3) * 8 + math.sin(cp * math.pi / 12) * TRAIL_AMPLITUDE, 68 + rise, 60 - cp * TRAIL_STRIDE)
+    return Vector3.new((lane - 3) * LANE_PITCH + math.sin(cp * math.pi / 12) * TRAIL_AMPLITUDE, 68 + rise, 60 - cp * TRAIL_STRIDE)
 end
 local function routeDirection(cp)
     local a, b = World.sprintPoint(3, math.max(0, cp - 1)), World.sprintPoint(3, math.min(48, cp + 1))
@@ -114,6 +116,68 @@ local function routeDirection(cp)
 end
 local function routeFrame(point, cp)
     return CFrame.lookAt(point, point + routeDirection(cp))
+end
+
+local function decoration(name, size, frame, color, material, transparency)
+    local object = part(name, size, frame, color, material, fantasyFolder)
+    object.CanCollide, object.CanTouch, object.CastShadow = false, false, size.Magnitude > 6
+    object.Transparency = transparency or 0
+    object:SetAttribute("RiftboundScenery", true)
+    return object
+end
+
+local function fantasyCrystal(position, scale, color)
+    local stone = decoration("Aether crystal", Vector3.new(1.7,5,1.7)*scale,
+        CFrame.new(position)*CFrame.Angles(0,math.pi/4,0.12),color,Enum.Material.Neon)
+    -- Small emissive details carry the magic; broad surfaces remain natural.
+    decoration("Crystal stone socket",Vector3.new(3,0.5,3)*scale,CFrame.new(position-Vector3.new(0,2.4*scale,0)),colors.stone,Enum.Material.Rock)
+    return stone
+end
+
+local function buildFantasyIsland(point, side, section)
+    local center = point + Vector3.new(side*108,-12,0)
+    local radius = 20 + section*1.5
+    local stone = decoration("Sky island stone",Vector3.new(9,radius*2,radius*2),
+        CFrame.new(center-Vector3.new(0,4.6,0))*CFrame.Angles(0,0,math.pi/2),Color3.fromRGB(88,103,113),Enum.Material.Rock)
+    stone.Shape=Enum.PartType.Cylinder
+    local grass = decoration("Sky island meadow",Vector3.new(1,radius*2-1,radius*2-1),
+        CFrame.new(center)*CFrame.Angles(0,0,math.pi/2),Color3.fromRGB(93,151,91),Enum.Material.Grass)
+    grass.Shape=Enum.PartType.Cylinder
+    for i=1,4 do
+        local a=i*math.pi/2+section*.3
+        decoration("Hanging island stone",Vector3.new(9,13,9),
+            CFrame.new(center+Vector3.new(math.cos(a)*radius*.5,-11,math.sin(a)*radius*.5))*CFrame.Angles(.15,a,.2),colors.rock,Enum.Material.Slate)
+    end
+    for i=1,3 do
+        local base=center+Vector3.new((i-2)*8,1,-8+(i%2)*4)
+        decoration("Elderwood trunk",Vector3.new(1.4,8,1.4),CFrame.new(base+Vector3.new(0,4,0)),Color3.fromRGB(102,77,60),Enum.Material.Wood)
+        local leaves=decoration("Elderwood canopy",Vector3.new(8,7,8),CFrame.new(base+Vector3.new(0,9,0)),
+            section%2==0 and Color3.fromRGB(113,151,141) or Color3.fromRGB(85,132,89),Enum.Material.Grass)
+        leaves.Shape=Enum.PartType.Ball
+    end
+    local accent=({colors.mint,Color3.fromRGB(125,191,243),Color3.fromRGB(239,184,126),colors.violet})[section]
+    for i=1,3 do fantasyCrystal(center+Vector3.new((i-2)*4,3,7),.65+i*.1,accent) end
+    -- An open portal frame has no giant translucent shell around the camera.
+    for _,x in ipairs({-5,5}) do
+        decoration("Island portal pillar",Vector3.new(1.3,12,1.3),CFrame.new(center+Vector3.new(x,6,0)),Color3.fromRGB(165,163,145),Enum.Material.Marble)
+    end
+    decoration("Island portal lintel",Vector3.new(11,1.5,2),CFrame.new(center+Vector3.new(0,12,0)),accent,Enum.Material.Neon)
+    local portal=decoration("Island portal veil",Vector3.new(8,10,.2),CFrame.new(center+Vector3.new(0,6,0)),accent,Enum.Material.Glass,.72)
+    portal.CastShadow=false
+    -- Water is bounded translucent geometry: no asset downloads, terrain floods
+    -- or collision surfaces over the racing route.
+    local water=center+Vector3.new(side*(radius-3),-14,4)
+    decoration("Waterfall curtain",Vector3.new(4,28,.7),CFrame.new(water),Color3.fromRGB(132,219,231),Enum.Material.Glass,.4)
+    for i=1,3 do
+        local band=decoration("Waterfall flow",Vector3.new(4.3,.7,.9),CFrame.new(water),Color3.fromRGB(218,249,247),Enum.Material.SmoothPlastic,.35)
+        scenery.waterfalls[#scenery.waterfalls+1]={part=band,center=water,phase=i*9}
+    end
+    local foam=decoration("Waterfall mist",Vector3.new(9,3,7),CFrame.new(water-Vector3.new(0,14,0)),Color3.fromRGB(223,241,244),Enum.Material.SmoothPlastic,.68)
+    foam.Shape=Enum.PartType.Ball
+    for i=1,3 do
+        local cloud=decoration("Trail cloud",Vector3.new(15,7,11),CFrame.new(center+Vector3.new((i-2)*9,-24,18)),Color3.fromRGB(219,234,239),Enum.Material.SmoothPlastic,.48)
+        cloud.Shape=Enum.PartType.Ball
+    end
 end
 function World.entrancePoint(index, count)
     return Vector3.new(-64 + (index - (count + 1) / 2) * 7, 80, 66)
@@ -260,62 +324,80 @@ end
 local function buildSprint()
     local course = Instance.new("Model")
     course.Name, course.Parent = "SkybridgeSprint", root
-    course:SetAttribute("CourseRevision", "show-v8-winding")
+    course:SetAttribute("CourseRevision", "show-v9-skyblock")
     -- A wide overlapping apron lets entrants establish real ground
     -- contact before their first obstacle, rather than fall across a launch gap.
-    local start = part("START platform", Vector3.new(64, 2, 32), CFrame.new(0, 64, 62), colors.stone, Enum.Material.Slate, course)
+    local start = part("START platform", Vector3.new(112, 2, 32), CFrame.new(0, 64, 62), Color3.fromRGB(117,132,103), Enum.Material.Grass, course)
     for lane = 1, 5 do scenery.sprintPads[lane] = { [0] = start } end
     label(start, "SKYBRIDGE / 120 SECOND CROSSING", Vector3.new(0, 9, 0), colors.gold, 350)
+    for _,x in ipairs({-37,0,37}) do
+        decoration("Starting island roots",Vector3.new(29,14,27),CFrame.new(x,55,62)*CFrame.Angles(.05,x*.02,.12),colors.rock,Enum.Material.Rock)
+    end
+    for _,x in ipairs({-49,49}) do fantasyCrystal(Vector3.new(x,69,64),1.15,colors.mint) end
     for cp = 1, 48 do
         local section = math.min(4, math.floor((cp - 1) / 12) + 1)
-        local gap = (section == 2 or cp % 4 == 2) and 2 or -0.5
+        local gap = section == 2 and 2.5 or 1.8
         local a, b = World.sprintPoint(3, cp - 1), World.sprintPoint(3, cp)
         local c = World.sprintPoint(3, math.min(48, cp + 1))
         local incoming, outgoing = Vector3.new(b.X-a.X,0,b.Z-a.Z).Magnitude, Vector3.new(c.X-b.X,0,c.Z-b.Z).Magnitude
         if cp == 48 then outgoing = incoming end
         local span = (incoming + outgoing) / 2 - gap
         local width = section == 2 and 5.8 or (cp % 6 == 0 and 9 or 6.8)
-        local palette = { colors.mint, Color3.fromRGB(83, 170, 255), Color3.fromRGB(255, 137, 113), colors.violet }
+        local palette = { colors.mint, Color3.fromRGB(125,191,243), Color3.fromRGB(239,184,126), colors.violet }
+        local stoneColors={Color3.fromRGB(126,137,121),Color3.fromRGB(139,108,75),Color3.fromRGB(115,121,134),Color3.fromRGB(186,179,159)}
         for lane = 1, 5 do
             local point = World.sprintPoint(lane, cp)
             local thickness = section == 2 and 1 or (cp % 6 == 0 and 4 or 2.5)
             local pad = part("Lane " .. lane .. " checkpoint " .. cp, Vector3.new(width, thickness, span),
-                routeFrame(point - Vector3.new(0, 3+thickness/2, 0), cp), (cp+lane)%2==0 and palette[section] or colors.gold, Enum.Material.SmoothPlastic, course)
+                routeFrame(point - Vector3.new(0, 3+thickness/2, 0), cp), stoneColors[section],
+                section==2 and Enum.Material.WoodPlanks or (section==4 and Enum.Material.Marble or Enum.Material.Slate), course)
             scenery.sprintPads[lane][cp] = pad
             pad:SetAttribute("Checkpoint", cp); pad:SetAttribute("Section", section)
+            pad:SetAttribute("Lane",lane)
             pad:SetAttribute("ObstacleKind", section == 2 and "moving span" or (cp % 6 == 0 and "landing island" or "stepping stone"))
             if section == 2 and cp % 2 == 0 then
                 scenery.movingBridges[#scenery.movingBridges + 1] = { part = pad, frame = pad.CFrame, phase = cp * 0.7 }
             end
+            if section==2 then
+                for _,sign in ipairs({-1,1}) do
+                    local beam=decoration("Timber bridge girder",Vector3.new(.4,1,span),pad.CFrame*CFrame.new(sign*(width/2-.25),-.9,0),Color3.fromRGB(92,70,52),Enum.Material.Wood)
+                    if cp%2==0 then scenery.movingBridges[#scenery.movingBridges+1]={part=beam,frame=beam.CFrame,phase=cp*.7} end
+                end
+            end
             local edge = part("Checkpoint glow", Vector3.new(width, 0.12, 0.35), pad.CFrame * CFrame.new(0, thickness/2+0.05, 0), colors.mint, Enum.Material.Neon, course)
             edge.CanCollide = false
+            if section~=2 then
+                local moss=decoration("Mossy trail crown",Vector3.new(width-.35,.12,span-.35),pad.CFrame*CFrame.new(0,thickness/2+.07,0),
+                    section==4 and Color3.fromRGB(153,167,143) or Color3.fromRGB(100,148,94),Enum.Material.Grass)
+                moss.CastShadow,moss.CanQuery=false,false
+            end
             if section == 2 and cp % 2 == 0 then
                 scenery.movingBridges[#scenery.movingBridges + 1] = { part = edge, frame = edge.CFrame, phase = cp * 0.7 }
             end
         end
         local point = World.sprintPoint(3, cp)
         for _, sign in ipairs({ -1, 1 }) do
-            part("Bridge support", Vector3.new(0.7, 5, 0.7), routeFrame(point, cp) * CFrame.new(sign * 24, -6, 0), colors.stone, Enum.Material.Metal, course)
+            part("Bridge support", Vector3.new(0.7, 5, 0.7), routeFrame(point, cp) * CFrame.new(sign * 46, -6, 0), colors.stone, Enum.Material.Wood, course)
         end
         if cp % 6 == 0 and cp < 48 then
             local frame = routeFrame(point, cp)
             -- Tall open arches, low hanging island rock and outward crystal fans
             -- provide landmarks without a solid enclosure at camera height.
             for _, sign in ipairs({ -1, 1 }) do
-                part("Trail arch pillar", Vector3.new(1.5, 13, 1.5), frame * CFrame.new(sign*23, 3, 0), palette[section], Enum.Material.Neon, course)
-                crystal(frame:PointToWorldSpace(Vector3.new(sign*28, -5, 0)), 0.8, palette[section])
+                decoration("Trail arch pillar", Vector3.new(1.5, 13, 1.5), frame * CFrame.new(sign*46, 3, 0), Color3.fromRGB(154,158,143), Enum.Material.Marble)
+                fantasyCrystal(frame:PointToWorldSpace(Vector3.new(sign*50, -1, 0)), 0.8, palette[section])
             end
-            local beam=part("Trail arch beam",Vector3.new(48,1,1.5),frame*CFrame.new(0,10,0),palette[section],Enum.Material.Neon,course)
+            local beam=decoration("Trail arch beam",Vector3.new(94,1,1.5),frame*CFrame.new(0,10,0),palette[section],Enum.Material.Neon)
             beam.CanCollide=false
             label(beam, sectionNames[section] .. " / " .. cp .. " OF 48", Vector3.new(0,3,0), colors.gold, 300)
+            buildFantasyIsland(point,cp%12==0 and -1 or 1,section)
         end
         if cp % 12 == 1 then
             local index = math.floor((cp - 1) / 12) + 1
-            local beacon = part("Section " .. index .. " beacon", Vector3.new(2, 12, 2), CFrame.new(point.X-29, point.Y + 2, point.Z), palette[section], Enum.Material.Neon, course)
+            local beacon = decoration("Section " .. index .. " beacon", Vector3.new(2, 12, 2), CFrame.new(point.X-65, point.Y + 2, point.Z), palette[section], Enum.Material.Neon)
             label(beacon, index .. " / " .. sectionNames[index], Vector3.new(0, 9, 0), colors.gold, 330)
             -- Break up the long skyline with floating section islands and crystal fans.
-            island(Vector3.new(point.X+52, point.Y - 14, point.Z), 24)
-            for i = -2, 2 do crystal(Vector3.new(point.X+52 + i * 5, point.Y - 10, point.Z), 0.9 + math.abs(i) * 0.2, palette[section]) end
+            buildFantasyIsland(point,1,index)
         end
     end
     for i, cp in ipairs({ 26, 30, 34 }) do
@@ -339,26 +421,26 @@ local function buildSprint()
             scenery.sprintHurdles[cp][lane]=part(name,Vector3.new(5.6,1.6,1),laneFrame*CFrame.new(0,-2.2,0),colors.violet,Enum.Material.Neon,course)
         end
         for _, sign in ipairs({-1,1}) do
-            local post=part("Hurdle flag",Vector3.new(0.6,5,0.6),frame*CFrame.new(sign*24,-0.5,0),colors.gold,Enum.Material.Neon,course)
+            local post=decoration("Hurdle flag",Vector3.new(0.6,5,0.6),frame*CFrame.new(sign*46,-0.5,0),colors.gold,Enum.Material.Neon)
             post.CanCollide=false
         end
     end
     local finish = World.sprintPoint(3, 48)
-    part("FINISH island", Vector3.new(48, 3, 38), CFrame.new(0, finish.Y - 5, finish.Z - 8), colors.grass, Enum.Material.Grass, course)
-    for _, x in ipairs({ -23, 23 }) do
+    part("FINISH island", Vector3.new(96, 3, 18), CFrame.new(0, finish.Y - 4.5, -1115), colors.grass, Enum.Material.Grass, course)
+    for _, x in ipairs({ -46, 46 }) do
         part("Finish arch column", Vector3.new(2, 21, 2), CFrame.new(x, finish.Y + 6, finish.Z), colors.gold, Enum.Material.Neon, course)
     end
-    local arch = part("Finish arch", Vector3.new(48, 2, 3), CFrame.new(0, finish.Y + 17, finish.Z), colors.mint, Enum.Material.Neon, course)
+    local arch = part("Finish arch", Vector3.new(94, 2, 3), CFrame.new(0, finish.Y + 17, finish.Z), colors.mint, Enum.Material.Neon, course)
     label(arch, "THE RIFTBOUND CROWN / FINISH", Vector3.new(0, 6, 0), colors.gold, 350)
     for rank, x in ipairs({ 0, -10, 10 }) do
         local h = ({ 4, 2.5, 1.5 })[rank]
-        part("Sprint podium " .. rank, Vector3.new(8, h, 8), CFrame.new(x, finish.Y - 3.5 + h / 2, finish.Z - 12), rank == 1 and colors.gold or colors.stone, Enum.Material.Marble, course)
+        part("Sprint podium " .. rank, Vector3.new(8, h, 8), CFrame.new(x, 77 + h / 2, -1115), rank == 1 and colors.gold or colors.stone, Enum.Material.Marble, course)
     end
 end
 
 function World.stepCourse(now)
     for _, obstacle in ipairs(scenery.sprintObstacles) do
-        obstacle.part.CFrame = obstacle.frame * CFrame.new(math.sin(now * 1.2 + obstacle.phase) * 25, 2, 0)
+        obstacle.part.CFrame = obstacle.frame * CFrame.new(math.sin(now * .75 + obstacle.phase) * 42, 2, 0)
     end
     for _, bridge in ipairs(scenery.movingBridges) do
         bridge.part.CFrame = bridge.frame * CFrame.new(math.sin(now * 0.65 + bridge.phase) * 1.25, math.sin(now * 0.65 + bridge.phase) * 0.2, 0)
@@ -517,11 +599,18 @@ function World.build(config)
     root.Name = "RiftboundRealm"
     root.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
     root.Parent = workspace
+    fantasyFolder=Instance.new("Folder")
+    fantasyFolder.Name,fantasyFolder.Parent="FantasyScenery",root
     Lighting.FogStart, Lighting.FogEnd = 1000, 5000
     Lighting.ClockTime, Lighting.Brightness = 14, 2.5
     Lighting.GlobalShadows = true
-    Lighting.Ambient = Color3.fromRGB(111, 109, 148)
-    Lighting.OutdoorAmbient = Color3.fromRGB(116, 133, 158)
+    Lighting.Ambient = Color3.fromRGB(128,141,155)
+    Lighting.OutdoorAmbient = Color3.fromRGB(170,185,190)
+    if not Lighting:FindFirstChildOfClass("Sky") then
+        local sky=Instance.new("Sky")
+        sky.Name,sky.CelestialBodiesShown,sky.StarCount="Riftbound sky",true,1200
+        sky.SunAngularSize,sky.MoonAngularSize,sky.Parent=12,9,Lighting
+    end
     local atmosphere = Instance.new("Atmosphere")
     atmosphere.Density, atmosphere.Offset = 0.15, 0
     atmosphere.Color, atmosphere.Decay = Color3.fromRGB(170, 213, 233), Color3.fromRGB(89, 74, 130)
@@ -790,7 +879,7 @@ local function destination(member, state, now, scale)
     if state.phase == "result" then
         for rank, row in ipairs(state.winners or {}) do
             if row.username == member.username then
-                return Vector3.new(({ 0, -10, 10 })[rank], (state.activity.id == "sprint" and 76.5 or 35) + 3 * scale + ({ 4, 2.5, 1.5 })[rank], state.activity.id == "sprint" and -1104 or 14), true
+                return Vector3.new(({ 0, -10, 10 })[rank], (state.activity.id == "sprint" and 77 or 35) + 3 * scale + ({ 4, 2.5, 1.5 })[rank], state.activity.id == "sprint" and -1115 or 14), true
             end
         end
     end
@@ -903,6 +992,9 @@ function World.animate(now)
     shield.Transparency = storm and state.choice == "ward" and 0.88 or 1
     gate.Transparency = 0.6 + math.sin(now) * 0.08
     World.stepCourse(now)
+    for _,fall in ipairs(scenery.waterfalls) do
+        fall.part.CFrame=CFrame.new(fall.center+Vector3.new(0,14-((now*10+fall.phase)%28),0))
+    end
     for i, cloud in ipairs(scenery.clouds) do
         local a = cloud.angle + now * 0.006
         cloud.model:PivotTo(CFrame.new(math.cos(a) * (88 + i * 3), cloud.height + math.sin(now * 0.13 + i), math.sin(a) * (88 + i * 3)))
@@ -921,7 +1013,7 @@ function World.animate(now)
         ribbon.CFrame = CFrame.new((i - 5.5) * 14, 79 + math.sin(now * 0.6 + i * 0.5) * 5, -35) * CFrame.Angles(0, 0, math.sin(now * 0.3 + i) * 0.2)
         ribbon.Color = Color3.fromHSV((now * 0.025 + i / 20) % 1, 0.45, 1)
     end
-    Lighting.Ambient = state.blessing == "Aurora veil" and Color3.fromHSV((now * 0.025) % 1, 0.35, 0.65) or Color3.fromRGB(111, 109, 148)
+    Lighting.Ambient = state.blessing == "Aurora veil" and Color3.fromHSV((now * 0.025) % 1, 0.35, 0.65) or Color3.fromRGB(128,141,155)
     for i, p in ipairs(winds:GetChildren()) do
         p.Transparency = storm and state.choice == "sail" and 0.4 or 1
         p.CFrame = CFrame.new((i - 7) * 8, 40 + (i % 4) * 4, ((now * 35 + i * 11) % 120) - 60)
@@ -934,7 +1026,7 @@ function World.animate(now)
             local a = i * 2.399 + now * 0.6
             local radius = celebration and (state.activity.id == "sprint" and 12 or 16) or 25
             local baseY = state.activity.id == "sprint" and 84 or 37
-            local baseZ = state.activity.id == "sprint" and (celebration and -1104 or 0) or 10
+            local baseZ = state.activity.id == "sprint" and (celebration and -1115 or 0) or 10
             p.CFrame = CFrame.new(math.cos(a) * radius, baseY + ((now * (celebration and 8 or 5) + i * 2) % (state.activity.id == "sprint" and 18 or 30)), baseZ + math.sin(a) * radius)
             p.Color = Color3.fromHSV((i / 36 + now * 0.03) % 1, 0.5, 1)
         end

@@ -1,4 +1,4 @@
-# Riftbound Live — winding Skybridge race show
+# Riftbound Live — fantasy skyblock race show
 
 An automated physical obstacle race for portrait LIVE capture: five NPC racers,
 a 1,281-stud S-shaped route, 48 measured gates, four sections and a 120-second deadline.
@@ -8,8 +8,8 @@ while the competition keeps running.
 
 ![Winding trail plan](docs/SKYBRIDGE_ROUTE.svg)
 
-**v8 upgrade from v7/v7.1: replace World and the client Realm together.** Follow
-[the two-file replacement instructions](docs/WINDING_TRAIL_REPLACEMENT.md).
+**v9 upgrade from v7/v8: replace World and the client Realm together.** Follow
+[the two-file replacement instructions](docs/FANTASY_SKYBLOCK_REPLACEMENT.md).
 For older installations, replace all FIVE raw scripts using
 [exact replacements and Studio checks](docs/RACE_SHOW_REPLACEMENT.md).
 MANUAL_STUDIO_SETUP.md contains every complete source. Keep
@@ -18,10 +18,14 @@ No Command Bar installer, plugin or Node bridge is required.
 
 | Section | Gates | Main challenge |
 | --- | --- | --- |
-| Starting Dash | 1–12 | Curved stepping blocks, height changes, landing islands |
-| Moving Bridges | 13–24 | Narrow moving spans and lane hurdles |
-| Hazard Zone | 25–36 | Sweeping gates, coral blocks and jumps |
-| Final Sprint | 37–48 | Purple return bends and dramatic finish arch |
+| Starting Dash | 1–12 | Mossy slate, grassy islands and height changes |
+| Moving Bridges | 13–24 | Timber spans, waterfall islands and lane hurdles |
+| Hazard Zone | 25–36 | Stone ruins, sweeping magical gates and jumps |
+| Final Sprint | 37–48 | Marble trail and dramatic crown arch |
+
+Lanes use 16-stud pitch with checked moving-support envelopes. Floating meadows,
+trees, crystals, portals, waterfalls and clouds flank the route. Decorative parts
+are non-colliding; Stream can locally hide tagged scenery that obscures racers.
 
 All racers use equal movement settings. The 12-stud/second baseline is about 107
 seconds before waits/recovery. Actual roots, grounded checkpoints and a physical
@@ -36,7 +40,7 @@ uses dedicated finish/podium shots. Safe fallbacks, daylight, opacity restoratio
 and the working ROAM VIEW / STREAM VIEW controls remain. A named Studio Baseplate
 is hidden locally in Stream and restored in Roam for a sky background. Five readable
 live-position rows, progress, countdowns and large entrance/winner names support
-portrait capture and landscape testing. Client diagnostics identify **race-show-v8**.
+portrait capture and landscape testing. Client diagnostics identify **race-show-v9**.
 
 **OFFLINE JOIN** creates a local stand-in. **ROBLOX JOIN / VERIFY ACCOUNT** uses a
 bounded native username lookup, then optional native avatar appearance APIs.

@@ -1,11 +1,11 @@
-# Riftbound Live — cinematic two-minute race show (v8)
+# Riftbound Live — cinematic two-minute fantasy race show (v9)
 
-Already on v7/v7.1? Use [the winding trail two-file update](WINDING_TRAIL_REPLACEMENT.md).
+Already on v7/v8? Use [the fantasy world two-file update](FANTASY_SKYBLOCK_REPLACEMENT.md).
 The full installation below also supports a fresh place or older course.
 
-This upgrade changes the route, state/cohort contract, avatar entrances and client
-director together. **Replace all FIVE complete raw files, with Play stopped.**
-Do not mix these files with the previous small-course/v6 scripts.
+For a fresh place or an older small-course/v6 installation, **replace all FIVE
+complete raw files, with Play stopped**. Existing v7/v8 installations use only the
+two-file update linked above. Do not mix these files with small-course/v6 scripts.
 
 ## Exact installation
 
@@ -30,12 +30,12 @@ Studio setting. The server reports a clear startup error if it is enabled. Leave
 HTTP Requests and Studio API Services access disabled. Save, then press **Play**.
 No plugin, Node bridge, persistence or real TikTok connection is required.
 
-Expected markers: server `[Riftbound] Ready`; client `presentation=race-show-v8`.
+Expected markers: server `[Riftbound] Ready`; client `presentation=race-show-v9`.
 The architecture remains exactly three ModuleScripts, one server Script and one
 client LocalScript. No new game modules are required.
 
 The v7.1 starting-apron and takeoff fixes are included. The course attribute is now
-`show-v8-winding`; World and the client Realm must match for the wider route.
+`show-v9-skyblock`; World and the client Realm must match for the separated route.
 
 ## The larger race
 
@@ -49,13 +49,15 @@ race deadline is exactly **120 seconds**, not a minimum finish timer.
 | --- | --- | --- |
 | Starting Dash | 1–12 | Winding stepping blocks, height changes, landing islands and hurdles |
 | Moving Bridges | 13–24 | Narrow curved spans with bounded lateral/vertical movement |
-| Hazard Zone | 25–36 | Sweeping wind gates, independent lane hurdles and coral blocks |
-| Final Sprint | 37–48 | Purple return bends, final jumps, illuminated finish arch and podium |
+| Hazard Zone | 25–36 | Stone ruins, sweeping wind gates and independent lane hurdles |
+| Final Sprint | 37–48 | Marble trail, final jumps, illuminated finish arch and podium |
 
-Section beacons, floating side islands, crystal fans, colored lane pads and neon
-checkpoint strips decorate the route. A separate Star Gate stage presents arrivals.
+Sixteen-stud lane spacing and positive support gaps separate the five paths.
+Grass-capped slate, timber and marble replace the plastic surfaces. Floating
+meadows, trees, crystals, portals, waterfalls and clouds flank the route.
+A separate Star Gate stage presents arrivals.
 The finish has a large arch, podiums, crowns, celebratory poses and reusable motes.
-Stream hides only a top-level Part named Baseplate, locally, to remove the Studio
+Stream hides a top-level Part named Baseplate, locally, to remove the Studio
 checkerboard; Roam restores its exact prior local transparency. It does not delete
 terrain, geometry or collision surfaces.
 
@@ -77,8 +79,8 @@ change racing speed/colliders; giant scaling waits until the race break.
 
 The director follows replicated physical roots using a nearby pack window rather
 than fitting the entire long course. Section views use elevated medium-distance
-shots, a 55-degree vertical lens and 90–180-stud fitted distance. It normally tracks
-the lead pack; every fourth eight-second beat spotlights another active competitor.
+shots, a 55-degree vertical lens and 85–150-stud fitted distance. It normally tracks
+the lead and two nearby rivals; every fourth eight-second beat spotlights another active competitor.
 A dedicated finish shot takes priority over new entrance interruptions near the
 last gates. Results show arrived winners and a champion close-up.
 
@@ -89,6 +91,8 @@ arrival stage and finish. Dispersed groups fall back to one actual competitor;
 missing/invalid targets fall back to a close starting-grid view. There is no
 whole-course overhead zoom. The previous daylight, effect isolation, shell masks,
 optical-axis Focus and late-render camera enforcement remain.
+Tagged fantasy scenery that obscures racers can be hidden locally; its exact
+previous local opacity restores when clear, in Roam or with the HUD disabled.
 
 The portrait canvas reserves a clear racing area. Five live competitor rows show
 verified gates, finish seconds or DNF; separate earners remain visible. The header
@@ -136,7 +140,7 @@ DemoStudioOnly=true prevents the seeded audience outside Studio.
 
 ## Available validation and required Studio checks
 
-Historical v7 validation (2026-10-16): **138 tests passed**, plus **10 native Luau compilation
+Current v9 validation: **146 tests passed**, plus **10 native Luau compilation
 targets passed** (five raw scripts and five exported equivalents). The build also
 verified raw/manual/XML/ZIP source identity and StreamingEnabled=false in the place.
 
@@ -156,8 +160,8 @@ replication or path obstruction.** The separate ballistic checks establish geome
 feasibility, not successful native landings. No measured native race-duration result
 is claimed. Recovery frequency can make a difficult native race time out.
 
-Current winding-route validation and native limitations are documented in
-[the v8 replacement guide](WINDING_TRAIL_REPLACEMENT.md).
+Current fantasy-route validation and native limitations are documented in
+[the v9 replacement guide](FANTASY_SKYBLOCK_REPLACEMENT.md).
 
 The v7.1 patch adds a separate gravity/contact approximation that reproduced the
 opening fall loop and checks actual takeoff edges, moving supports and hurdle

@@ -101,11 +101,11 @@ local function fits(rect, occupied, bounds, gap)
     end
     return true
 end
-local SprintBounds = { minX = -140, maxX = 140, minY = 54, maxY = 110, minZ = -1120, maxZ = 82, yaw = 60 }
+local SprintBounds = { minX = -170, maxX = 170, minY = 54, maxY = 110, minZ = -1140, maxZ = 82, yaw = 60 }
 -- A bounded starting-grid envelope. Competition shots fit observed roots below.
 -- Fallback frames the starting grid, NEVER the full winding course.
 local SprintVolumes = {
-    { minX = -23, maxX = 23, minY = 61, maxY = 90, minZ = 24, maxZ = 78 },
+    { minX = -39, maxX = 39, minY = 61, maxY = 90, minZ = 24, maxZ = 78 },
 }
 local LegacyBounds = { minX = -54, maxX = 54, minY = -10, maxY = 62, minZ = -54, maxZ = 54, yaw = 0 }
 local function finite(value)
@@ -259,6 +259,9 @@ local function cinematicCamera(width, height, positions, yawDegrees, elevationDe
     end
     local function fit(distance)
         local cf = pose(distance)
+        -- Include the minimum lens height during fitting, not after choosing a
+        -- close pose; otherwise a valid low-angle shot can fall back to the grid.
+        if cf.Position.Y<112 or cf.Position.Y>220 then return false end
         -- Margin includes giant avatars, head labels, jump and celebration motion.
         for _, p in ipairs(positions) do
             for _, x in ipairs({ entrance and -3 or -5, entrance and 3 or 5 }) do for _, y in ipairs({ entrance and -4 or -5, entrance and 7 or 12 }) do for _, z in ipairs({ entrance and -3 or -5, entrance and 3 or 5 }) do
@@ -273,7 +276,7 @@ local function cinematicCamera(width, height, positions, yawDegrees, elevationDe
         end
         return true
     end
-    local near, far = entrance and 60 or 90, entrance and 150 or 180
+    local near, far = entrance and 60 or 85, entrance and 150 or 150
     if not fit(far) then return nil end -- Use the independently fitted overview.
     for _ = 1, 18 do
         local middle = (near + far) / 2
@@ -353,10 +356,11 @@ local savedStreamLighting
 local suspendedEffects = {}
 local effectRefreshAt = 0
 local lensMasks, nextLensScan = {}, 0
+local sceneryMasks, nextSceneryScan, directorTargets = {}, 0, {}
 local streamLighting = {
-    ClockTime = 14, Brightness = 3, ExposureCompensation = 0.25,
+    ClockTime = 14, Brightness = 2.5, ExposureCompensation = 0.05,
     EnvironmentDiffuseScale = 1, EnvironmentSpecularScale = 0.5,
-    OutdoorAmbient = Color3.fromRGB(180, 195, 215), GlobalShadows = false,
+    OutdoorAmbient = Color3.fromRGB(170,185,190), GlobalShadows = true,
     FogStart = 10000, FogEnd = 100000,
 }
 local cameraWidth, cameraHeight = 0, 0
@@ -639,7 +643,7 @@ local function updateDirector(now, dt)
         local main = model and (model.PrimaryPart or model:FindFirstChild("HumanoidRootPart"))
         local p = main and main.Position
         if p and finite(p.X) and finite(p.Y) and finite(p.Z) and p.Y >= 54 and p.Y <= 110
-            and p.Z >= -1120 and p.Z <= 100 and math.abs(p.X) <= 110 then return p end
+            and p.Z >= -1140 and p.Z <= 100 and math.abs(p.X) <= 110 then return p end
     end
     local entrance = state and state.entrance
     local liveTime = state and state.now + now - receivedAt or now
@@ -650,7 +654,7 @@ local function updateDirector(now, dt)
         end
     end
     local nearFinish = state and state.phase == "storm" and lead and lead.distance >= (state.activity.goal or 48) - 3
-    local yaw, elevation = -18, 40
+    local yaw, elevation = -18, 34
     if entrance and liveTime < entrance.endsAt and not nearFinish then
         key, shot, yaw, elevation = "entrance/" .. entrance.sequence, "Star Gate entrance", 10, 35
         for _, name in ipairs(entrance.names) do local p = position(name, true); if p then targets[#targets + 1] = p end end
@@ -680,11 +684,15 @@ local function updateDirector(now, dt)
             if p then targets[1] = p end
             shot = spotlight and "competitor spotlight" or ((state.course and state.course.sections[section] or "section " .. section) .. " / lead pack")
             if not spotlight then
+                local neighbors={}
                 for _, row in ipairs(state.activityLeaders) do
                     if row.status == "racing" and row.username ~= subject.username and math.abs(row.distance - subject.distance) <= 1.5 then
-                        local other = position(row.username); if other then targets[#targets + 1] = other end
+                        local other = position(row.username)
+                        if other and p then neighbors[#neighbors+1]={position=other,distance=(other-p).Magnitude} end
                     end
                 end
+                table.sort(neighbors,function(a,b) return a.distance<b.distance end)
+                for i=1,math.min(2,#neighbors) do targets[#targets+1]=neighbors[i].position end
             end
             if nearFinish then
                 key, shot, yaw, elevation = "finish/" .. state.round, "finish line", 155, 42
@@ -709,7 +717,7 @@ local function updateDirector(now, dt)
         if not cf then
             -- A dispersed pack gets a real competitor close-up, never a zoom-out.
             targets = { targets[1] }
-            cf, aim, d, angle = cinematicCamera(w, h, targets, -18, shot == "Star Gate entrance" and 35 or 40, shot == "Star Gate entrance")
+            cf, aim, d, angle = cinematicCamera(w, h, targets, -18, shot == "Star Gate entrance" and 35 or 34, shot == "Star Gate entrance")
         end
         if cf then desired, focus, distance, fov = cf, aim, d, angle end
     end
@@ -732,6 +740,7 @@ local function updateDirector(now, dt)
         end
     end
     directorFrame, directorFocus, directorKey, directorShot = candidate, focus, key, shot
+    directorTargets=targets
     cameraTarget, cameraDistance, cameraFov = directorFrame, distance, fov
     cameraFocus = cameraTarget.Position + cameraTarget.LookVector * distance
     if changed then nextLensScan, nextCameraDiagnostic = 0, 0 end
@@ -1036,9 +1045,9 @@ local function cameraDiagnostics(now)
         end)
     end
     if not CAMERA_DIAGNOSTICS or not camera then return end
-    print(string.format("[Riftbound camera] presentation=race-show-v8 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
+    print(string.format("[Riftbound camera] presentation=race-show-v9 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
         tostring(STREAM_DAYLIGHT and streamCamera and gui.Enabled), Lighting.ClockTime, Lighting.Brightness, Lighting.ExposureCompensation))
-    print(string.format("[Riftbound render] revision=race-show-v8 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
+    print(string.format("[Riftbound render] revision=race-show-v9 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
         directorShot, tostring(STREAM_CLEAR_EFFECTS), tostring(renderCheckEnabled), parts > 0 and minOpacity or 0, parts > 0 and sumOpacity / parts or 0, maxOpacity, maximumPositionDrift, maximumAimDrift))
     local atmosphereCount, effectCount, enclosureCount = 0, 0, 0
     for _, record in pairs(suspendedEffects) do
@@ -1124,6 +1133,47 @@ local function cameraDiagnostics(now)
             tostring(received.minZ), tostring(received.maxZ), tostring(received.yaw)))
     end
 end
+local function updateSceneryVisibility(now)
+    local camera=workspace.CurrentCamera
+    local active=streamCamera and gui.Enabled and camera and #directorTargets>0
+    if active and now<nextSceneryScan then return end
+    nextSceneryScan=now+.15
+    local hidden={}
+    if active and type(camera.GetPartsObscuringTarget)=="function" then
+        local realm=workspace:FindFirstChild("RiftboundRealm")
+        local folder=realm and realm:FindFirstChild("FantasyScenery")
+        local ignore={}
+        if player.Character then ignore[#ignore+1]=player.Character end
+        for _,member in ipairs(latestState and latestState.members or {}) do
+            local model=realm and realm:FindFirstChild("Traveler_"..member.username)
+            if model then ignore[#ignore+1]=model end
+        end
+        local probes={}
+        for _,point in ipairs(directorTargets) do
+            probes[#probes+1]=point; probes[#probes+1]=point+Vector3.new(0,4,0)
+        end
+        local ok,parts=pcall(function() return camera:GetPartsObscuringTarget(probes,ignore) end)
+        if ok and type(parts)=="table" and folder then
+            for _,object in ipairs(parts) do
+                if object:IsA("BasePart") and object:GetAttribute("RiftboundScenery")==true then
+                    local ancestor=object.Parent
+                    while ancestor do
+                        if ancestor==folder then hidden[object]=true; break end
+                        ancestor=ancestor.Parent
+                    end
+                end
+            end
+        end
+    end
+    for object,original in pairs(sceneryMasks) do
+        if not hidden[object] then object.LocalTransparencyModifier=original; sceneryMasks[object]=nil end
+    end
+    for object in pairs(hidden) do
+        if sceneryMasks[object]==nil then sceneryMasks[object]=object.LocalTransparencyModifier or 0 end
+        object.LocalTransparencyModifier=1
+    end
+end
+
 local function bindCamera()
     if cameraConnection then cameraConnection:Disconnect() end
     local camera = workspace.CurrentCamera
@@ -1161,9 +1211,10 @@ RunService:BindToRenderStep("RiftboundPortraitCamera", Enum.RenderPriority.Last.
         end
         updateLensMasks(os.clock())
         applyCamera(camera)
+        updateSceneryVisibility(os.clock())
         cameraDiagnostics(os.clock())
     end
-    if not streamCamera or not gui.Enabled then updateLensMasks(os.clock()) end
+    if not streamCamera or not gui.Enabled then updateLensMasks(os.clock()); updateSceneryVisibility(os.clock()) end
     updateRenderCheck()
     labelAccumulator = labelAccumulator + dt
     if labelAccumulator >= 0.12 then labelAccumulator = 0; updateLabels(os.clock()) end

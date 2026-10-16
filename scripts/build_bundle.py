@@ -18,6 +18,7 @@ with ZipFile(target, "w", ZIP_DEFLATED) as archive:
         ("docs/RACE_SHOW_REPLACEMENT.md", "docs/RACE_SHOW_REPLACEMENT.md"),
         ("docs/SPRINT_CONTACT_FIX.md", "docs/SPRINT_CONTACT_FIX.md"),
         ("docs/WINDING_TRAIL_REPLACEMENT.md", "docs/WINDING_TRAIL_REPLACEMENT.md"),
+        ("docs/FANTASY_SKYBLOCK_REPLACEMENT.md", "docs/FANTASY_SKYBLOCK_REPLACEMENT.md"),
         ("docs/SKYBRIDGE_ROUTE.svg", "docs/SKYBRIDGE_ROUTE.svg"),
         ("docs/PHASE2_REPLACEMENT.md", "docs/PHASE2_REPLACEMENT.md"),
         ("docs/PRESENTATION_REPLACEMENT.md", "docs/PRESENTATION_REPLACEMENT.md"),
