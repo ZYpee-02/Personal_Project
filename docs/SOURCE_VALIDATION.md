@@ -116,7 +116,7 @@ occlusion, model scaling and performance require Windows/macOS Studio playtestin
 
 `tests/camera.test.js` executes the actual camera math and full client with the
 documented engine mocks. Ten viewport sizes include 1080×1920, 2160×3840, portrait,
-landscape and 1:4/4:1 edges. Tests project all eight course-envelope corners into
+landscape and 1:4/4:1 edges. Tests project display-region corners and actual authored part vertices into
 the unobstructed gameplay rectangle and check finite positions, height, distance,
 heading and center. Corrupt/missing/undersized/inverted/NaN/infinite/oversized bounds
 fall back safely. Unusable viewports get bounded fallback positions.
@@ -142,3 +142,19 @@ establish whether the ward actually caused the user's rendered black screen.
 
 These are mathematical/logic checks. No real streaming request, raycast, rendering,
 camera controller conflict or Studio visual/physics playtest was performed here.
+
+## Readable overview v3
+
+The v3 checks verify all 155 course parts and all five lane/jump envelopes fit the
+three display regions. The existing Sprint camera test now projects every authored
+part's eight vertices at seven resolutions rather than only the broad server box.
+Camera tests retain ten viewport sizes and assert that the route spans more than
+210 logical pixels at 9:16, against the previous heavily foreshortened framing.
+
+A segment/sphere calculation using actual World geometry verifies that Storm rift
+crosses the new camera's sightline to the finish arch. Tests exercise its local
+mask/restoration across phases while server Transparency remains unchanged. Further
+tests cover daylight restoration, preserving gift Ambient colors, the daylight
+A/B flag, and a mock accessory blocking a finish anchor while the start ray stays
+clear. Full instance paths make that previously unobserved obstruction identifiable.
+These calculations/mocks do not prove native rendering, lighting or occlusion.

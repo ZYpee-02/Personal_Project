@@ -106,6 +106,7 @@ local players={LocalPlayer=player}
 local renderStep
 local runtime={BindToRenderStep=function(_,name,priority,fn) renderStep=fn end}
 local lighting=instance("Lighting","Lighting")
+lighting.ExposureCompensation,lighting.EnvironmentDiffuseScale,lighting.EnvironmentSpecularScale=0,0,1
 local tweenService={Create=function(_,object,info,goal)
     return {Play=function(self) self.Played=true end,Cancel=function(self) self.Cancelled=true end,Goal=goal}
 end}

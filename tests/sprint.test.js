@@ -206,12 +206,17 @@ for _,size in ipairs({{320,568},{390,844},{720,1280},{1080,1920},{1920,1080},{84
     local d,shift,up,back,cy,cx,cz,yaw=arenaCamera(w,h,box)
     local focus=Vector3.new(cx,cy,cz)
     camera.CFrame=CFrame.lookAt(focus+Vector3.new(math.sin(yaw)*back*d,up*d,math.cos(yaw)*back*d),focus)*CFrame.new(0,-shift,0)
-    setViewport(w,h); camera.FieldOfView=60
+    setViewport(w,h); camera.FieldOfView=55
     local s,ox,oy=viewportLayout(w,h); local area=screenRect(Layout.arena,s,ox,oy)
-    for _,x in ipairs({box.minX,box.maxX}) do for _,y in ipairs({box.minY,box.maxY}) do for _,z in ipairs({box.minZ,box.maxZ}) do
-        local point,onScreen=camera:WorldToViewportPoint(Vector3.new(x,y,z))
-        assert(onScreen and point.X>=area.x and point.X<=area.x+area.w and point.Y>=area.y and point.Y<=area.y+area.h,"clipped Sprint box")
-    end end end
+    for _,object in ipairs(workspace.RiftboundRealm.SkybridgeSprint:GetDescendants()) do
+      if object:IsA("BasePart") then
+        for _,x in ipairs({-0.5,0.5}) do for _,y in ipairs({-0.5,0.5}) do for _,z in ipairs({-0.5,0.5}) do
+            local position=object.CFrame:PointToWorldSpace(Vector3.new(x*object.Size.X,y*object.Size.Y,z*object.Size.Z))
+            local point,onScreen=camera:WorldToViewportPoint(position)
+            assert(onScreen and point.X>=area.x and point.X<=area.x+area.w and point.Y>=area.y and point.Y<=area.y+area.h,"clipped authored part "..object.Name)
+        end end end
+      end
+    end
 end
 `);
 });

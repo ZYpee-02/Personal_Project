@@ -66,6 +66,9 @@ local mint = Color3.fromRGB(127, 239, 204)
 local gold = Color3.fromRGB(245, 211, 155)
 local CAMERA_DIAGNOSTICS = true -- Temporary: set false after the Studio camera playtest.
 local STREAM_HIDE_WARD = true -- Set false to test the closer camera without hiding the ward.
+local STREAM_HIDE_RIFT = true -- The large sphere crosses the sightline to the finish gate.
+local STREAM_DAYLIGHT = true -- Local presentation only; Roam restores the previous lighting.
+local Lighting = game:GetService("Lighting")
 
 -- BEGIN PRESENTATION MATH (pure geometry, also exercised by automated checks)
 local Layout = {
@@ -97,6 +100,13 @@ local function fits(rect, occupied, bounds, gap)
     return true
 end
 local SprintBounds = { minX = -26, maxX = 26, minY = 54, maxY = 88, minZ = -82, maxZ = 76, yaw = 60 }
+-- Fit actual course regions rather than imaginary low corners under the start.
+-- Includes every authored course part, racing/jump space and the giant podium rigs.
+local SprintVolumes = {
+    { minX = -21, maxX = 21, minY = 61, maxY = 82, minZ = 55, maxZ = 73 },
+    { minX = -20, maxX = 20, minY = 60, maxY = 82, minZ = -65, maxZ = 55 },
+    { minX = -22, maxX = 22, minY = 60, maxY = 88, minZ = -82, maxZ = -55 },
+}
 local LegacyBounds = { minX = -54, maxX = 54, minY = -10, maxY = 62, minZ = -54, maxZ = 54, yaw = 0 }
 local function finite(value)
     return type(value) == "number" and value == value and math.abs(value) < math.huge
@@ -139,18 +149,25 @@ local function arenaCamera(width, height, receivedBounds, physicalSprint)
     local scale, ox, oy = viewportLayout(width, height)
     local area = screenRect(Layout.arena, scale, ox, oy)
     local sprint = physicalSprint ~= false
-    local fov = sprint and 60 or 50
+    local fov = sprint and 55 or 50
     local tanV = math.tan(math.rad(fov) / 2)
     local tanH = tanV * width / height
-    local elevation = math.rad(sprint and 25 or 52)
+    local elevation = math.rad(sprint and 55 or 52)
     local up, back = math.sin(elevation), math.cos(elevation)
     local centerY = (bounds.minY + bounds.maxY) / 2
     local centerX, centerZ = (bounds.minX + bounds.maxX) / 2, (bounds.minZ + bounds.maxZ) / 2
-    -- Aim at the start of the actual course. A fixed on-course point makes the
-    -- route recede into the clear upper gameplay area without translating CFrame
-    -- after lookAt. Server yaw describes the old view, not a moving camera target.
-    if sprint then centerX, centerY, centerZ = 0, 70, 60 end
-    local yaw = math.rad(sprint and 25 or bounds.yaw)
+    -- A higher view reveals the route instead of foreshortening it behind the
+    -- start platform. Keep the heading aligned with the long axis for portrait.
+    if sprint then centerX, centerY, centerZ = 0, 68, 45 end
+    local yaw = math.rad(sprint and 0 or bounds.yaw)
+    local volumes = { bounds }
+    if sprint then
+        local canonical = true
+        for _, axis in ipairs({ "X", "Y", "Z" }) do
+            if bounds["min" .. axis] ~= SprintBounds["min" .. axis] or bounds["max" .. axis] ~= SprintBounds["max" .. axis] then canonical = false end
+        end
+        if canonical then volumes = SprintVolumes end
+    end
     local c, sn = math.cos(yaw), math.sin(yaw)
     local function project(x, y, z, d, shift)
         local across = c * (x - centerX) - sn * (z - centerZ)
@@ -163,19 +180,21 @@ local function arenaCamera(width, height, receivedBounds, physicalSprint)
     end
     local shiftRatio = sprint and 0 or (0.5 - (area.y + area.h / 2) / height) * 2 * tanV
     local function fitsCourse(distance)
-        for _, x in ipairs({ bounds.minX, bounds.maxX }) do
-            for _, y in ipairs({ bounds.minY, bounds.maxY }) do
-                for _, z in ipairs({ bounds.minZ, bounds.maxZ }) do
-                    local shift = shiftRatio * distance
-                    local px, py, depth = project(x, y, z, distance, shift)
-                    if depth <= 1 or px < area.x + 10 * scale or px > area.x + area.w - 10 * scale
-                        or py < area.y + 10 * scale or py > area.y + area.h - 10 * scale then return false end
+        for _, volume in ipairs(volumes) do
+            for _, x in ipairs({ volume.minX, volume.maxX }) do
+                for _, y in ipairs({ volume.minY, volume.maxY }) do
+                    for _, z in ipairs({ volume.minZ, volume.maxZ }) do
+                        local shift = shiftRatio * distance
+                        local px, py, depth = project(x, y, z, distance, shift)
+                        if depth <= 1 or px < area.x + 10 * scale or px > area.x + area.w - 10 * scale
+                            or py < area.y + 10 * scale or py > area.y + area.h - 10 * scale then return false end
+                    end
                 end
             end
         end
         return true
     end
-    local near, far = sprint and 160 or 120, sprint and 600 or 850
+    local near, far = sprint and 170 or 120, 850
     local fitted = fitsCourse(far)
     if fitted then
         for _ = 1, 24 do
@@ -250,9 +269,16 @@ local cameraDefaultFov = 70
 local cameraDefaultFovMode = Enum.FieldOfViewMode.Vertical
 local cameraTarget, cameraFocus, activeBounds
 local boundsReason, cameraDistance, cameraFitted = "waiting for snapshot", 0, false
-local cameraFov = 60
+local cameraFov = 55
 local hiddenWard, originalWardTransparency = nil, 0
+local hiddenRift, originalRiftTransparency = nil, 0
 local cameraPositionDrift, cameraAimDrift = 0, 0
+local savedStreamLighting
+local streamLighting = {
+    ClockTime = 14, Brightness = 3, ExposureCompensation = 0.25,
+    EnvironmentDiffuseScale = 1, EnvironmentSpecularScale = 0.5,
+    OutdoorAmbient = Color3.fromRGB(180, 195, 215), GlobalShadows = false,
+}
 local cameraWidth, cameraHeight = 0, 0
 local nextCameraDiagnostic = 0
 local streamRequestPending, streamRequests, nextStreamRequest = false, 0, 0
@@ -346,7 +372,21 @@ text(controls, "Hint3", "Close tools to restore the leaderboard dock.", { x = 16
 local keeper = button(canvas, "KeeperToggle", "TEST TOOLS", { x = 342, y = 18, w = 114, h = 30 }, function() showTools(not controls.Visible) end)
 keeper.TextSize = 11
 local cameraButton
-local function updateWardVisibility()
+local function updateStreamLighting()
+    if STREAM_DAYLIGHT and streamCamera and gui.Enabled then
+        if not savedStreamLighting then
+            savedStreamLighting = {}
+            for property in pairs(streamLighting) do savedStreamLighting[property] = Lighting[property] end
+        end
+        for property, value in pairs(streamLighting) do
+            if Lighting[property] ~= value then Lighting[property] = value end
+        end
+    elseif savedStreamLighting then
+        for property, value in pairs(savedStreamLighting) do Lighting[property] = value end
+        savedStreamLighting = nil
+    end
+end
+local function updateStreamScenery()
     local realm = workspace:FindFirstChild("RiftboundRealm")
     local ward = realm and realm:FindFirstChild("Starlight ward")
     local hide = STREAM_HIDE_WARD and streamCamera and gui.Enabled
@@ -362,6 +402,22 @@ local function updateWardVisibility()
         -- its subsequent Transparency updates cannot reintroduce the shell.
         ward.LocalTransparencyModifier = 1
     end
+    local rift = realm and realm:FindFirstChild("Storm rift")
+    local hideRift = STREAM_HIDE_RIFT and streamCamera and gui.Enabled
+    if hiddenRift and (hiddenRift ~= rift or not hideRift) then
+        hiddenRift.LocalTransparencyModifier = originalRiftTransparency
+        hiddenRift = nil
+    end
+    if hideRift and rift and rift:IsA("BasePart") then
+        if hiddenRift ~= rift then hiddenRift, originalRiftTransparency = rift, rift.LocalTransparencyModifier or 0 end
+        rift.LocalTransparencyModifier = 1
+    end
+end
+local function streamRayExclusions()
+    local result = {}
+    if hiddenWard then result[#result + 1] = hiddenWard end
+    if hiddenRift then result[#result + 1] = hiddenRift end
+    return result
 end
 local function applyCamera(camera)
     if not cameraTarget or not cameraFocus then return end
@@ -377,7 +433,8 @@ local function setCamera(enabled)
         nextCameraDiagnostic, streamRequests, nextStreamRequest = 0, 0, 0
     end
     streamCamera = enabled
-    updateWardVisibility()
+    updateStreamScenery()
+    updateStreamLighting()
     if cameraButton then cameraButton.Text = enabled and "ROAM VIEW" or "STREAM VIEW" end
     local camera = workspace.CurrentCamera
     if camera and not enabled then
@@ -594,11 +651,13 @@ local function cameraDiagnostics(now)
         end
     end
     local anchors, projected = 0, 0
+    local anchorObjects = {}
     local camera = workspace.CurrentCamera
     for _, name in ipairs(sprint and { "START platform", "FINISH island", "Finish arch", "Sprint podium 1", "Sprint podium 2", "Sprint podium 3" } or {}) do
         local object = course and course:FindFirstChild(name)
         if object and object:IsA("BasePart") then
             anchors = anchors + 1
+            anchorObjects[#anchorObjects + 1] = object
             if camera then
                 local _, visible = camera:WorldToViewportPoint(object.Position)
                 if visible then projected = projected + 1 end
@@ -623,6 +682,8 @@ local function cameraDiagnostics(now)
         end)
     end
     if not CAMERA_DIAGNOSTICS or not camera then return end
+    print(string.format("[Riftbound camera] presentation=course-overview-v3 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
+        tostring(STREAM_DAYLIGHT and streamCamera and gui.Enabled), Lighting.ClockTime, Lighting.Brightness, Lighting.ExposureCompensation))
     local p, f, box = camera.CFrame.Position, camera.Focus.Position, activeBounds
     local ok, hit = pcall(function() return workspace:Raycast(p, f - p) end)
     local hitText = ok and "clear" or "unavailable"
@@ -631,7 +692,7 @@ local function cameraDiagnostics(now)
     local rayOk, rayHit = pcall(function()
         local params = RaycastParams.new()
         params.FilterType = Enum.RaycastFilterType.Exclude
-        params.FilterDescendantsInstances = hiddenWard and { hiddenWard } or {}
+        params.FilterDescendantsInstances = streamRayExclusions()
         return workspace:Raycast(p, f - p, params)
     end)
     if rayOk then visibleRay = rayHit and (rayHit.Instance.Name .. " at " .. string.format("%.1f studs", (rayHit.Position - p).Magnitude)) or "clear" end
@@ -658,7 +719,25 @@ local function cameraDiagnostics(now)
         wardInfo = string.format("ward transparency=%.2f localModifier=%.2f cameraInside=%s focusInside=%s",
             ward.Transparency, ward.LocalTransparencyModifier or 0, tostring(containsPartBounds(ward, p)), tostring(containsPartBounds(ward, f)))
     end
-    print("[Riftbound camera] " .. wardInfo .. " largeGeometryAtLens=" .. (#inside > 0 and table.concat(inside, ", ") or "none"))
+    print("[Riftbound camera] " .. wardInfo .. " riftLocalMask=" .. tostring(hiddenRift ~= nil) .. " largeGeometryAtLens=" .. (#inside > 0 and table.concat(inside, ", ") or "none"))
+    -- Projection is not visibility. Probe every key sightline, not just the
+    -- start/Focus ray, and identify accessory Handles by their full hierarchy.
+    for _, object in ipairs(anchorObjects) do
+        local point, onScreen = camera:WorldToViewportPoint(object.Position)
+        local probeOk, probe = pcall(function()
+            local params = RaycastParams.new()
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            params.FilterDescendantsInstances = streamRayExclusions()
+            return workspace:Raycast(p, object.Position - p, params)
+        end)
+        local obstacle = probeOk and "clear" or "unavailable"
+        if probeOk and probe then
+            local pathOk, path = pcall(function() return probe.Instance:GetFullName() end)
+            obstacle = (pathOk and path or probe.Instance.Name) .. " at " .. string.format("%.1f", (probe.Position - p).Magnitude)
+        end
+        print(string.format("[Riftbound camera] anchor=%s world=(%.1f,%.1f,%.1f) screen=(%.1f,%.1f) projected=%s sightline=%s",
+            object.Name, object.Position.X, object.Position.Y, object.Position.Z, point.X, point.Y, tostring(onScreen), obstacle))
+    end
     print(string.format("[Riftbound camera] bounds=(%.1f..%.1f,%.1f..%.1f,%.1f..%.1f) yaw=%d %s; streaming=%s realm=%s policy=%s parts=%d opaque=%d anchors=%d/6 projected=%d geometry=%s ray=%s requests=%d/3",
         box.minX, box.maxX, box.minY, box.maxY, box.minZ, box.maxZ, box.yaw, boundsReason,
         tostring(workspace.StreamingEnabled), tostring(realm ~= nil), realm and tostring(realm.ModelStreamingMode) or "absent",
@@ -687,7 +766,8 @@ bindCamera()
 local labelAccumulator = 0
 RunService:BindToRenderStep("RiftboundPortraitCamera", Enum.RenderPriority.Last.Value, function(dt)
     if latestState then timer.Text = tostring(math.max(0, math.ceil(latestState.seconds - (os.clock() - receivedAt)))) end
-    updateWardVisibility()
+    updateStreamScenery()
+    updateStreamLighting()
     if streamCamera and gui.Enabled and workspace.CurrentCamera and cameraTarget then
         local camera = workspace.CurrentCamera
         if camera.ViewportSize.X ~= cameraWidth or camera.ViewportSize.Y ~= cameraHeight then resize() end

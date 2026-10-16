@@ -99,19 +99,26 @@ The portrait edge HUD retains separate Top Earners/round panels and a lower resu
 dock. Sprint rows show actual seconds or checkpoints/DNF. Name/earnings labels are
 bounded and culled in screen space. A fixed diagonal view fits the whole course,
 jumper envelope and podium into the clear center, including landscape center crops.
-The revised Stream View aims directly at a fixed point on the start area
-(0, 70, 60), with yaw/elevation 25° and vertical FOV 60°. This puts the receding
-course above the existing lower HUD without a post-lookAt CFrame translation.
-The normal 9:16 fit is about 272 studs from that aim point, or 326 from the course's
-geometric center. Sprint fitting is capped at 600 studs; bounds remain validated
-every snapshot. Scriptable, FOV/mode and actual Focus are restored each frame.
+The v3 Stream View uses a higher overview along the course: aim (0,68,45), yaw 0,
+elevation 55 degrees, vertical FOV 55. It directly constructs lookAt with no local
+translation. Three display regions cover actual geometry, jumping racers and the
+podium instead of forcing empty low corners beneath the start into frame. The
+projected route occupies about twice its previous height at 9:16. Distance remains
+bounded at 170–850 studs; extreme narrow windows need more distance than normal
+phone views. The HUD layout and leaderboard logic are unchanged.
 
-Stream View locally hides only the large Starlight ward shell and restores its
-previous local opacity in Roam View. Server effects/vote state are unchanged.
-Diagnostics report actual position/look/up/Focus, camera drift, raw/ward-excluded
-rays and lens-enclosing large geometry. Set STREAM_HIDE_WARD=false in the client
-to isolate the ward hypothesis with the closer camera. This is a testable correction,
-not a confirmed Studio visual fix; see [the camera guide](docs/CAMERA_FIX.md).
+Stream View applies local daylight (14:00, brightness 3, exposure +0.25), softens
+outdoor darkness and disables local shadows. It restores prior light properties
+when entering Roam. Animated ambient gift colors remain server controlled. Only
+the large ward and Storm rift spheres are locally hidden: the latter geometrically
+crosses the sightline to the finish gate. Roam restores both prior local modifiers.
+Auras, particles, ribbons, crowns and avatars remain intact.
+
+Diagnostics now probe all six key anchors, with actual coordinates and full
+obstructing-instance paths, alongside CFrame/Focus/opacity and lens enclosures.
+A count of 155 opaque parts or six projected anchors is not proof of visibility.
+See [the exact client replacement and Studio checks](docs/CAMERA_FIX.md).
+This remains a testable correction, not a confirmed Studio visual result.
 
 The realm uses ModelStreamingMode.Persistent, but that policy alone does not prove
 the client has its geometry. When engine streaming is enabled and course parts are

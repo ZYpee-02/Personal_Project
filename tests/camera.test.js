@@ -28,17 +28,19 @@ local function assertFraming(w,h)
     assert((p-Vector3.new(0,71,-3)).Magnitude<950,"runaway camera")
     local toCenter=Vector3.new(0,71,-3)-p
     assert(camera.CFrame.LookVector:Dot(toCenter)*(1/toCenter.Magnitude)>0.97,"camera faces away from the course")
-    for _,x in ipairs({-26,26}) do for _,y in ipairs({54,88}) do for _,z in ipairs({-82,76}) do
+    for _,volume in ipairs(SprintVolumes) do
+    for _,x in ipairs({volume.minX,volume.maxX}) do for _,y in ipairs({volume.minY,volume.maxY}) do for _,z in ipairs({volume.minZ,volume.maxZ}) do
         local point,onScreen=camera:WorldToViewportPoint(Vector3.new(x,y,z))
         assert(onScreen and point.Z>1 and point.X>=area.x and point.X<=area.x+area.w
             and point.Y>=area.y and point.Y<=area.y+area.h,"course escaped the unobstructed arena rectangle")
     end end end
+    end
 end
 `;
 
 for (const [w,h] of resolutions) {
   test(`fixed camera contains the entire course and rejects corrupt bounds at ${w}x${h}`, () => runLua(presentationEngine + mathSource + geometryAssertions + `
-setViewport(${w},${h}); camera.FieldOfView=60
+setViewport(${w},${h}); camera.FieldOfView=55
 local cases={
     {"missing"},{"empty",{}},{"wrong type","bad"},{"boolean",false},
     {"NaN",{minX=0/0,maxX=26,minY=54,maxY=88,minZ=-82,maxZ=76,yaw=60}},
@@ -54,8 +56,8 @@ local cases={
 }
 for _,item in ipairs(cases) do
     local d,shift,up,back,cy,cx,cz,yaw,box,reason,fitted=arenaCamera(${w},${h},item[2],true)
-    assert(d>=160 and d<=600 and fitted,item[1].." failed bounded fit")
-    assert(cy==70 and cx==0 and cz==60 and yaw==math.rad(25),"fixed course center/heading changed")
+    assert(d>=170 and d<=850 and fitted,item[1].." failed bounded fit")
+    assert(cy==68 and cx==0 and cz==45 and yaw==0,"fixed course center/heading changed")
     if item[1]~="correct" then assert(string.find(reason,"fallback",1,true),"bad bounds not identified") end
     local focus=Vector3.new(cx,cy,cz)
     camera.CFrame=CFrame.lookAt(focus+Vector3.new(math.sin(yaw)*back*d,up*d,math.cos(yaw)*back*d),focus)*CFrame.new(0,-shift,0)
@@ -67,7 +69,7 @@ end
 test('zero, nonfinite, tiny and extreme viewports yield a bounded fallback instead of an exponential zoom', () => runLua(presentationEngine + mathSource + `
 for _,size in ipairs({{0,0},{0,844},{390,0},{0/0,844},{math.huge,844},{1,1},{1,10000},{10000,1},{40000,40000}}) do
     local d,shift,up,back,cy,cx,cz,yaw,box,reason,fitted=arenaCamera(size[1],size[2],nil,true)
-    assert(finite(d) and finite(shift) and d<600 and cy==70 and cx==0 and cz==60 and not fitted)
+    assert(finite(d) and finite(shift) and d<850 and cy==68 and cx==0 and cz==45 and not fitted)
 end
 `));
 
@@ -144,9 +146,9 @@ for _,time in ipairs({12,20,100,110}) do
     camera.CameraType=Enum.CameraType.Custom
     renderStep(0.13)
     assertFraming(390,844)
-    assert(camera.CameraType==Enum.CameraType.Scriptable and camera.FieldOfView==60
+    assert(camera.CameraType==Enum.CameraType.Scriptable and camera.FieldOfView==55
         and camera.FieldOfViewMode==Enum.FieldOfViewMode.Vertical)
-    assert((camera.Focus.Position-Vector3.new(0,70,60)).Magnitude<0.00001)
+    assert((camera.Focus.Position-Vector3.new(0,68,45)).Magnitude<0.00001)
     assert((camera.CFrame.Position-baseline).Magnitude<0.00001,"phase moved the fixed spectator view")
 end
 assert(logged("phase=voting") and logged("phase=storm") and logged("phase=result"))
@@ -184,7 +186,7 @@ local course=workspace.RiftboundRealm.SkybridgeSprint
 course.Parent=nil -- model policy still Persistent, but geometry missing on this mock client
 local requests=0
 function methods:RequestStreamAroundAsync(focus,timeout)
-    assert(self==player and focus.X==0 and focus.Y==70 and focus.Z==60 and timeout==5)
+    assert(self==player and focus.X==0 and focus.Y==68 and focus.Z==45 and timeout==5)
     requests=requests+1
 end
 for _,time in ipairs({0,10,20,30,40,50,60,70}) do
@@ -234,13 +236,13 @@ assert(logged("ray=Foreground blocker at 1.0 studs"))
 assertFraming(390,844)
 `));
 
-test('closer Sprint camera directly looks at its on-course focus with zero local translation at ten viewports', () => runLua(clientScene + `
+test('higher Sprint overview directly looks at its on-course focus with zero local translation at ten viewports', () => runLua(clientScene + `
 publish(courseBox)
 for _,size in ipairs({${sizes}}) do
     setViewport(size[1],size[2]); renderStep(0.13)
     local d,shift,up,back,cy,cx,cz,yaw=arenaCamera(size[1],size[2],courseBox,true)
     assert(shift==0,"Sprint retained a local CFrame offset")
-    local aim=Vector3.new(0,70,60)
+    local aim=Vector3.new(0,68,45)
     local expected=CFrame.lookAt(aim+Vector3.new(math.sin(yaw)*back*d,up*d,math.cos(yaw)*back*d),aim)
     assert((camera.CFrame.Position-expected.Position).Magnitude<0.0001)
     assert(camera.CFrame.LookVector:Dot((aim-camera.CFrame.Position)*(1/d))>0.99999,"actual CFrame misses actual Focus")
@@ -253,11 +255,10 @@ for _,size in ipairs({${sizes}}) do
     end
 end
 setViewport(1080,1920)
-assert((camera.CFrame.Position-camera.Focus.Position).Magnitude<280,"normal 9:16 view is not closer than the previous 372-stud view")
-assert((camera.CFrame.Position-Vector3.new(0,71,-3)).Magnitude<335,"camera did not move closer to the geometric course center")
-setViewport(390,844)
-assert((camera.CFrame.Position-camera.Focus.Position).Magnitude<335,"phone portrait view is not closer than the previous 448-stud view")
-assert((camera.CFrame.Position-Vector3.new(0,71,-3)).Magnitude<390)
+local a=camera:WorldToViewportPoint(Vector3.new(0,68,60))
+local b=camera:WorldToViewportPoint(Vector3.new(0,68,-60))
+local scale=viewportLayout(1080,1920)
+assert(math.abs(a.Y-b.Y)/scale>210,"route is still foreshortened into a small platform")
 assert(logged("aimDot=1.000000 focusError=0.000"))
 `));
 
@@ -291,8 +292,8 @@ assert(ward.LocalTransparencyModifier==0.25,"disabled HUD retained the Stream Vi
 
 test('late or replaced ward geometry is masked without affecting other scenery or the saved Roam setting', () => runLua(clientScene + `
 local old=workspace.RiftboundRealm["Starlight ward"]
-local rift=workspace.RiftboundRealm["Storm rift"]
-local initialRiftModifier=rift.LocalTransparencyModifier
+local other=workspace.RiftboundRealm.SkybridgeSprint["START platform"]
+local initialOtherModifier=other.LocalTransparencyModifier
 old.Parent=nil
 renderStep(0.13)
 assert(old.LocalTransparencyModifier==0,"detached ward retained a stale local mask")
@@ -301,7 +302,7 @@ ward.Size=Vector3.new(110,110,110); ward.CFrame=CFrame.new(0,35,0)
 ward.Shape=Enum.PartType.Ball; ward.Transparency=0.88; ward.LocalTransparencyModifier=0.35
 ward.Parent=workspace.RiftboundRealm
 renderStep(0.13)
-assert(ward.LocalTransparencyModifier==1 and rift.LocalTransparencyModifier==initialRiftModifier)
+assert(ward.LocalTransparencyModifier==1 and other.LocalTransparencyModifier==initialOtherModifier)
 canvas.CameraToggle.Activated:Fire()
 assert(ward.LocalTransparencyModifier==0.35 and ward.Transparency==0.88)
 `));
@@ -335,7 +336,7 @@ end
 assert(driftFound,"another controller's camera movement was not reported")
 assertFraming(390,844)
 ward.Parent=nil; now=20; renderStep(0.13)
-assert(logged("ward=absent largeGeometryAtLens=Lens enclosure"),"other large geometry was only logged while the ward existed")
+assert(logged("ward=absent riftLocalMask=true largeGeometryAtLens=Lens enclosure"),"other large geometry was only logged while the ward existed")
 `));
 
 test('ward hypothesis can be isolated by disabling only the local mask while retaining the direct camera', () => {
@@ -349,6 +350,105 @@ ward.LocalTransparencyModifier=0.4
 renderStep(0.13)
 assert(ward.LocalTransparencyModifier==0.4,"ward test toggle still modifies ward")
 assertFraming(390,844)
-assert((camera.Focus.Position-Vector3.new(0,70,60)).Magnitude<0.0001)
+assert((camera.Focus.Position-Vector3.new(0,68,45)).Magnitude<0.0001)
 `);
 });
+
+test('display volumes enclose actual authored geometry and all five racing/jump envelopes', () => runLua(presentationEngine + modules + mathSource + `
+World.build(Config)
+local function covered(p)
+    for _,v in ipairs(SprintVolumes) do
+        if p.X>=v.minX and p.X<=v.maxX and p.Y>=v.minY and p.Y<=v.maxY and p.Z>=v.minZ and p.Z<=v.maxZ then return true end
+    end
+    return false
+end
+for _,object in ipairs(workspace.RiftboundRealm.SkybridgeSprint:GetDescendants()) do
+    if object:IsA("BasePart") then
+        for _,x in ipairs({-0.5,0.5}) do for _,y in ipairs({-0.5,0.5}) do for _,z in ipairs({-0.5,0.5}) do
+            assert(covered(object.CFrame:PointToWorldSpace(Vector3.new(x*object.Size.X,y*object.Size.Y,z*object.Size.Z))),"authored part outside display volumes: "..object.Name)
+        end end end
+    end
+end
+for lane=1,5 do for cp=0,12 do
+    local root=World.sprintPoint(lane,cp)
+    for _,x in ipairs({-3,3}) do for _,z in ipairs({-3,3}) do
+        assert(covered(root+Vector3.new(x,10,z)),"racer jump envelope clipped")
+    end end
+end end
+`));
+
+test('Storm rift intersects the authored finish sightline; local masks restore in Roam without changing server opacity', () => runLua(clientScene + `
+local rift=workspace.RiftboundRealm["Storm rift"]
+local gate=workspace.RiftboundRealm.SkybridgeSprint["Finish arch"]
+local origin=camera.CFrame.Position
+local segment=gate.Position-origin
+local t=(rift.Position-origin):Dot(segment)/segment:Dot(segment)
+local closest=origin+segment*math.max(0,math.min(1,t))
+assert(t>0 and t<1 and (closest-rift.Position).Magnitude<rift.Size.X/2,"finish sightline no longer crosses sphere; review local mask")
+assert(rift.LocalTransparencyModifier==1)
+local opacity=rift.Transparency
+canvas.CameraToggle.Activated:Fire()
+assert(rift.LocalTransparencyModifier==0 and rift.Transparency==opacity)
+rift.LocalTransparencyModifier=0.2
+canvas.CameraToggle.Activated:Fire()
+for _,time in ipairs({0,12,20,100}) do
+    now=time; state:tick(time); state:advance(time)
+    World.render(state:snapshot(time),time); World.animate(time)
+    local alpha=rift.Transparency
+    publish(courseBox)
+    assert(rift.LocalTransparencyModifier==1 and rift.Transparency==alpha)
+end
+canvas.CameraToggle.Activated:Fire()
+assert(rift.LocalTransparencyModifier==0.2)
+`));
+
+test('Stream daylight restores on Roam and leaves animated gift ambient color unchanged', () => runLua(clientScene + `
+assert(lighting.ClockTime==14 and lighting.Brightness==3 and lighting.ExposureCompensation==0.25)
+assert(lighting.GlobalShadows==false and lighting.EnvironmentDiffuseScale==1)
+local ambient=Color3.fromRGB(100,70,160)
+lighting.Ambient=ambient
+lighting.ClockTime=0; lighting.ExposureCompensation=-5
+renderStep(0.13)
+assert(lighting.ClockTime==14 and lighting.ExposureCompensation==0.25 and lighting.Ambient==ambient)
+canvas.CameraToggle.Activated:Fire()
+assert(lighting.ClockTime==18.3 and lighting.Brightness==2 and lighting.ExposureCompensation==0)
+assert(lighting.GlobalShadows==true and lighting.EnvironmentDiffuseScale==0 and lighting.EnvironmentSpecularScale==1)
+assert(lighting.Ambient==ambient)
+canvas.CameraToggle.Activated:Fire()
+assert(lighting.ClockTime==14)
+playerGui.RiftboundHUD.Enabled=false; renderStep(0.13)
+assert(lighting.ClockTime==18.3 and lighting.GlobalShadows==true)
+`));
+
+test('lighting hypothesis can be isolated with the local daylight flag disabled', () => {
+  const noDaylight = client.replace('local STREAM_DAYLIGHT = true','local STREAM_DAYLIGHT = false');
+  runLua(presentationEngine + modules + `
+print=function() end
+World.build(Config)
+lighting.ExposureCompensation=-0.4
+;(function() ${noDaylight} end)()
+renderStep(0.13)
+assert(lighting.ClockTime==18.3 and lighting.Brightness==2 and lighting.ExposureCompensation==-0.4)
+`);
+});
+
+test('all key-anchor sightlines reveal an accessory obstruction behind the start focus', () => runLua(clientScene + `
+RaycastParams={new=function() return {} end}
+local avatar=instance("Model","Traveler_ObstructingOutfit",workspace.RiftboundRealm)
+local outfit=instance("Accessory","OversizedHat",avatar)
+local handle=instance("Part","Handle",outfit)
+function methods:GetFullName()
+    local names,node={},self
+    while node do table.insert(names,1,node.Name); node=node.Parent end
+    return table.concat(names,".")
+end
+function methods:Raycast(origin,direction,params)
+    if direction.Z < -250 then return {Instance=handle,Position=origin+direction*0.8} end
+end
+publish(courseBox)
+assert(logged("anchor=START platform world=(0.0,64.0,63.0)"))
+assert(logged("anchor=Finish arch world=(0.0,80.0,-60.0)"))
+assert(logged("sightline=Workspace.RiftboundRealm.Traveler_ObstructingOutfit.OversizedHat.Handle"))
+assert(logged("anchor=Sprint podium 3"))
+assert(logged("filteredRay=clear"),"test did not demonstrate the old focus-ray blind spot")
+`));
