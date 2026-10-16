@@ -22,7 +22,9 @@ script. Edit StarterPlayerScripts, not a runtime Players/PlayerScripts copy. Kee
 and Studio API Services access remain unnecessary. MANUAL_STUDIO_SETUP.md contains
 the same five complete source blocks. No new game module or installer is required.
 
-Expect server `[Riftbound] Ready` and client `presentation=race-show-v11`.
+Expect server `[Riftbound] Ready` and current client `presentation=broadcast-v12`.
+For v11 installs, the [v12 broadcast update](BROADCAST_CAMERA_REPLACEMENT.md)
+requires only replacing the client; the registration rules here still apply.
 The course revision deliberately remains `show-v10-shared-road`: its road builder,
 shared checkpoints, branching geometry and obstacle motion have not changed.
 GitHub updates do not automatically modify an open Studio place.

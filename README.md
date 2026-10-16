@@ -1,6 +1,11 @@
-# Riftbound Live — automated registration tournament
+# Riftbound Live — cinematic racing broadcast
 
-The existing wide, shared v10 fantasy skyway is unchanged. Viewers now register
+The v12 director adds fair racer introductions, front/rear/side/low-angle pack
+shots, 4–8-second broadcast changes and queued event highlights.
+[Client replacement instructions](docs/BROADCAST_CAMERA_REPLACEMENT.md) explain
+the one-file update from v11 and required Studio visual checks.
+
+The existing wide, shared v10 fantasy skyway is unchanged. Viewers register
 freshly for every round, watch their avatars emote in the lobby, launch through a
 fiery READY/3/2/1/GO sequence, race physically for up to 120 seconds, and see measured
 podium results before the next empty registration window opens.
@@ -33,9 +38,9 @@ Physical shared-road navigation, two alternate routes, checkpoints, actual finis
 times, DNFs, fictional earnings and session leaderboards are preserved. The course
 builder is fingerprinted against v10. Keep Workspace.StreamingEnabled=false;
 DataStoreService, custom HTTP and real TikTok networking remain disabled.
-Client marker: **race-show-v11**; course marker: **show-v10-shared-road**.
+Client marker: **broadcast-v12**; course marker: **show-v10-shared-road**.
 
-[Available tests and limitations](docs/TOURNAMENT_TEST_RESULTS.md) distinguish cloud
+[Broadcast tests and limitations](docs/BROADCAST_TEST_RESULTS.md) distinguish cloud
 state/geometry/contact/projection checks from required native Studio visual,
 Humanoid physics and 15–20-racer performance playtests.
 

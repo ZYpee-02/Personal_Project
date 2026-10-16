@@ -5,9 +5,9 @@ from offline_sources import sources
 ROOT = Path(__file__).resolve().parents[1]
 order = ["Config", "RealmState", "World", "Realm"]
 scripts = sorted(sources(), key=lambda row: (row[0] == "StarterPlayerScripts", order.index(row[2])))
-intro = (ROOT / "docs/TOURNAMENT_REGISTRATION_REPLACEMENT.md").read_text(encoding="utf-8").split("## The automatic cycle")[0]
+intro = (ROOT / "docs/BROADCAST_CAMERA_REPLACEMENT.md").read_text(encoding="utf-8").split("## Broadcast rules")[0]
 intro += "\nThe sections below contain the complete current raw Luau sources.\n\n"
-intro = intro.replace('(../roblox/', '(roblox/')
+intro = intro.replace('(../roblox/', '(roblox/').replace('(../docs/', '(docs/')
 filenames = {("ServerScriptService", "Realm"): "Realm.server.lua", ("StarterPlayerScripts", "Realm"): "Realm.client.lua"}
 sections = []
 for directory, kind, name, source in scripts:
