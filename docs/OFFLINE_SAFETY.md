@@ -43,3 +43,18 @@ or obfuscated code. Actual Roblox rendering, physics, UI and avatar scaling must
 be playtested in Studio. Keep HTTP Requests and Studio API Services access disabled
 and follow `docs/PLAYTEST.md`. Studio/the Roblox engine may use its own normal
 services; the five game scripts make no custom external requests.
+
+
+## Phase 2 automation and visual bounds
+
+The Studio-only demo explicitly labels its seeded audience and events. Set
+OfflineDemoEnabled=false or AutoSimulateGifts=false to stop those simulations;
+DemoStudioOnly=true prevents them outside Studio by default. Rounds and automatic
+competition do not depend on Keeper input. Paces and competition awards are
+server-authoritative and independent of gifts; all currency is fictional in-memory
+test currency.
+
+Scene animation is bounded to 12 updates/s by default (allowed setting 4–30),
+crew remains capped at 18, and a 36-Part particle pool and one popup per avatar are
+reused. No external particle texture, sound or outfit is loaded. These are resource
+bounds, not a measured performance guarantee. Test network/frame costs in Studio.

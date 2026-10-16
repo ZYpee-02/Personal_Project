@@ -51,3 +51,17 @@ LUAU_COMPILE=/tmp/riftbound-luau/build/release/luau-compile npm run check:luau
 Studio users need none of these development tools. Use the Script Editor to paste
 one complete file per instance. Rendering, physics, GUI layout, character scaling
 and the actual Studio session still require the Windows/macOS manual playtest.
+
+## Phase 2 automated behavior checks
+
+The Phase 1 rule/economy/bridge tests remain active. Additional tests cover the
+three no-vote activities, progress/coins across heartbeat frequencies, sprint finish
+time ordering, gifts having no effect on winners, late arrivals, one-time prizes,
+balance caps, immutable snapshots, invalid durations and safe empty rounds.
+
+A coroutine-based scheduler executes the **actual Realm.server.lua** with actual
+Config/RealmState and mocked World/Roblox services for 185 simulated seconds. It
+checks that demo arrivals, gifts, follows, winners, scene callbacks and several
+rounds occur with no players or Keeper events. It also checks DemoStudioOnly and
+OfflineDemoEnabled gates. It cannot exercise World rendering, TweenService, camera
+or GUI layout; those are explicitly covered by the manual Studio checklist instead.

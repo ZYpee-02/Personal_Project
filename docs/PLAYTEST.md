@@ -1,32 +1,64 @@
-# Offline Studio acceptance checklist
+# Phase 2 Studio acceptance checklist — NOT executed in the cloud
 
-Requires Roblox Studio on Windows/macOS; not executed on the Linux cloud machine.
-Use a new test place, with HTTP Requests and Studio API Services access **disabled**.
+The existing Phase 1 game was reported working by the user. That does not validate
+this Phase 2 scene. This checklist requires Roblox Studio on Windows/macOS. Keep
+HTTP Requests and Studio API Services access **disabled** throughout the test.
 
-- [ ] Create the five instances from MANUAL_STUDIO_SETUP.md in stopped edit mode.
-- [ ] Paste each complete raw source into its own Script Editor tab.
-- [ ] Verify exact parent/type/name for Config, RealmState, World, server Realm and client Realm.
-- [ ] It does not publish, prompt for credentials, or request service access.
-- [ ] No duplicate server/client Realm scripts from older attempts are enabled.
-- [ ] Play creates the island and player HUD; no save or HTTP errors appear in Output.
-- [ ] Walk/jump across both bridges and test respawning after falling.
-- [ ] Add `Alice_01`, `Bobby_02`, `Clara_03` using Keeper Tools. Local rigs appear.
-- [ ] Invalid and duplicate names are rejected without extra avatars.
-- [ ] During gathering, balances remain zero. Start a storm, then vote.
-- [ ] Base earnings are $5/s; a joined avatar that votes earns $8/s in its first round.
-- [ ] Cast Ward then Sail as the same demo username; only one vote remains.
-- [ ] Enough participation creates a shard and garden crystal; no votes does not.
-- [ ] Ward creates a shield; a Sail majority creates wind trails.
-- [ ] HUD/session leaderboard and world/round board update as money accrues.
-- [ ] Results show the last round's winners; money stops accruing in results/gathering.
-- [ ] Next vote resets round earnings, preserves session money, and adds $2/s after a win.
-- [ ] Targeted Bloom/Aurora/Giant affect the selected avatar/sky for 18 seconds.
-- [ ] Giant returns to normal scale, and none of the effects change votes or income.
-- [ ] Simulated follows count once per identity and change no money or round result.
-- [ ] Stop and Play again: all game state is empty; no saved totals reappear.
-- [ ] Two-player test: votes and leaderboards agree across clients.
-- [ ] Device emulator: HUD and Keeper Tools fit phone/tablet screens.
-- [ ] Published private test, if desired: a non-host cannot perform host actions.
-- [ ] Starting the separate Node simulator causes no HTTP polling from the offline game.
+## Replace and boot
 
-Do not enable the online integration as part of this offline acceptance test.
+- [ ] Back up the working place; stop Play and follow PHASE2_REPLACEMENT.md.
+- [ ] Replace all five complete raw sources in the existing instances; no duplicates.
+- [ ] Verify Config/RealmState/World are ModuleScripts and the two Realm instances are Script/LocalScript in their documented parents.
+- [ ] Press Play; there are no Output errors and no request to publish/enable APIs.
+- [ ] Scene has animated clouds/runes/stars, shrines, raised track, podiums and both large boards.
+- [ ] Portal visibly delivers six Demo_ rigs and the actual player's crew stand-in.
+
+## Prove autoplay with no tools or votes
+
+- [ ] Leave the game untouched for at least three complete rounds (~3 minutes).
+- [ ] Gathering (12s), optional vote (8s), competition (30s), results (10s) repeat.
+- [ ] Starfall rigs visit the inner ring and scores increase with checkpoints.
+- [ ] Sprint rigs walk the raised course, finish at twelve checkpoints, and the fastest finisher wins.
+- [ ] Relay rigs walk between shrine/heartseed and carry a visible energy orb.
+- [ ] Round leaders reflect points; money boards reflect money, with clearly different labels.
+- [ ] Results show the top three, credit $120/$75/$40 (subject to balance cap), move them to podiums, and show champion crown/cheering/particles.
+- [ ] Team success can save shards without a manual vote; unsuccessful goals still advance safely.
+- [ ] Round results do not pay twice, and empty rounds also advance with no errors.
+
+## Economy and gifts
+
+- [ ] $5/s base during voting; competition adds $2/s activity income; voting adds $3/s that round.
+- [ ] Successful team shards add $2/s and a personal championship adds $1/s to future rates (caps respected).
+- [ ] Each checkpoint awards $2; actual credited deltas appear in floating +$ pops.
+- [ ] Idle/results show $0/s and accrue no passive money; podium prizes remain visible.
+- [ ] Round money resets on the next vote while session totals remain.
+- [ ] Demo Bloom/Aurora/Giant/follow events occur automatically and are labeled simulated.
+- [ ] Giant visibly enlarges the target, then restores size after ~18s without snapping below the floor.
+- [ ] Aurora ribbons/aura and Bloom/star particles are noticeable without obscuring all players.
+- [ ] Gifts/follows change no race pace, score, income rate, winner or vote totals.
+
+## Framing, controls, compatibility
+
+- [ ] Observe at 390×844, 720×1280, 1080×1920 and desktop landscape using the device emulator/capture crop.
+- [ ] Centered 9:16 HUD, countdown, names, points and earnings are readable; lower reserved strip stays clear.
+- [ ] Automatic camera includes the main track, inner ring, shrines and podiums; check top-board clipping.
+- [ ] ROAM VIEW restores the normal camera; STREAM VIEW returns smoothly to the arena.
+- [ ] Walk/jump across bridges and test player respawn/falling in Roam View.
+- [ ] TEST TOOLS starts closed; all earlier username, vote, follow and gift controls still work.
+- [ ] Invalid/duplicate usernames are rejected, and switching a vote never adds another voice.
+- [ ] Disable OfflineDemoEnabled: no seeded fake audience or automatic gifts, but player crew and rounds still work.
+- [ ] Disable AutoSimulateGifts: seeded crew still compete without automatic effects.
+- [ ] Two-client Studio test: scores/results agree; each client can independently change camera mode.
+- [ ] Published private test: default DemoStudioOnly prevents fake crew/events; non-host cannot use test actions.
+- [ ] Stop and Play: all money, crew, gifts, follows, points, results and shards reset.
+
+## Resource check
+
+- [ ] Observe frame rate, network/replication and server time at 6, 12 and 18 crew for several rounds.
+- [ ] Verify the bounded particle pool, reused earnings popups and scenery do not accumulate instances over time.
+- [ ] Test SceneUpdatesPerSecond=6 if the target machine struggles; no particular FPS/latency is guaranteed.
+- [ ] Confirm no custom HTTP/asset requests or DataStore calls occur and no online module is loaded.
+
+Real TikTok events, streaming software capture and production device performance
+remain separate future validation. Automated tests use mocked Roblox services and
+must never be reported as a Studio rendering/physics playtest.

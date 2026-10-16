@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local remotes = ReplicatedStorage:WaitForChild("Riftbound")
 local snapshotRemote = remotes:WaitForChild("Snapshot")
@@ -13,6 +14,7 @@ local gold = Color3.fromRGB(245, 211, 155)
 
 local gui = Instance.new("ScreenGui")
 gui.Name, gui.ResetOnSpawn, gui.ZIndexBehavior = "RiftboundHUD", false, Enum.ZIndexBehavior.Sibling
+gui.IgnoreGuiInset = true
 gui.Parent = player:WaitForChild("PlayerGui")
 
 local function round(object, radius)
@@ -52,142 +54,183 @@ local function scale(parent)
     return s
 end
 
-local title = frame(gui, UDim2.fromOffset(370, 106), UDim2.fromOffset(24, 20))
-local titleScale = scale(title)
-text(title, "R I F T B O U N D   /   L I V E", UDim2.fromOffset(330, 22), UDim2.fromOffset(20, 13), 13, gold)
-local phase = text(title, "THE QUIET BETWEEN STORMS", UDim2.fromOffset(330, 30), UDim2.fromOffset(20, 37), 19)
-phase.Font = Enum.Font.GothamBold
-local timer = text(title, "Welcome to your sky island", UDim2.fromOffset(330, 23), UDim2.fromOffset(20, 74), 13, muted)
+-- All stream graphics stay inside this centered 9:16 canvas, even in landscape.
+local canvas = Instance.new("Frame")
+canvas.Name, canvas.Size = "VerticalStreamCanvas", UDim2.fromOffset(480, 854)
+canvas.AnchorPoint, canvas.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5)
+canvas.BackgroundTransparency, canvas.Parent = 1, gui
+local canvasScale = scale(canvas)
+local latestState
+local receivedAt = 0
+local streamCamera = player:GetAttribute("RiftboundStreamCamera") ~= false
+local cameraDefaultFov = 70
 
-local ledger = frame(gui, UDim2.fromOffset(236, 106), UDim2.new(1, -24, 0, 20), Vector2.new(1, 0))
-local ledgerScale = scale(ledger)
-text(ledger, "THE SKY GARDEN", UDim2.fromOffset(200, 22), UDim2.fromOffset(18, 13), 12, gold)
-local totals = text(ledger, "0 shards  /  0 travelers", UDim2.fromOffset(200, 30), UDim2.fromOffset(18, 37), 17)
-local connection = text(ledger, "Studio demo · session only", UDim2.fromOffset(200, 26), UDim2.fromOffset(18, 70), 11, muted)
+local function money(value)
+    if value >= 1000000 then return string.format("%.1fM", value / 1000000) end
+    if value >= 1000 then return string.format("%.1fK", value / 1000) end
+    return tostring(math.floor(value))
+end
 
-local panel = frame(gui, UDim2.fromOffset(680, 188), UDim2.new(0.5, 0, 1, -22), Vector2.new(0.5, 1))
-local panelScale = scale(panel)
-text(panel, "YOUR VOICE SHAPES THIS WORLD", UDim2.fromOffset(630, 20), UDim2.fromOffset(24, 14), 11, gold)
-local message = text(panel, "Travelers are gathering around the heartseed.", UDim2.fromOffset(630, 46), UDim2.fromOffset(24, 39), 16)
-local ward = button(panel, "01   RAISE A WARD", UDim2.fromOffset(307, 48), UDim2.fromOffset(24, 92), function() actionRemote:FireServer("vote", "ward") end)
-local sail = button(panel, "02   SAIL THE RIFT", UDim2.fromOffset(307, 48), UDim2.fromOffset(349, 92), function() actionRemote:FireServer("vote", "sail") end)
-local progress = text(panel, "Voting opens when the rift awakens. No gifts required.", UDim2.fromOffset(630, 24), UDim2.fromOffset(24, 150), 12, muted)
+local header = frame(canvas, UDim2.fromOffset(432, 82), UDim2.fromOffset(24, 56))
+text(header, "RIFTBOUND / LIVE", UDim2.fromOffset(290, 22), UDim2.fromOffset(16, 8), 20, gold).Font = Enum.Font.GothamBlack
+local phase = text(header, "THE ISLAND IS AWAKENING", UDim2.fromOffset(305, 25), UDim2.fromOffset(16, 34), 14, mint)
+local stats = text(header, "AUTOPLAY / LOCAL DEMO", UDim2.fromOffset(305, 18), UDim2.fromOffset(16, 59), 11, muted)
+local timer = text(header, "12", UDim2.fromOffset(82, 48), UDim2.fromOffset(334, 4), 35, gold)
+timer.TextXAlignment, timer.Font = Enum.TextXAlignment.Center, Enum.Font.GothamBlack
+local timingLabel = text(header, "NEXT ROUND", UDim2.fromOffset(90, 22), UDim2.fromOffset(330, 50), 10, muted)
+timingLabel.TextXAlignment = Enum.TextXAlignment.Center
 
-local toast = frame(gui, UDim2.fromOffset(530, 52), UDim2.new(0.5, 0, 0, 142), Vector2.new(0.5, 0))
-local toastScale = scale(toast)
+local function board(value, x)
+    local container = frame(canvas, UDim2.fromOffset(210, 168), UDim2.fromOffset(x, 148))
+    text(container, value, UDim2.fromOffset(186, 24), UDim2.fromOffset(12, 6), 14, gold).Font = Enum.Font.GothamBold
+    local rows = {}
+    for i = 1, 3 do
+        local name = text(container, i .. ". Waiting", UDim2.fromOffset(186, 19), UDim2.fromOffset(12, 35 + (i - 1) * 42), 13)
+        name.TextTruncate, name.TextWrapped = Enum.TextTruncate.AtEnd, false
+        local score = text(container, "—", UDim2.fromOffset(186, 20), UDim2.fromOffset(12, 53 + (i - 1) * 42), 16, mint)
+        score.Font = Enum.Font.GothamBold
+        rows[i] = { name = name, score = score }
+    end
+    return rows
+end
+local earners = board("TOP EARNERS", 24)
+local competitors = board("ROUND LEADERS", 246)
+
+local banner = frame(canvas, UDim2.fromOffset(432, 106), UDim2.fromOffset(24, 330))
+banner.Visible = false
+text(banner, "ROUND CHAMPION", UDim2.fromOffset(400, 22), UDim2.fromOffset(16, 8), 12, gold)
+local champion = text(banner, "", UDim2.fromOffset(400, 35), UDim2.fromOffset(16, 30), 27, mint)
+champion.Font = Enum.Font.GothamBlack
+local prize = text(banner, "", UDim2.fromOffset(400, 28), UDim2.fromOffset(16, 68), 14)
+local toast = frame(canvas, UDim2.fromOffset(432, 62), UDim2.fromOffset(24, 444))
 toast.Visible = false
-local toastText = text(toast, "", UDim2.new(1, -28, 1, 0), UDim2.fromOffset(14, 0), 14, mint)
+local toastText = text(toast, "", UDim2.new(1, -28, 1, 0), UDim2.fromOffset(14, 0), 15, gold)
 local toastVersion = 0
 local function notify(value)
     toastVersion = toastVersion + 1
     local version = toastVersion
     toastText.Text, toast.Visible = tostring(value), true
-    task.delay(5, function() if toastVersion == version then toast.Visible = false end end)
+    task.delay(4, function() if toastVersion == version then toast.Visible = false end end)
 end
 noticeRemote.OnClientEvent:Connect(notify)
 
-local controls = frame(gui, UDim2.fromOffset(300, 474), UDim2.new(1, -24, 0, 190), Vector2.new(1, 0))
-local controlsScale = scale(controls)
+local panel = frame(canvas, UDim2.fromOffset(432, 120), UDim2.fromOffset(24, 564))
+local instruction = text(panel, "Travelers enter and compete automatically.", UDim2.fromOffset(400, 38), UDim2.fromOffset(16, 6), 14)
+local progressTrack = frame(panel, UDim2.fromOffset(400, 6), UDim2.fromOffset(16, 50))
+local progressFill = Instance.new("Frame")
+progressFill.Size, progressFill.BackgroundColor3, progressFill.BorderSizePixel = UDim2.fromScale(0, 1), mint, 0
+progressFill.Parent = progressTrack
+round(progressFill, 3)
+local ward = button(panel, "WARD", UDim2.fromOffset(194, 34), UDim2.fromOffset(16, 73), function() actionRemote:FireServer("vote", "ward") end)
+local sail = button(panel, "SAIL", UDim2.fromOffset(194, 34), UDim2.fromOffset(222, 73), function() actionRemote:FireServer("vote", "sail") end)
+local roundStatus = text(panel, "Next competition starts automatically.", UDim2.fromOffset(400, 42), UDim2.fromOffset(16, 67), 15, mint)
+local footer = text(canvas, "OFFLINE / MEMORY ONLY", UDim2.fromOffset(432, 24), UDim2.fromOffset(24, 690), 11, muted)
+footer.TextXAlignment = Enum.TextXAlignment.Center
+-- Keep y=718..854 free for TikTok's lower interface/chat during a center crop.
+
+local controls = frame(canvas, UDim2.fromOffset(432, 390), UDim2.fromOffset(24, 326))
 controls.Visible = false
-text(controls, "REALM KEEPER / DEMO", UDim2.fromOffset(260, 24), UDim2.fromOffset(20, 16), 12, gold)
-text(controls, "Username labels spawn local stand-in avatars. No account lookup.", UDim2.fromOffset(260, 36), UDim2.fromOffset(20, 46), 13, muted)
+text(controls, "KEEPER / OFFLINE TESTS", UDim2.fromOffset(350, 25), UDim2.fromOffset(16, 12), 16, gold)
+button(controls, "X", UDim2.fromOffset(32, 28), UDim2.fromOffset(384, 10), function() controls.Visible = false end)
 local input = Instance.new("TextBox")
-input.Size, input.Position = UDim2.fromOffset(260, 42), UDim2.fromOffset(20, 92)
+input.Size, input.Position = UDim2.fromOffset(264, 38), UDim2.fromOffset(16, 52)
 input.BackgroundColor3, input.TextColor3 = Color3.fromRGB(31, 45, 61), pale
-input.Font, input.TextSize, input.Text = Enum.Font.Gotham, 15, ""
-input.PlaceholderText, input.ClearTextOnFocus, input.Parent = "Roblox username", false, controls
+input.Font, input.TextSize, input.Text = Enum.Font.Gotham, 15, "Demo_Astra"
+input.PlaceholderText, input.ClearTextOnFocus, input.Parent = "Traveler username", false, controls
 round(input, 10)
-button(controls, "OPEN THE STAR GATE", UDim2.fromOffset(260, 40), UDim2.fromOffset(20, 144), function()
-    actionRemote:FireServer("join", input.Text)
-end)
-button(controls, "AWAKEN A STORM", UDim2.fromOffset(260, 40), UDim2.fromOffset(20, 194), function()
-    actionRemote:FireServer("rift", "")
-end)
-for i, item in ipairs({ { "Bloom", "bloom" }, { "Aurora", "aurora" }, { "Titan", "giant" } }) do
-    button(controls, item[1], UDim2.fromOffset(80, 40), UDim2.fromOffset(20 + (i - 1) * 90, 246), function()
-        actionRemote:FireServer("blessing", item[2])
-    end)
+button(controls, "JOIN", UDim2.fromOffset(126, 38), UDim2.fromOffset(290, 52), function() actionRemote:FireServer("join", input.Text) end)
+button(controls, "START EARLY", UDim2.fromOffset(194, 38), UDim2.fromOffset(16, 102), function() actionRemote:FireServer("rift", "") end)
+button(controls, "TEST FOLLOW", UDim2.fromOffset(194, 38), UDim2.fromOffset(222, 102), function() actionRemote:FireServer("follow", input.Text) end)
+for i, item in ipairs({ { "Bloom sky", "bloom" }, { "Aurora sky", "aurora" }, { "Titan sky", "giant" } }) do
+    button(controls, item[1], UDim2.fromOffset(126, 38), UDim2.fromOffset(16 + (i - 1) * 137, 152), function() actionRemote:FireServer("blessing", item[2]) end)
 end
 for i, item in ipairs({ { "Gift bloom", "giftBloom" }, { "Gift aurora", "giftAurora" }, { "Gift giant", "giftGiant" } }) do
-    button(controls, item[1], UDim2.fromOffset(80, 38), UDim2.fromOffset(20 + (i - 1) * 90, 294), function()
-        actionRemote:FireServer(item[2], input.Text)
-    end)
+    button(controls, item[1], UDim2.fromOffset(126, 38), UDim2.fromOffset(16 + (i - 1) * 137, 202), function() actionRemote:FireServer(item[2], input.Text) end)
 end
-button(controls, "Vote as: WARD", UDim2.fromOffset(125, 38), UDim2.fromOffset(20, 342), function()
-    actionRemote:FireServer("demoWard", input.Text)
-end)
-button(controls, "Vote as: SAIL", UDim2.fromOffset(125, 38), UDim2.fromOffset(155, 342), function()
-    actionRemote:FireServer("demoSail", input.Text)
-end)
-button(controls, "SIMULATE FOLLOW", UDim2.fromOffset(260, 38), UDim2.fromOffset(20, 390), function()
-    actionRemote:FireServer("follow", input.Text)
-end)
-text(controls, "Gift / vote / follow target: the username above. All events are simulated.", UDim2.fromOffset(260, 30), UDim2.fromOffset(20, 436), 11, muted)
-local keeper = button(gui, "KEEPER TOOLS", UDim2.fromOffset(160, 42), UDim2.new(1, -24, 0, 138), function()
-    controls.Visible = not controls.Visible
-end)
-keeper.AnchorPoint = Vector2.new(1, 0)
-local keeperScale = scale(keeper)
+button(controls, "VOTE AS: WARD", UDim2.fromOffset(194, 38), UDim2.fromOffset(16, 252), function() actionRemote:FireServer("demoWard", input.Text) end)
+button(controls, "VOTE AS: SAIL", UDim2.fromOffset(194, 38), UDim2.fromOffset(222, 252), function() actionRemote:FireServer("demoSail", input.Text) end)
+text(controls, "Testing only. The game does not need these controls to advance. Gifts and follows here are simulated; all progress resets on Stop.", UDim2.fromOffset(400, 72), UDim2.fromOffset(16, 302), 13, muted)
+local keeper = button(canvas, "TEST TOOLS", UDim2.fromOffset(114, 28), UDim2.fromOffset(342, 18), function() controls.Visible = not controls.Visible end)
+keeper.TextSize = 11
+local cameraButton
+local function setCamera(enabled)
+    streamCamera = enabled
+    if cameraButton then cameraButton.Text = enabled and "ROAM VIEW" or "STREAM VIEW" end
+    local camera = workspace.CurrentCamera
+    if camera and not enabled then
+        camera.CameraType, camera.FieldOfView = Enum.CameraType.Custom, cameraDefaultFov
+        local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then camera.CameraSubject = humanoid end
+    end
+end
+cameraButton = button(canvas, "ROAM VIEW", UDim2.fromOffset(114, 28), UDim2.fromOffset(216, 18), function() setCamera(not streamCamera) end)
+cameraButton.TextSize = 11
 local function updateHost()
     keeper.Visible = player:GetAttribute("RiftboundHost") == true
     if not keeper.Visible then controls.Visible = false end
 end
 player:GetAttributeChangedSignal("RiftboundHost"):Connect(updateHost)
+player:GetAttributeChangedSignal("RiftboundStreamCamera"):Connect(function() setCamera(player:GetAttribute("RiftboundStreamCamera") ~= false) end)
 updateHost()
 
-local board = frame(gui, UDim2.fromOffset(300, 296), UDim2.fromOffset(24, 156))
-local boardScale = scale(board)
-text(board, "LIVE TOP EARNERS", UDim2.fromOffset(260, 24), UDim2.fromOffset(20, 12), 13, gold)
-local rows = {}
-for i = 1, 5 do
-    rows[i] = text(board, i .. ". Waiting for travelers", UDim2.fromOffset(260, 38), UDim2.fromOffset(20, 42 + (i - 1) * 42), 12, pale)
-end
-local boardFooter = text(board, "Session money / money per second", UDim2.fromOffset(260, 34), UDim2.fromOffset(20, 253), 11, muted)
-
-local phaseNames = { gathering = "THE QUIET BETWEEN STORMS", voting = "THE RIFT IS CALLING", storm = "HOLD FAST, TRAVELERS", result = "A NEW PAGE IN YOUR LEGEND" }
+local lastGift = 0
 snapshotRemote.OnClientEvent:Connect(function(state)
-    phase.Text = phaseNames[state.phase] or "RIFTBOUND LIVE"
-    timer.Text = string.format("Chapter %02d   /   %ds until the next horizon", state.round, state.seconds)
-    totals.Text = string.format("%d shards  /  %d travelers", state.wins, #state.crew)
-    connection.Text = state.bridge .. " · " .. state.persistence
-    message.Text = state.blessing ~= "" and (state.blessing .. " lights the sky. " .. state.message) or state.message
-    if state.phase == "result" and state.lastRound[1] then
-        message.Text = string.format("TOP THIS ROUND: %s / $%d. %s", state.lastRound[1].username, math.floor(state.lastRound[1].money), state.message)
+    latestState, receivedAt = state, os.clock()
+    phase.Text = state.phase == "gathering" and "NEXT: " .. state.activity.name or state.activity.name
+    stats.Text = string.format("%s / %d TRAVELERS / %d SHARDS", state.demo and "OFFLINE DEMO" or "LOCAL CREW", #state.crew, state.wins)
+    timingLabel.Text = ({ gathering = "NEXT ROUND", voting = "STARTS IN", storm = "TIME LEFT", result = "NEXT UP" })[state.phase]
+    for i = 1, 3 do
+        local earner = state.leaderboard[i]
+        earners[i].name.Text = earner and (i .. ". " .. earner.username) or (i .. ". Waiting")
+        earners[i].score.Text = earner and ("$" .. money(earner.money) .. " / $" .. (state.earning and earner.perSecond or 0) .. "/s") or "—"
+        local row = state.phase == "result" and state.winners[i] or state.activityLeaders[i]
+        competitors[i].name.Text = row and (i .. ". " .. row.username) or (i .. ". Ready to compete")
+        competitors[i].score.Text = row and (row.score .. " POINTS" .. (row.prize and (" / +$" .. row.prize) or "")) or "—"
     end
-    for i, row in ipairs(rows) do
-        local entry = state.leaderboard[i]
-        row.Text = entry and string.format("%d. %s  /  $%d\n$%d/s  |  %d simulated gifts", i, entry.username, math.floor(entry.money), entry.perSecond, entry.gifts)
-            or (i .. ". Waiting for travelers")
+    banner.Visible = state.phase == "result" and #state.winners > 0
+    if banner.Visible then
+        champion.Text = state.winners[1].username
+        prize.Text = string.format("%d points / +$%d / %s", state.winners[1].score, state.winners[1].prize, state.success and "SHARD SAVED" or "ROUND COMPLETE")
     end
-    boardFooter.Text = string.format("%d follows / session only\nMoney accrues during voting + storm.", state.followers)
-    ward.Text = "01   RAISE A WARD   ·   " .. state.ward
-    sail.Text = "02   SAIL THE RIFT   ·   " .. state.sail
-    local voting = state.phase == "voting"
-    ward.BackgroundColor3 = voting and Color3.fromRGB(39, 99, 89) or Color3.fromRGB(37, 47, 61)
-    sail.BackgroundColor3 = voting and Color3.fromRGB(83, 62, 113) or Color3.fromRGB(37, 47, 61)
-    progress.Text = voting and string.format("%d / %d voices to save a shard. You can change your vote. Gifts are cosmetic.", state.ward + state.sail, state.requiredVotes)
-        or "Vote during the next rift. Every voice counts; no gifts required."
+    instruction.Text = state.phase == "voting" and "Vote for the sky effect. All travelers enter automatically." or state.activity.instruction
+    ward.Visible, sail.Visible = state.phase == "voting", state.phase == "voting"
+    roundStatus.Visible = state.phase ~= "voting"
+    ward.Text, sail.Text = "WARD / " .. state.ward, "SAIL / " .. state.sail
+    roundStatus.Text = state.phase == "storm" and string.format("TEAM ENERGY %d / %d", state.teamScore, state.teamTarget)
+        or (state.phase == "result" and state.message or "The next round starts automatically.")
+    progressFill.Size = UDim2.fromScale(state.teamTarget > 0 and math.min(1, state.teamScore / state.teamTarget) or 0, 1)
+    footer.Text = string.format("%s / %d FOLLOWS / SESSION ONLY", state.demo and "SIMULATED LIVE EVENTS" or "OFFLINE", state.followers)
+    if state.lastGift.sequence > lastGift then
+        lastGift = state.lastGift.sequence
+        notify(string.upper(state.lastGift.kind) .. " x" .. state.lastGift.count .. " → " .. state.lastGift.username .. " (demo)")
+    end
 end)
 
+local cameraConnection
 local function resize()
     local camera = workspace.CurrentCamera
-    if not camera then return end
-    local view = camera.ViewportSize
-    local factor = math.min(1, (view.X - 24) / 680, (view.Y - 24) / 900)
-    factor = math.max(0.35, factor)
-    for _, s in ipairs({ titleScale, ledgerScale, panelScale, controlsScale, toastScale, keeperScale, boardScale }) do s.Scale = factor end
-    title.Position = UDim2.fromOffset(12, 12)
-    ledger.Position = UDim2.new(1, -12, 0, 12)
-    keeper.Position = UDim2.new(1, -12, 0, 126 * factor)
-    controls.Position = UDim2.new(1, -12, 0, 176 * factor)
-    toast.Position = UDim2.new(0.5, 0, 0, 126 * factor)
-    board.Position = UDim2.fromOffset(12, 176 * factor)
+    if camera then canvasScale.Scale = math.min(camera.ViewportSize.X / 480, camera.ViewportSize.Y / 854) end
 end
-local cameraConnection
 local function bindCamera()
     if cameraConnection then cameraConnection:Disconnect() end
-    if workspace.CurrentCamera then cameraConnection = workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(resize) end
+    local camera = workspace.CurrentCamera
+    if camera then
+        cameraDefaultFov = camera.FieldOfView
+        cameraConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(resize)
+    end
     resize()
+    setCamera(streamCamera)
 end
 workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindCamera)
 bindCamera()
+RunService:BindToRenderStep("RiftboundPortraitCamera", Enum.RenderPriority.Camera.Value + 1, function(dt)
+    if latestState then timer.Text = tostring(math.max(0, math.ceil(latestState.seconds - (os.clock() - receivedAt)))) end
+    if streamCamera and workspace.CurrentCamera then
+        local camera = workspace.CurrentCamera
+        local result = latestState and latestState.phase == "result"
+        local position = result and Vector3.new(0, 99, 157) or Vector3.new(0, 113, 180)
+        local focus = result and Vector3.new(0, 42, 10) or Vector3.new(0, 40, 0)
+        camera.CameraType, camera.FieldOfView = Enum.CameraType.Scriptable, 58
+        camera.CFrame = camera.CFrame:Lerp(CFrame.lookAt(position, focus), 1 - math.exp(-dt * 3))
+    end
+end)

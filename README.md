@@ -1,9 +1,17 @@
-# Riftbound Live — five-script offline playtest v0.2.2
+# Riftbound Live — Phase 2 / autonomous offline playtest v0.3.0
 
 A fantasy sky-island Roblox game with username joining, local viewer avatars,
-cooperative storm rounds, live leaderboards, money-per-second earnings, and
+automatic competitions, moving avatars, live leaderboards, money-per-second earnings, and
 simulated gifts/follows. All game data is in memory; `PersistenceEnabled = false`.
 There are no save-service, HTTP, account-lookup or external-asset calls in the game.
+
+## Upgrade the working Studio game
+
+Replace all five complete sources in their existing instances using
+[the exact Phase 2 replacement guide](docs/PHASE2_REPLACEMENT.md). Do not mix versions.
+`MANUAL_STUDIO_SETUP.md` contains all five full raw Luau code blocks. With defaults,
+Studio seeds six clearly labeled demo travelers and runs rounds/gifts unattended.
+No Keeper Tools are needed. Real TikTok integration remains disabled.
 
 ## Manual setup in Roblox Studio
 
@@ -34,9 +42,10 @@ blocks if you prefer copying from one document.
    previous attempts active. Do not paste this code into the Command Bar or combine
    files. The client waits for remotes that the server creates automatically.
 6. Press **Play**, not Run. The islands appear at runtime, and your player gets a HUD.
-7. Open Keeper Tools, enter `Alice_01`, then Open the Star Gate. Repeat with `Bobby_02`.
-   Click Awaken a Storm, vote, and watch balances/leaderboards. Test targeted gifts
-   and follows using the username field. See `docs/PLAYTEST.md` for the full checklist.
+7. Wait for the six Demo_ travelers and first competition. Observe Starfall Scramble,
+   Skybridge Sprint and Heartseed Relay over about three minutes. TEST TOOLS are
+   optional. ROAM VIEW restores the normal camera; STREAM VIEW returns to the show.
+   See `docs/PLAYTEST.md` for required Studio checks.
 8. Stop and Play again: all gameplay state starts fresh.
 
 If Studio says Config/RealmState/World is not a valid member, check the parent,
@@ -57,30 +66,50 @@ Arrival animations, colored character rigs, name/earnings labels, and gift effec
 remain playable. Real avatar lookup is retained separately under `integrations/`
 and is deliberately excluded from the manual game files and place.
 
-## Rules and economy
+## Automatic rounds, competition and economy
 
-- Up to 18 named crew members per session. The arrival queue is bounded at 30.
-- Gathering: 55 seconds. Voting: 35 seconds. Storm: 12 seconds. Results: 12 seconds.
-  Hosts can end gathering early. All Studio players are hosts; published places
-  use the owner or `Config.HostUserIds` for host authorization.
-- Every viewer identity gets one vote per round; changing sides moves that vote.
-  A tie chooses Ward. The goal is `max(1, ceil(crew / 3))` participating voices.
-  Ward creates a shield; Sail produces wind trails.
-- Crew earn **$5/s during voting and storms**, plus **$3/s** if they voted that round.
-  Every successful team round adds **$2/s** to everyone for subsequent rounds.
-  Rates are capped at $100/s and session balances at $1 billion.
-- Gathering/results do not pay. No retroactive joining or voting rewards are added.
-  Earnings use elapsed seconds, not an assumed heartbeat rate. Money is fictional
-  test currency; there are no Robux purchases, cashouts, or paid entitlements.
-- Round earnings reset at the next vote. Session balances remain until Stop/server
-  shutdown. The HUD ranks five session earners; the world board ranks the top three
-  current-round earners, or the completed round during results. Ties use arrival order.
-- Successful rounds add a shard and a crystal to the sky garden, capped at 24
-  visible crystals. No votes means no shard; the next round still starts normally.
-- Gifts are simulated and cosmetic: Bloom creates motes, Aurora creates colored
-  lighting/aura, and Giant enlarges the targeted stand-in and shows titan stars.
-  Effects expire after 18 seconds. They do not buy income, votes, or round wins.
-- Follows are deduplicated by viewer ID within the session, capped at 10,000.
+The 60-second default loop is **12s gathering → 8s optional vote → 30s competition
+→ 10s results**. It repeats without any player input. Activities rotate:
+
+| Competition | Visible activity | Ranking |
+| --- | --- | --- |
+| Starfall Scramble | Collect stars around the inner ring | Most checkpoint points |
+| Skybridge Sprint | Race twelve raised checkpoints | Completed checkpoints, then earliest finish |
+| Heartseed Relay | Carry energy between shrines and heartseed | Most deliveries/checkpoint points |
+
+Motion is scripted and kinematic. Server-selected paces vary deterministically by
+name, round and activity; they are not affected by gifts. Ties use actual finish
+progress then arrival order. Arrivals mid-round receive only their time remaining.
+The automatic team goal scales with entrants; meeting it saves a shard without
+votes. The existing optional Ward/Sail vote can also save a shard and chooses the
+shield/wind scenery. It does not decide who wins the automatic competition.
+
+Income is $5/s in voting and competition, plus $2/s for active competition, $3/s
+for a vote that round, $2/s per saved team shard, and $1/s per personal championship.
+Rates are capped at $100/s; all balances at $1 billion. Each competition checkpoint
+adds $2, and the top three get $120/$75/$40. Results/gathering pay no passive money.
+Round money resets on the next vote, while session balances last until Stop. Income
+uses elapsed time and bounded phase deadlines, not a fixed assumed frame rate.
+
+The HUD shows session money leaders and competition point leaders. Two large world
+boards show session and round money leaders. The top three walk to podiums with a
+winner banner, crown/cheering motion and pooled procedural celebration particles.
+Labels show actual current $/s, with +$ pops for real credited deltas. Team shards
+add crystals to the garden (maximum 24 visible). Empty rounds safely keep running.
+
+The centered portrait HUD/camera fits 480×854 logical pixels and reserves the lower
+136 pixels for a stream interface. A landscape capture can be center-cropped to
+9:16. Actual mobile/capture readability must be checked in Studio. TEST TOOLS starts
+closed. All earlier manual joins, votes, sky blessings, targeted gifts and follows
+remain available there; every Studio player is a host for testing.
+
+`OfflineDemoEnabled` seeds six Demo_ avatars; `DemoStudioOnly` confines the fake
+crew/events to Studio by default. `AutoSimulateGifts` cycles cosmetic Bloom, Aurora
+and Giant events every 18 seconds after seeding, with deduplicated demo follows.
+Turn these off to test only real player stand-ins/manual inputs. Effects expire
+after 18 seconds, restore scale and have no scoring/income advantage. The visuals
+use local Parts (including pooled motes), highlights and lighting; no downloaded
+textures, particles, sounds or outfits. Follows are bounded at 10,000 per session.
 
 ## Node simulator and future TikTok integration are separate
 
@@ -96,7 +125,7 @@ Node 22+ is required. The simulator binds to loopback port 8787. In local develo
 open that port in your browser; the cloud onboarding UI does not provide localhost
 previews. The control desk is an illustration and event simulator, not a live 3D view.
 The default offline game does **not** poll it: browser events remain pending and
-expire after two minutes. Use in-game Keeper Tools for the complete offline test.
+expire after two minutes. The default Studio demo runs automatically; use TEST TOOLS only for targeted tests.
 
 Node event queues and receipts are also memory-only and clear on restart. Legacy
 `.local/queue.json` files, if present from earlier versions, are not read or changed.
@@ -129,7 +158,10 @@ edits do not automatically sync back to the repository.
 
 Automated tests exercise the actual pure-Lua rules, economy, voting, leaderboards,
 gifts/follows, the optional Node bridge, local module dependencies, remote names,
-source-code identity in the manual guide and ZIP, and offline API exclusions. The
+source-code identity in the manual guide and ZIP, and offline API exclusions.
+Phase 2 tests also drive the actual server scheduler with mocked services for
+185 simulated seconds, proving that demo arrivals, gifts and several rounds run
+without human/host calls; they do not simulate rendering or engine physics. The
 native Luau compiler validates all five actual game files and all five sources in
 the optional XML place. They cannot validate Roblox rendering, physics, or Studio
 UI behavior. Run the manual checklist on Windows/macOS.

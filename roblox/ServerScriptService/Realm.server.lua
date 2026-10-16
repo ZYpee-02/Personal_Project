@@ -15,10 +15,13 @@ actionRemote.Name, actionRemote.Parent = "Action", remotes
 local noticeRemote = Instance.new("RemoteEvent")
 noticeRemote.Name, noticeRemote.Parent = "Notice", remotes
 
-World.build()
+assert(Config.PersistenceEnabled == false, "This build supports session-only testing.")
+assert(Config.SceneUpdatesPerSecond >= 4 and Config.SceneUpdatesPerSecond <= 30, "SceneUpdatesPerSecond must be 4..30")
+assert(Config.SnapshotSeconds >= 0.25, "SnapshotSeconds must be at least 0.25")
+World.build(Config)
 local tasks = {}
 local lastAction = {}
-assert(Config.PersistenceEnabled == false, "This build supports session-only testing.")
+local demoEnabled = Config.OfflineDemoEnabled and (not Config.DemoStudioOnly or RunService:IsStudio())
 
 local function host(player)
     if RunService:IsStudio() then return true end
@@ -28,8 +31,11 @@ local function host(player)
 end
 
 local function publish()
-    local snapshot = state:snapshot(os.clock())
+    local now = os.clock()
+    local snapshot = state:snapshot(now)
     snapshot.persistence, snapshot.bridge = "memory only", "offline simulator"
+    snapshot.demo, snapshot.streamCamera = demoEnabled == true, Config.StreamCameraDefault
+    World.render(snapshot, now)
     snapshotRemote:FireAllClients(snapshot)
 end
 
@@ -97,6 +103,7 @@ end)
 
 local function playerAdded(player)
     player:SetAttribute("RiftboundHost", host(player))
+    player:SetAttribute("RiftboundStreamCamera", Config.StreamCameraDefault)
     enqueue({ type = "join", username = player.Name }, function(_, message) notify(player, message) end)
 end
 Players.PlayerAdded:Connect(playerAdded)
@@ -138,12 +145,44 @@ actionRemote.OnServerEvent:Connect(function(player, action, payload)
 end)
 
 task.spawn(function()
+    if not demoEnabled then return end
+    task.wait(2)
+    for _, name in ipairs(Config.DemoNames) do
+        enqueue({ type = "join", username = name })
+        task.wait(0.65)
+    end
+    if not Config.AutoSimulateGifts then return end
+    local nextTarget, kinds = 0, { "bloom", "aurora", "giant" }
+    while true do
+        task.wait(math.max(5, Config.DemoGiftSeconds))
+        if #state.crewOrder > 0 then
+            nextTarget = nextTarget + 1
+            local username = state.crew[state.crewOrder[((nextTarget - 1) % #state.crewOrder) + 1]].username
+            enqueue({ type = "gift", username = username, kind = kinds[((nextTarget - 1) % #kinds) + 1], count = 1 })
+            enqueue({ type = "follow", viewer = "demo:" .. string.lower(username) })
+        end
+    end
+end)
+
+local sceneAccumulator = 0
+RunService.Heartbeat:Connect(function(dt)
+    sceneAccumulator = sceneAccumulator + dt
+    if sceneAccumulator >= 1 / Config.SceneUpdatesPerSecond then
+        sceneAccumulator = 0
+        World.animate(os.clock())
+    end
+end)
+
+task.spawn(function()
+    local lastSnapshot = 0
     while true do
         local now = os.clock()
         state:tick(now)
-        state:advance(now)
-        publish()
-        World.render(state:snapshot(now), now)
-        task.wait(1)
+        local changed = state:advance(now)
+        if changed or now - lastSnapshot >= Config.SnapshotSeconds then
+            publish()
+            lastSnapshot = now
+        end
+        task.wait(0.1)
     end
 end)
