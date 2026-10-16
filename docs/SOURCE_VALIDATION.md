@@ -1,7 +1,7 @@
 # Raw Luau source validation
 
-Current update: fixed spectator camera for physical Skybridge Sprint. Only the
-client changed; follow [CAMERA_FIX.md](CAMERA_FIX.md). Fresh installs still use all
+Current update: cinematic/restart safeguards for physical Skybridge Sprint. World,
+server Realm and client Realm changed; follow [CAMERA_FIX.md](CAMERA_FIX.md). Fresh installs still use all
 five files and [SPRINT_REPLACEMENT.md](SPRINT_REPLACEMENT.md). Native appearance loading is
 optional and guarded; no persistence/custom HTTP/TikTok code is enabled.
 
@@ -168,3 +168,15 @@ composed part opacity (including 0.9/0.9 = 1% opacity) and maximum drift retenti
 between log intervals. The existing camera fitting is unchanged. These checks
 do not establish that native Roblox draws either cube or the course. User Studio
 reports remain required; the issue is not claimed fixed.
+
+## Cinematic/restart safeguards v5
+
+Tests cover actual-root racing pack/leader tracking, actual arrived podium winners,
+winner close-up, safe overview fallback and reset/Roam transitions. Camera fitting
+projects the avatar/jump envelopes at four viewport sizes. Additional tests cover
+existing-character rescue and later respawns on the separate spectator deck, Roam
+subject/position, exact restoration of late Lighting/Camera effects and Atmospheres,
+and local masking/restoration of geometry outside the generated realm. Physics and
+race/economy code are unchanged; existing multi-round tests still exercise them.
+These mock/geometry tests do not prove restart reliability, rendering or movement
+in the actual Roblox engine. Two fresh Studio Play runs remain required.

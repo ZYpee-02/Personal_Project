@@ -19,7 +19,10 @@ end
 function methods:FindFirstChildOfClass(class)
     for _,child in ipairs(self:GetChildren()) do if child:IsA(class) then return child end end
 end
-function methods:IsA(class) return self.ClassName==class or (class=="BasePart" and (self.ClassName=="Part" or self.ClassName=="SpawnLocation")) end
+function methods:IsA(class)
+    return self.ClassName==class or (class=="BasePart" and (self.ClassName=="Part" or self.ClassName=="SpawnLocation" or self.ClassName=="Terrain"))
+        or (class=="PostEffect" and ({BloomEffect=true,BlurEffect=true,DepthOfFieldEffect=true,ColorCorrectionEffect=true,SunRaysEffect=true})[self.ClassName]) or false
+end
 function methods:GetPropertyChangedSignal(name) return self:GetAttributeChangedSignal("property:"..name) end
 function methods:FireServer(...) actions[#actions+1]={...} end
 function methods:GetPivot() return (self.PrimaryPart and self.PrimaryPart.CFrame) or self._properties.Pivot or CFrame.new() end
@@ -59,6 +62,7 @@ Instance.new=function(class)
     local node=originalNew(class)
     if class=="Frame" or class=="TextLabel" or class=="TextButton" or class=="TextBox" then node.Visible=true end
     if class=="ScreenGui" or class=="BillboardGui" then node.Enabled=true end
+    if node:IsA("PostEffect") then node.Enabled=true end
     if class=="BillboardGui" then node.StudsOffset, node.StudsOffsetWorldSpace=Vector3.new(),Vector3.new() end
     if class=="TextButton" then node.Activated=signal() end
     if class=="Humanoid" then node.Health=100; node.FloorMaterial=Enum.Material.Slate end

@@ -10,6 +10,7 @@ local settings = {}
 local sceneState
 local lastFrame = 0
 local sessionText
+local arrival
 local colors = {
     rock = Color3.fromRGB(47, 46, 78), grass = Color3.fromRGB(68, 112, 111),
     mint = Color3.fromRGB(106, 255, 213), gold = Color3.fromRGB(255, 208, 128),
@@ -399,10 +400,19 @@ function World.build(config)
         crystal(Vector3.new(math.sin(a) * 9, 43 + math.cos(a) * 9, -25), 0.45, colors.gold)
     end
     label(gate, "THE STAR GATE  /  ARRIVALS", Vector3.new(0, 13, 0), colors.gold, 340)
-    local spawn = Instance.new("SpawnLocation")
-    spawn.Name, spawn.Size, spawn.CFrame = "Arrival", Vector3.new(7, 0.3, 7), CFrame.new(0, 35, 22)
-    spawn.Anchored, spawn.Neutral, spawn.Duration = true, true, 0
-    spawn.Color, spawn.Material, spawn.Parent = colors.gold, Enum.Material.Neon, root
+    -- Host/player characters belong outside the racing lanes and above the old
+    -- island ceiling. The previous spawn at (0,35,22) was underneath Skybridge.
+    part("Spectator deck", Vector3.new(22, 2, 26), CFrame.new(48, 82, 58), colors.stone, Enum.Material.Slate)
+    for _, x in ipairs({ 37, 59 }) do
+        part("Spectator rail", Vector3.new(0.5, 2, 26), CFrame.new(x, 84, 58), colors.gold, Enum.Material.Neon)
+    end
+    for _, z in ipairs({ 45, 71 }) do
+        part("Spectator rail", Vector3.new(22, 2, 0.5), CFrame.new(48, 84, z), colors.gold, Enum.Material.Neon)
+    end
+    arrival = Instance.new("SpawnLocation")
+    arrival.Name, arrival.Size, arrival.CFrame = "Arrival", Vector3.new(7, 0.3, 7), CFrame.new(48, 83.2, 58)
+    arrival.Anchored, arrival.Neutral, arrival.Duration = true, true, 0
+    arrival.Color, arrival.Material, arrival.Parent = colors.gold, Enum.Material.Neon, root
     rift = ball("Storm rift", Vector3.new(0, 90, -50), 28, colors.violet, 0.88)
     shield = ball("Starlight ward", Vector3.new(0, 35, 0), 110, colors.mint, 1)
     constellation = Instance.new("Folder")
@@ -484,6 +494,20 @@ function World.build(config)
     for i = 1, 36 do
         table.insert(scenery.particles, ball("Celebration mote", Vector3.new(0, -50, 0), 0.55, colors.gold, 1))
     end
+end
+
+function World.preparePlayer(player)
+    player.RespawnLocation = arrival
+    local function place(character)
+        local main = character:WaitForChild("HumanoidRootPart", 10)
+        if not main or not character.Parent then return end
+        -- Also rescue the first character, which can spawn before World.build.
+        -- This moves only the actual player character, never a racing NPC.
+        character:PivotTo(CFrame.lookAt(Vector3.new(48, 87, 58), Vector3.new(0, 72, 0)))
+        main.AssemblyLinearVelocity, main.AssemblyAngularVelocity = Vector3.new(), Vector3.new()
+    end
+    player.CharacterAdded:Connect(function(character) task.spawn(function() place(character) end) end)
+    if player.Character then task.spawn(function() place(player.Character) end) end
 end
 
 function World.crewPosition(slot)

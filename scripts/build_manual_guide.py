@@ -10,11 +10,15 @@ intro = '''# Riftbound Live: Skybridge Sprint complete raw scripts and manual re
 Use the Script Editor and Explorer. Do not paste this document or any script into
 the Command Bar. There is no generated installer or serialized source wrapper.
 
-**Stream View diagnostic update (not a confirmed visual fix):** If physical Skybridge Sprint already runs,
-replace ONLY the entire **Realm.client.lua** source in the existing **Realm
-LocalScript under StarterPlayer → StarterPlayerScripts**. Keep the other four
-scripts and your Config settings. Follow `docs/CAMERA_FIX.md` for exact replacement,
-diagnostic log interpretation and the remaining Studio visual/streaming checks.
+**Cinematic/restart update (Studio confirmation required):** If physical Skybridge
+Sprint already runs, replace these THREE complete sources: **World.lua** in the
+ServerScriptService World ModuleScript, **Realm.server.lua** in the normal
+ServerScriptService Realm Script, and **Realm.client.lua** in the Realm LocalScript
+under StarterPlayer → StarterPlayerScripts. Keep Config and RealmState unchanged.
+Follow `docs/CAMERA_FIX.md` for exact replacement and restart/visual checks.
+Stop Play before editing and save the place before starting the test.
+Edit the saved StarterPlayer → StarterPlayerScripts template, not the temporary
+Players → your name → PlayerScripts copy created during Play.
 
 For a fresh install or an upgrade from BEFORE physical Sprint, install all five
 complete sources below together; follow `docs/SPRINT_REPLACEMENT.md` for the

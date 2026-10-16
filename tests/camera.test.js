@@ -327,7 +327,8 @@ now=10
 camera.CFrame=CFrame.lookAt(Vector3.new(0,-100,0),Vector3.new(0,-100,1))
 renderStep(0.13)
 assert(logged("ray=Starlight ward at ") and logged("filteredRay=START platform at "))
-assert(logged("largeGeometryAtLens=Lens enclosure"))
+assert(logged("locally masking camera-enclosing geometry: Lens enclosure"))
+assert(blocker.LocalTransparencyModifier==1)
 local driftFound=false
 for _,line in ipairs(logs) do
     local drift=string.match(line,"preApplyPositionDrift=([%d%.]+)")
@@ -336,7 +337,9 @@ end
 assert(driftFound,"another controller's camera movement was not reported")
 assertFraming(390,844)
 ward.Parent=nil; now=20; renderStep(0.13)
-assert(logged("ward=absent riftLocalMask=true largeGeometryAtLens=Lens enclosure"),"other large geometry was only logged while the ward existed")
+assert(logged("ward=absent riftLocalMask=true largeGeometryAtLens=none"))
+canvas.CameraToggle.Activated:Fire()
+assert(blocker.LocalTransparencyModifier==0,"lens enclosure mask was not restored in Roam")
 `));
 
 test('ward hypothesis can be isolated by disabling only the local mask while retaining the direct camera', () => {
@@ -508,3 +511,160 @@ end
 assert(found,"inter-frame camera conflict was lost before diagnostics")
 assertFraming(390,844)
 `));
+
+test('spectator deck rescues existing player characters and handles later respawns outside the race lanes', () => runLua(presentationEngine + modules + `
+World.build(Config)
+player.CharacterAdded=signal()
+local function character(name)
+    local model=instance("Model",name,workspace)
+    local main=instance("Part","HumanoidRootPart",model)
+    model.PrimaryPart=main
+    main.CFrame=CFrame.new(0,35,22)
+    main.AssemblyLinearVelocity=Vector3.new(2,-100,3)
+    return model
+end
+player.Character=character("Host")
+World.preparePlayer(player)
+assert(player.RespawnLocation==workspace.RiftboundRealm.Arrival)
+assert(player.RespawnLocation.Position.X>26 and player.RespawnLocation.Position.Y>83)
+spawnedJobs[#spawnedJobs]()
+assert((player.Character:GetPivot().Position-Vector3.new(48,87,58)).Magnitude<0.0001)
+assert(player.Character.PrimaryPart.AssemblyLinearVelocity.Magnitude==0)
+local nextCharacter=character("RespawnedHost")
+player.CharacterAdded:Fire(nextCharacter)
+spawnedJobs[#spawnedJobs]()
+assert((nextCharacter:GetPivot().Position-Vector3.new(48,87,58)).Magnitude<0.0001)
+local deck=workspace.RiftboundRealm["Spectator deck"]
+assert(deck.Position.X-deck.Size.X/2>26,"spectator platform obstructs the physical race")
+`));
+
+test('Stream effect isolation includes late and camera effects and restores exact Roam states', () => runLua(clientScene + `
+local atmosphere=instance("Atmosphere","CustomFog",lighting)
+local blur=instance("BlurEffect","Blur",lighting)
+local disabled=instance("ColorCorrectionEffect","AlreadyOff",camera); disabled.Enabled=false
+now=1; renderStep(0.13)
+assert(atmosphere.Parent==nil and blur.Enabled==false and disabled.Enabled==false)
+assert(lighting.FogStart==10000 and lighting.FogEnd==100000)
+canvas.CameraToggle.Activated:Fire()
+assert(atmosphere.Parent==lighting and blur.Enabled==true and disabled.Enabled==false)
+assert(lighting.FogStart==1000 and lighting.FogEnd==5000)
+canvas.CameraToggle.Activated:Fire()
+assert(atmosphere.Parent==nil and blur.Enabled==false)
+local late=instance("DepthOfFieldEffect","LateDepth",camera)
+now=2; renderStep(0.13)
+assert(late.Enabled==false)
+playerGui.RiftboundHUD.Enabled=false; renderStep(0.13)
+assert(atmosphere.Parent==lighting and blur.Enabled==true and late.Enabled==true and disabled.Enabled==false)
+assert(not atmosphere.Destroyed,"Atmosphere was permanently removed")
+`));
+
+test('Roam camera starts outside the safe deck with the actual character as subject', () => runLua(clientScene + `
+local character=instance("Model","Host",workspace)
+local main=instance("Part","HumanoidRootPart",character); main.CFrame=CFrame.new(48,87,58)
+local humanoid=instance("Humanoid","Humanoid",character)
+player.Character=character
+canvas.CameraToggle.Activated:Fire()
+assert(camera.CameraType==Enum.CameraType.Custom and camera.CameraSubject==humanoid)
+assert((camera.Focus.Position-Vector3.new(48,89,58)).Magnitude<0.0001)
+assert((camera.CFrame.Position-Vector3.new(70,105,82)).Magnitude<0.0001)
+canvas.CameraToggle.Activated:Fire(); renderStep(0.13)
+assert(camera.CameraType==Enum.CameraType.Scriptable)
+`));
+
+test('Stream masks enclosing geometry outside the generated realm and restores it without touching physics', () => runLua(clientScene + `
+publish(courseBox)
+-- Terrain inherits BasePart but does not support ordinary part opacity masking.
+local terrain=instance("Terrain","Terrain",workspace)
+local object=instance("Part","UserSceneryOutsideRealm",workspace)
+object.Size=Vector3.new(50,50,50); object.CFrame=CFrame.new(camera.CFrame.Position)
+object.Transparency,object.LocalTransparencyModifier,object.CanCollide=0,0.25,true
+local rig=instance("Model","ProtectedRacer",workspace)
+instance("Humanoid","Humanoid",rig)
+local body=instance("Part","LargeCostume",rig)
+body.Size=Vector3.new(50,50,50); body.CFrame=CFrame.new(camera.CFrame.Position)
+body.Transparency,body.LocalTransparencyModifier=0,0.1
+now=1; renderStep(0.13)
+assert(object.LocalTransparencyModifier==1)
+assert(terrain.LocalTransparencyModifier==nil,"Terrain was treated as an ordinary maskable part")
+assert(body.LocalTransparencyModifier==0.1,"camera masking hid a Humanoid model")
+assert(object.Transparency==0 and object.CanCollide==true)
+assert(logged("locally masking camera-enclosing geometry: UserSceneryOutsideRealm"))
+canvas.CameraToggle.Activated:Fire()
+assert(object.LocalTransparencyModifier==0.25)
+canvas.CameraToggle.Activated:Fire(); now=2; renderStep(0.13)
+assert(object.LocalTransparencyModifier==1)
+object.CFrame=CFrame.new(1000,1000,1000); now=3; renderStep(0.13)
+assert(object.LocalTransparencyModifier==0.25)
+`));
+
+test('automatic cinematic shots follow observed racers, frame actual podium winners and return to the overview', () => runLua(clientScene + `
+local models={}
+for i=1,5 do
+    local name="Racer_"..i
+    local model=World.offlineAvatar(name); World.arrive(model,i,name)
+    model:PivotTo(CFrame.new((i-3)*6,68,50))
+    models[i]=model
+end
+state:advance(12); state:advance(20)
+now=20; publish(courseBox)
+local overview=camera.CFrame.Position
+assertFraming(390,844)
+now=23; publish(courseBox)
+assert(logged("shot=racing pack") and (camera.CFrame.Position-overview).Magnitude>50)
+assert(logged("revision=cinematic-v5") and logged("presentation=cinematic-v5"))
+local function racerFramed(model)
+    local point,visible=camera:WorldToViewportPoint(model.PrimaryPart.Position)
+    local s,ox,oy=viewportLayout(camera.ViewportSize.X,camera.ViewportSize.Y)
+    local area=screenRect(Layout.arena,s,ox,oy)
+    assert(visible and point.X>area.x and point.X<area.x+area.w and point.Y>area.y and point.Y<area.y+area.h,"racer not in clear frame")
+end
+for _,model in ipairs(models) do racerFramed(model) end
+now=26; publish(courseBox)
+assert(logged("shot=racer close-up"))
+local before=camera.CFrame.Position
+models[1]:PivotTo(CFrame.new(-12,68,30))
+now=27; renderStep(0.2)
+assert((camera.CFrame.Position-before).Magnitude>1,"close-up did not follow physical root movement")
+racerFramed(models[1])
+for i=1,3 do for cp=1,12 do assert(state:recordCheckpoint("Racer_"..i,cp,20+cp*(0.5+i*0.1),state.round)) end end
+state:advance(100)
+local winners=state:snapshot(100).winners
+assert(#winners==3)
+for rank,row in ipairs(winners) do
+    workspace.RiftboundRealm["Traveler_"..row.username]:PivotTo(CFrame.new(({0,-9,9})[rank],72,-70))
+end
+now=100; publish(courseBox)
+assert(logged("shot=podium celebration"))
+for _,row in ipairs(winners) do racerFramed(workspace.RiftboundRealm["Traveler_"..row.username]) end
+now=105; publish(courseBox)
+assert(logged("shot=winner close-up"))
+racerFramed(workspace.RiftboundRealm["Traveler_"..winners[1].username])
+local cash=state:snapshot(now).leaderboard[1].money
+renderStep(0.13)
+assert(state:snapshot(now).leaderboard[1].money==cash,"camera awarded money")
+canvas.CameraToggle.Activated:Fire(); assert(camera.CameraType==Enum.CameraType.Custom)
+canvas.CameraToggle.Activated:Fire(); renderStep(0.13)
+assert(camera.CameraType==Enum.CameraType.Scriptable)
+state:advance(110); now=110; publish(courseBox)
+assert((camera.CFrame.Position-overview).Magnitude<0.001,"next gathering did not restore the safe overview")
+`));
+
+for (const [w,h] of [[320,568],[390,844],[1080,1920],[1920,1080]]) {
+  test(`cinematic portrait fitting encloses racer bodies and safely rejects invalid points at ${w}x${h}`, () => runLua(presentationEngine + mathSource + `
+setViewport(${w},${h})
+local points={Vector3.new(-12,68,40),Vector3.new(12,68,25)}
+local cf,focus,d,fov=cinematicCamera(${w},${h},points,35,40)
+assert(cf and d>=65 and d<=220)
+camera.CFrame,camera.Focus,camera.FieldOfView=cf,CFrame.new(focus),fov
+local s,ox,oy=viewportLayout(${w},${h}); local area=screenRect(Layout.arena,s,ox,oy)
+for _,p in ipairs(points) do
+    for _,x in ipairs({-5,5}) do for _,y in ipairs({-5,12}) do for _,z in ipairs({-5,5}) do
+        local point,visible=camera:WorldToViewportPoint(p+Vector3.new(x,y,z))
+        assert(visible and point.X>=area.x and point.X<=area.x+area.w and point.Y>=area.y and point.Y<=area.y+area.h)
+    end end end
+end
+assert(not cinematicCamera(0,0,points,35,40))
+assert(not cinematicCamera(${w},${h},{Vector3.new(0/0,68,0)},35,40))
+assert(not cinematicCamera(${w},${h},{Vector3.new(0,68,-1000),Vector3.new(0,68,1000)},35,40))
+`));
+}

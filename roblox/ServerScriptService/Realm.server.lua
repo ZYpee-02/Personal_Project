@@ -230,6 +230,7 @@ local function initialize()
 
     local function playerAdded(player)
         if not running then return end
+        if World.preparePlayer then World.preparePlayer(player) end
         player:SetAttribute("RiftboundHost", host(player))
         player:SetAttribute("RiftboundStreamCamera", Config.StreamCameraDefault)
         if Config.AutoJoinPlayers then

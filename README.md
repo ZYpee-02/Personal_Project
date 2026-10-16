@@ -5,13 +5,13 @@ verified checkpoints/finish times, fictional earnings, leaderboards, cosmetic gi
 and a portrait spectator camera. All state stays in memory. DataStoreService,
 custom HTTP and TikTok networking are disabled.
 
-**Already running physical Sprint? Replace only Realm.client.lua** using
-[the fixed spectator camera guide](docs/CAMERA_FIX.md). Keep your working four
-server files and Config settings. The latest client adds an opt-in RENDER CHECK;
-the reported Stream View disappearance still needs Studio diagnosis. For a fresh install or an upgrade from before
-physical Sprint, install all five using [the Sprint guide](docs/SPRINT_REPLACEMENT.md).
-`MANUAL_STUDIO_SETUP.md` contains all five complete raw sources. No Command Bar
-installer is used.
+**Already running physical Sprint? Replace World.lua, Realm.server.lua and
+Realm.client.lua** using [the camera/restart guide](docs/CAMERA_FIX.md). Keep Config
+and RealmState unchanged. The new client adds racing/podium shots and reversible
+rendering safeguards; the reported gray screen still requires Studio confirmation.
+For a fresh install or an upgrade from before physical Sprint, install all five
+using [the Sprint guide](docs/SPRINT_REPLACEMENT.md). `MANUAL_STUDIO_SETUP.md` contains
+all five complete raw sources. No Command Bar installer is used.
 
 Five Demo_ competitors seed in Studio. Fallback R6 rigs spawn immediately. Optional
 Roblox appearance loading is enabled by default; set `LoadAvatarAppearances=false`
@@ -98,28 +98,31 @@ currency is fictional game money, not Robux.
 
 The portrait edge HUD retains separate Top Earners/round panels and a lower result
 dock. Sprint rows show actual seconds or checkpoints/DNF. Name/earnings labels are
-bounded and culled in screen space. A fixed diagonal view fits the whole course,
-jumper envelope and podium into the clear center, including landscape center crops.
-The v3 Stream View uses a higher overview along the course: aim (0,68,45), yaw 0,
-elevation 55 degrees, vertical FOV 55. It directly constructs lookAt with no local
-translation. Three display regions cover actual geometry, jumping racers and the
-podium instead of forcing empty low corners beneath the start into frame. The
-projected route occupies about twice its previous height at 9:16. Distance remains
-bounded at 170–850 studs; extreme narrow windows need more distance than normal
-phone views. The HUD layout and leaderboard logic are unchanged.
+bounded and culled in screen space. The director alternates the full-course
+overview, actual racing-pack shots and a leader close-up every three seconds. It uses
+observed avatar roots; results cut to arrived podium winners and a winner close-up.
+Close views fit avatar/jump envelopes into the clear HUD rectangle at 65–220 studs;
+missing/invalid targets or an impossible fit use the bounded overview. Shot changes
+cut directly; camera tracking between cuts is smoothed. Set STREAM_CINEMATIC=false
+for the original fixed overview.
 
-Stream View applies local daylight (14:00, brightness 3, exposure +0.25), softens
-outdoor darkness and disables local shadows. It restores prior light properties
-when entering Roam. Animated ambient gift colors remain server controlled. Only
-the large ward and Storm rift spheres are locally hidden: the latter geometrically
-crosses the sightline to the finish gate. Roam restores both prior local modifiers.
-Auras, particles, ribbons, crowns and avatars remain intact.
+Stream View applies a reversible local daylight/fog profile and temporarily removes
+Atmospheres and disables PostEffects, including Bloom, from Lighting/current Camera.
+It scans for late effects and restores exact prior settings in Roam. Ambient gift
+colors, avatar auras, ribbons, crowns and particle geometry remain active. The ward
+and rift shells remain locally masked. Other scenery enclosing the lens is locally
+masked and logged, including geometry outside RiftboundRealm; the racing course
+and Humanoid models are protected. None of these masks changes physics.
 
-Diagnostics now probe all six key anchors, with actual coordinates and full
-obstructing-instance paths, alongside CFrame/Focus/opacity and lens enclosures.
+Player characters now spawn on a separate raised spectator deck outside the race
+lanes. Server preparation rescues the already-spawned first character and handles
+respawns. Roam restores the Humanoid camera subject and begins above/outside the deck.
+
+Diagnostics identify **cinematic-v5**, the selected shot, effect-isolation counts,
+actual CFrame/Focus/rendered frame, opacity, enclosing objects and anchor sightlines.
 A count of 155 opaque parts or six projected anchors is not proof of visibility.
-See [the exact client replacement and Studio checks](docs/CAMERA_FIX.md).
-This remains a testable correction, not a confirmed Studio visual result.
+See [exact replacement and Studio checks](docs/CAMERA_FIX.md).
+The gray-screen cause is not claimed established or resolved by cloud checks.
 
 The realm uses ModelStreamingMode.Persistent, but that policy alone does not prove
 the client has its geometry. When engine streaming is enabled and course parts are

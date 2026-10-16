@@ -68,6 +68,8 @@ local CAMERA_DIAGNOSTICS = true -- Temporary: set false after the Studio camera 
 local STREAM_HIDE_WARD = true -- Set false to test the closer camera without hiding the ward.
 local STREAM_HIDE_RIFT = true -- The large sphere crosses the sightline to the finish gate.
 local STREAM_DAYLIGHT = true -- Local presentation only; Roam restores the previous lighting.
+local STREAM_CLEAR_EFFECTS = true -- Reversible local Atmosphere/PostEffect isolation on EVERY Play.
+local STREAM_CINEMATIC = true -- False retains the original fixed full-course overview.
 local Lighting = game:GetService("Lighting")
 
 -- BEGIN PRESENTATION MATH (pure geometry, also exercised by automated checks)
@@ -214,6 +216,55 @@ local function containsPartBounds(object, point)
     end
     return math.abs(p.X) <= half.X and math.abs(p.Y) <= half.Y and math.abs(p.Z) <= half.Z
 end
+-- Fit observed avatar positions into the existing clear portrait rectangle.
+-- This is presentation only: no race progress, winner or avatar motion is generated.
+local function cinematicCamera(width, height, positions, yawDegrees, elevationDegrees)
+    if not usableViewport(width, height) or #positions == 0 then return nil end
+    local lo, hi = positions[1], positions[1]
+    for _, p in ipairs(positions) do
+        if not finite(p.X) or not finite(p.Y) or not finite(p.Z) then return nil end
+        lo = Vector3.new(math.min(lo.X, p.X), math.min(lo.Y, p.Y), math.min(lo.Z, p.Z))
+        hi = Vector3.new(math.max(hi.X, p.X), math.max(hi.Y, p.Y), math.max(hi.Z, p.Z))
+    end
+    local center = (lo + hi) * 0.5
+    local yaw, elevation = math.rad(yawDegrees), math.rad(elevationDegrees)
+    local sn, c, up, back = math.sin(yaw), math.cos(yaw), math.sin(elevation), math.cos(elevation)
+    local fov, tanV = 55, math.tan(math.rad(55) / 2)
+    local scale, ox, oy = viewportLayout(width, height)
+    local area = screenRect(Layout.arena, scale, ox, oy)
+    local shiftRatio = (0.5 - (area.y + area.h / 2) / height) * 2 * tanV
+    local outward = Vector3.new(sn * back, up, c * back)
+    local screenUp = Vector3.new(-sn * up, back, -c * up)
+    local function pose(distance)
+        local focus = center - screenUp * (shiftRatio * distance)
+        return CFrame.lookAt(focus + outward * distance, focus), focus
+    end
+    local function fit(distance)
+        local cf = pose(distance)
+        -- Margin includes giant avatars, head labels, jump and celebration motion.
+        for _, p in ipairs(positions) do
+            for _, x in ipairs({ -5, 5 }) do for _, y in ipairs({ -5, 12 }) do for _, z in ipairs({ -5, 5 }) do
+                local v = cf:PointToObjectSpace(p + Vector3.new(x, y, z))
+                local depth = -v.Z
+                if depth <= 1 then return false end
+                local px = width / 2 + v.X * height / (2 * tanV * depth)
+                local py = height / 2 - v.Y * height / (2 * tanV * depth)
+                if px < area.x + 10 * scale or px > area.x + area.w - 10 * scale
+                    or py < area.y + 10 * scale or py > area.y + area.h - 10 * scale then return false end
+            end end end
+        end
+        return true
+    end
+    local near, far = 65, 220
+    if not fit(far) then return nil end -- Use the independently fitted overview.
+    for _ = 1, 18 do
+        local middle = (near + far) / 2
+        if fit(middle) then far = middle else near = middle end
+    end
+    local cf, focus = pose(far)
+    if cf.Position.Y < 94 or cf.Position.Y > 500 or math.abs(cf.Position.X) > 300 or math.abs(cf.Position.Z) > 400 then return nil end
+    return cf, focus, far, fov
+end
 -- END PRESENTATION MATH
 
 local gui = Instance.new("ScreenGui")
@@ -268,6 +319,9 @@ local streamCamera = player:GetAttribute("RiftboundStreamCamera") ~= false
 local cameraDefaultFov = 70
 local cameraDefaultFovMode = Enum.FieldOfViewMode.Vertical
 local cameraTarget, cameraFocus, activeBounds
+local overviewTarget, overviewFocus, overviewDistance, overviewFov
+local directorFrame, directorFocus, directorKey, directorSubject
+local directorShot = "overview"
 local boundsReason, cameraDistance, cameraFitted = "waiting for snapshot", 0, false
 local cameraFov = 55
 local hiddenWard, originalWardTransparency = nil, 0
@@ -276,10 +330,14 @@ local cameraPositionDrift, cameraAimDrift = 0, 0
 local maximumPositionDrift, maximumAimDrift = 0, 0
 local renderCheckEnabled, renderCheckFolder, nearProbe, farProbe = false, nil, nil, nil
 local savedStreamLighting
+local suspendedEffects = {}
+local effectRefreshAt = 0
+local lensMasks, nextLensScan = {}, 0
 local streamLighting = {
     ClockTime = 14, Brightness = 3, ExposureCompensation = 0.25,
     EnvironmentDiffuseScale = 1, EnvironmentSpecularScale = 0.5,
     OutdoorAmbient = Color3.fromRGB(180, 195, 215), GlobalShadows = false,
+    FogStart = 10000, FogEnd = 100000,
 }
 local cameraWidth, cameraHeight = 0, 0
 local nextCameraDiagnostic = 0
@@ -423,6 +481,37 @@ local function updateStreamLighting()
         savedStreamLighting = nil
     end
 end
+local function updateStreamEffects(now)
+    if not (STREAM_CLEAR_EFFECTS and streamCamera and gui.Enabled) then
+        for object, record in pairs(suspendedEffects) do
+            -- Effects can be removed by another script while this view is active.
+            pcall(function()
+                if record.atmosphere then
+                    if object.Parent == nil then object.Parent = record.parent end
+                elseif object.Parent then object.Enabled = record.enabled end
+            end)
+        end
+        suspendedEffects, effectRefreshAt = {}, 0
+        return
+    end
+    if now < effectRefreshAt then return end
+    effectRefreshAt = now + 0.5
+    for _, container in ipairs({ Lighting, workspace.CurrentCamera }) do
+        if container then
+            for _, object in ipairs(container:GetDescendants()) do
+                if not suspendedEffects[object] then
+                    if object:IsA("Atmosphere") then
+                        suspendedEffects[object] = { atmosphere = true, parent = object.Parent }
+                        object.Parent = nil -- Keep the Instance; restore it in Roam.
+                    elseif object:IsA("PostEffect") then
+                        suspendedEffects[object] = { enabled = object.Enabled }
+                        object.Enabled = false
+                    end
+                elseif object:IsA("PostEffect") then object.Enabled = false end
+            end
+        end
+    end
+end
 local function updateStreamScenery()
     local realm = workspace:FindFirstChild("RiftboundRealm")
     local ward = realm and realm:FindFirstChild("Starlight ward")
@@ -454,7 +543,113 @@ local function streamRayExclusions()
     local result = {}
     if hiddenWard then result[#result + 1] = hiddenWard end
     if hiddenRift then result[#result + 1] = hiddenRift end
+    for object in pairs(lensMasks) do result[#result + 1] = object end
     return result
+end
+local function updateLensMasks(now)
+    local active = streamCamera and gui.Enabled and cameraTarget ~= nil
+    if active and now < nextLensScan then return end
+    nextLensScan = now + 0.25
+    local enclosing = {}
+    if active then
+        local realm = workspace:FindFirstChild("RiftboundRealm")
+        local course = realm and realm:FindFirstChild("SkybridgeSprint")
+        for _, object in ipairs(workspace:GetDescendants()) do
+            if object:IsA("BasePart") and not object:IsA("Terrain") and object.Size.Magnitude >= 20 and (object.Transparency or 0) < 0.95
+                and containsPartBounds(object, cameraTarget.Position) then
+                local ancestor, protected = object, false
+                while ancestor do
+                    if ancestor == course or ancestor == player.Character or ancestor:IsA("Model") and ancestor:FindFirstChildOfClass("Humanoid") then protected = true; break end
+                    ancestor = ancestor.Parent
+                end
+                if not protected then enclosing[object] = true end
+            end
+        end
+    end
+    for object, original in pairs(lensMasks) do
+        if not enclosing[object] then object.LocalTransparencyModifier = original; lensMasks[object] = nil end
+    end
+    for object in pairs(enclosing) do
+        if lensMasks[object] == nil then
+            lensMasks[object] = object.LocalTransparencyModifier or 0
+            if CAMERA_DIAGNOSTICS then
+                local ok, path = pcall(function() return object:GetFullName() end)
+                print("[Riftbound render] locally masking camera-enclosing geometry: " .. (ok and path or object.Name))
+            end
+        end
+        object.LocalTransparencyModifier = 1
+    end
+end
+local function updateDirector(now, dt)
+    local desired, focus, distance, fov = overviewTarget, overviewFocus, overviewDistance, overviewFov
+    local key, shot = "overview", "overview"
+    local state = latestState
+    if STREAM_CINEMATIC and state and state.physicalSprint then
+        local realm = workspace:FindFirstChild("RiftboundRealm")
+        local function position(username)
+            local model = realm and realm:FindFirstChild("Traveler_" .. username)
+            local main = model and (model.PrimaryPart or model:FindFirstChild("HumanoidRootPart"))
+            local p = main and main.Position
+            if p and finite(p.X) and finite(p.Y) and finite(p.Z)
+                and math.abs(p.X) <= 27 and p.Y >= 54 and p.Y <= 110 and p.Z >= -85 and p.Z <= 80 then return p end
+        end
+        local age = math.max(0, (state.now or 0) + now - receivedAt - (state.activityStarted or 0))
+        local points, yaw, elevation = {}, 0, 40
+        if state.phase == "storm" then
+            local beat = math.floor(age / 3)
+            key = "race/" .. tostring(state.round) .. "/" .. beat
+            if beat % 3 == 1 then
+                shot, yaw = "racing pack", -20
+                for _, member in ipairs(state.members) do
+                    if member.raceStatus == "racing" then
+                        local p = position(member.username)
+                        if p then points[#points + 1] = p end
+                    end
+                end
+            elseif beat % 3 == 2 then
+                shot, yaw, elevation = "racer close-up", 35, 35
+                if directorKey ~= key then
+                    directorSubject = nil
+                    for _, row in ipairs(state.activityLeaders) do
+                        if row.status == "racing" and position(row.username) then directorSubject = row.username; break end
+                    end
+                end
+                if directorSubject then
+                    local p = position(directorSubject)
+                    if p then points[1] = p end
+                end
+            end
+        elseif state.phase == "result" and #state.winners > 0 then
+            local remaining = math.max(0, state.seconds - (now - receivedAt))
+            -- First show all podium winners; then alternate hero/group shots.
+            local hero = remaining <= 6 and remaining > 3
+            key, shot, yaw, elevation = "podium/" .. tostring(state.round) .. (hero and "/hero" or "/group"), hero and "winner close-up" or "podium celebration", 175, 35
+            for i, row in ipairs(state.winners) do
+                if not hero or i == 1 then
+                    local p = position(row.username)
+                    -- Wait for winners to actually arrive; do not aim at empty podiums.
+                    if p and p.Z < -52 then points[#points + 1] = p end
+                end
+            end
+        end
+        if #points > 0 then
+            local cf, aim, d, angle = cinematicCamera(cameraWidth, cameraHeight, points, yaw, elevation)
+            if cf then desired, focus, distance, fov = cf, aim, d, angle else shot = "overview / fit fallback" end
+        elseif shot ~= "overview" then shot = "overview / awaiting avatars" end
+    end
+    if not desired or not focus then return end
+    if string.sub(shot, 1, 8) == "overview" or directorKey ~= key or not directorFrame or shot ~= directorShot then
+        directorFrame, directorFocus = desired, focus -- Safe cut; never fly through the arena.
+        nextLensScan, nextCameraDiagnostic = 0, 0
+    else
+        local alpha = 1 - math.exp(-math.max(0, math.min(dt, 0.25)) * 5)
+        directorFrame, directorFocus = directorFrame:Lerp(desired, alpha), directorFocus:Lerp(focus, alpha)
+    end
+    directorKey, directorShot = key, shot
+    cameraTarget = directorFrame
+    -- Keep Focus exactly on the optical axis, even during smoothing.
+    cameraDistance, cameraFov = distance, fov
+    cameraFocus = cameraTarget.Position + cameraTarget.LookVector * distance
 end
 local function applyCamera(camera)
     if not cameraTarget or not cameraFocus then return end
@@ -471,9 +666,12 @@ local function setCamera(enabled)
         maximumPositionDrift, maximumAimDrift = 0, 0
     end
     streamCamera = enabled
+    if not enabled then directorFrame, directorFocus, directorKey = nil, nil, nil end
     updateRenderCheck()
     updateStreamScenery()
     updateStreamLighting()
+    updateStreamEffects(os.clock())
+    updateLensMasks(os.clock())
     if cameraButton then cameraButton.Text = enabled and "ROAM VIEW" or "STREAM VIEW" end
     local camera = workspace.CurrentCamera
     if camera and not enabled then
@@ -481,6 +679,11 @@ local function setCamera(enabled)
         camera.CameraType, camera.FieldOfView = Enum.CameraType.Custom, cameraDefaultFov
         local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
         if humanoid then camera.CameraSubject = humanoid end
+        local main = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if main then
+            local focus = main.Position + Vector3.new(0, 2, 0)
+            camera.CFrame, camera.Focus = CFrame.lookAt(focus + Vector3.new(22, 16, 24), focus), CFrame.new(focus)
+        end
     elseif camera and cameraTarget then
         -- Apply the fitted view immediately; never sweep through the scene at boot.
         applyCamera(camera)
@@ -647,6 +850,10 @@ resize = function()
     local camera = workspace.CurrentCamera
     if not camera then return end
     local width, height = camera.ViewportSize.X, camera.ViewportSize.Y
+    if width ~= cameraWidth or height ~= cameraHeight then
+        directorFrame, directorFocus, directorKey = nil, nil, nil
+        nextLensScan = 0
+    end
     cameraWidth, cameraHeight = width, height
     if usableViewport(width, height) then canvasScale.Scale = viewportLayout(width, height) end
     local physicalSprint = not latestState or latestState.physicalSprint ~= false
@@ -668,7 +875,8 @@ resize = function()
         reason, fitted = "unsafe position rejected; fixed fallback", false
     end
     if reason ~= boundsReason then nextCameraDiagnostic = 0 end
-    cameraTarget, cameraFocus, activeBounds = target, focus, bounds
+    overviewTarget, overviewFocus, overviewDistance, overviewFov = target, focus, distance, fov
+    cameraTarget, cameraFocus, activeBounds = directorFrame or target, directorFrame and cameraFocus or focus, bounds
     boundsReason, cameraDistance, cameraFitted = reason, distance, fitted
     cameraFov = fov
     if streamCamera and gui.Enabled then setCamera(true) end
@@ -725,10 +933,17 @@ local function cameraDiagnostics(now)
         end)
     end
     if not CAMERA_DIAGNOSTICS or not camera then return end
-    print(string.format("[Riftbound camera] presentation=course-overview-v3 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
+    print(string.format("[Riftbound camera] presentation=cinematic-v5 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
         tostring(STREAM_DAYLIGHT and streamCamera and gui.Enabled), Lighting.ClockTime, Lighting.Brightness, Lighting.ExposureCompensation))
-    print(string.format("[Riftbound render] revision=render-check-v4 probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
-        tostring(renderCheckEnabled), parts > 0 and minOpacity or 0, parts > 0 and sumOpacity / parts or 0, maxOpacity, maximumPositionDrift, maximumAimDrift))
+    print(string.format("[Riftbound render] revision=cinematic-v5 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
+        directorShot, tostring(STREAM_CLEAR_EFFECTS), tostring(renderCheckEnabled), parts > 0 and minOpacity or 0, parts > 0 and sumOpacity / parts or 0, maxOpacity, maximumPositionDrift, maximumAimDrift))
+    local atmosphereCount, effectCount, enclosureCount = 0, 0, 0
+    for _, record in pairs(suspendedEffects) do
+        if record.atmosphere then atmosphereCount = atmosphereCount + 1 else effectCount = effectCount + 1 end
+    end
+    for _ in pairs(lensMasks) do enclosureCount = enclosureCount + 1 end
+    print(string.format("[Riftbound render] suspendedAtmospheres=%d disabledPostEffects=%d maskedEnclosures=%d FogStart=%.1f FogEnd=%.1f",
+        atmosphereCount, effectCount, enclosureCount, Lighting.FogStart, Lighting.FogEnd))
     maximumPositionDrift, maximumAimDrift = 0, 0
     local renderOk, renderFrame = pcall(function() return camera:GetRenderCFrame() end)
     if renderOk then
@@ -825,15 +1040,19 @@ RunService:BindToRenderStep("RiftboundPortraitCamera", Enum.RenderPriority.Last.
     if latestState then timer.Text = tostring(math.max(0, math.ceil(latestState.seconds - (os.clock() - receivedAt)))) end
     updateStreamScenery()
     updateStreamLighting()
+    updateStreamEffects(os.clock())
     if streamCamera and gui.Enabled and workspace.CurrentCamera and cameraTarget then
         local camera = workspace.CurrentCamera
         if camera.ViewportSize.X ~= cameraWidth or camera.ViewportSize.Y ~= cameraHeight then resize() end
         cameraPositionDrift = (camera.CFrame.Position - cameraTarget.Position).Magnitude
         cameraAimDrift = 1 - camera.CFrame.LookVector:Dot(cameraTarget.LookVector)
         maximumPositionDrift, maximumAimDrift = math.max(maximumPositionDrift, cameraPositionDrift), math.max(maximumAimDrift, cameraAimDrift)
+        updateDirector(os.clock(), dt)
+        updateLensMasks(os.clock())
         applyCamera(camera)
         cameraDiagnostics(os.clock())
     end
+    if not streamCamera or not gui.Enabled then updateLensMasks(os.clock()) end
     updateRenderCheck()
     labelAccumulator = labelAccumulator + dt
     if labelAccumulator >= 0.12 then labelAccumulator = 0; updateLabels(os.clock()) end
