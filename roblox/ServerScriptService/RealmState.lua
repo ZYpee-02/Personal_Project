@@ -4,7 +4,7 @@ Realm.__index = Realm
 
 local activities = {
     { id = "starfall", name = "STARFALL SCRAMBLE", instruction = "Collect falling stars around the crystal ring.", goal = 0, teamPerMember = 20 },
-    { id = "sprint", name = "SKYBRIDGE SPRINT", instruction = "48 gates / 4 sections. Falls recover to the last verified pad.", goal = 48, teamPerMember = 10 },
+    { id = "sprint", name = "SKYBRIDGE SPRINT", instruction = "Shared skyway / 48 gates / 2 forks. Falls recover to the last verified gate.", goal = 48, teamPerMember = 10 },
     { id = "relay", name = "HEARTSEED RELAY", instruction = "Carry energy between the shrines and heartseed.", goal = 0, teamPerMember = 16 },
 }
 
@@ -128,9 +128,9 @@ function Realm:credit(member, amount)
     member.roundMoney = member.roundMoney + credited
 end
 
-function Realm:enterActivity(member, now, lane)
+function Realm:enterActivity(member, now, grid)
     member.activityEntered, member.enteredAt, member.lastRacedRound = true, now, self.round
-    member.raceLane = lane
+    member.gridSlot = grid
     member.pace = self.activity.id == "sprint" and 0 or pace(member.username, self.round, self.activity.id)
     member.raceStatus = self.activity.id == "sprint" and "racing" or "waiting"
     member.checkpointAt = now
@@ -162,12 +162,16 @@ end
 
 -- Only the server's physical controller calls these methods. Elapsed time alone
 -- NEVER advances Sprint or produces a finisher. Reject stale/skipped/replayed gates.
-function Realm:recordCheckpoint(username, checkpoint, at, round)
+function Realm:recordCheckpoint(username, checkpoint, at, round, route)
     local member = type(username) == "string" and self.crew[string.lower(username)]
     if self.phase ~= "storm" or self.activity.id ~= "sprint" or round ~= self.round or not member
         or member.raceStatus ~= "racing" or not member.activityEntered then return false end
     if type(at) ~= "number" or at ~= at or at < member.checkpointAt or at > self.deadline
         or type(checkpoint) ~= "number" or checkpoint ~= member.score + 1 or checkpoint > self.activity.goal then return false end
+    if route and route ~= "shared" and route ~= "main" and route ~= "shortcut" then return false end
+    if route and route ~= "shared" and not ((checkpoint>=11 and checkpoint<=18) or (checkpoint>=29 and checkpoint<=36)) then return false end
+    if route == "shared" and ((checkpoint>12 and checkpoint<18) or (checkpoint>30 and checkpoint<36)) then return false end
+    member.lastGateRoute = route or "shared"
     member.score, member.distance, member.checkpointAt = checkpoint, checkpoint, at
     self:credit(member, self.config.CoinsPerPoint or 2)
     if checkpoint == self.activity.goal then
@@ -314,6 +318,7 @@ function Realm:advance(now)
             self.crew[key].activityEntered = false
             self.crew[key].score, self.crew[key].distance, self.crew[key].finishedAt = 0, 0, 0
             self.crew[key].raceStatus, self.crew[key].placement, self.crew[key].recoveries = "waiting", 0, 0
+            self.crew[key].lastRecoveryGate, self.crew[key].lastRecoveryReason, self.crew[key].route = nil, nil, "shared"
         end
         self.requiredVotes = math.max(1, math.ceil(#self.crewOrder / 3))
         self.deadline = now + self.config.VotingSeconds
@@ -392,7 +397,8 @@ function Realm:snapshot(now)
             finished = member.finishedAt > 0, finishedAt = member.finishedAt,
             elapsed = member.finishedAt > 0 and member.finishedAt - member.enteredAt or 0,
             raceStatus = member.raceStatus, placement = member.placement,
-            entranceDone = member.entranceDone, recoveries = member.recoveries,
+            entranceDone = member.entranceDone, recoveries = member.recoveries, route = member.route or "shared",
+            lastRecoveryGate = member.lastRecoveryGate, lastRecoveryReason = member.lastRecoveryReason,
             section = math.min(4, math.floor(member.distance / 12) + 1),
         })
     end

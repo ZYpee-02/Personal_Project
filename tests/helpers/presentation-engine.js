@@ -20,7 +20,7 @@ function methods:FindFirstChildOfClass(class)
     for _,child in ipairs(self:GetChildren()) do if child:IsA(class) then return child end end
 end
 function methods:IsA(class)
-    return self.ClassName==class or (class=="BasePart" and (self.ClassName=="Part" or self.ClassName=="SpawnLocation" or self.ClassName=="Terrain"))
+    return self.ClassName==class or (class=="BasePart" and (self.ClassName=="WedgePart" or self.ClassName=="Part" or self.ClassName=="SpawnLocation" or self.ClassName=="Terrain"))
         or (class=="PostEffect" and ({BloomEffect=true,BlurEffect=true,DepthOfFieldEffect=true,ColorCorrectionEffect=true,SunRaysEffect=true})[self.ClassName]) or false
 end
 function methods:GetPropertyChangedSignal(name) return self:GetAttributeChangedSignal("property:"..name) end
@@ -66,7 +66,7 @@ Instance.new=function(class)
     if class=="BillboardGui" then node.StudsOffset, node.StudsOffsetWorldSpace=Vector3.new(),Vector3.new() end
     if class=="TextButton" then node.Activated=signal() end
     if class=="Humanoid" then node.Health=100; node.FloorMaterial=Enum.Material.Slate end
-    if class=="Part" or class=="SpawnLocation" then node.CFrame=CFrame.new(); node.Size=Vector3.new(4,1.2,2) end
+    if class=="WedgePart" or class=="Part" or class=="SpawnLocation" then node.CFrame=CFrame.new(); node.Size=Vector3.new(4,1.2,2) end
     return node
 end
 workspace=instance("Workspace","Workspace")
@@ -122,6 +122,10 @@ game={GetService=function(_,name)
     if name=="RunService" then return runtime end
     if name=="Lighting" then return lighting end
     if name=="TweenService" then return tweenService end
+    if name=="PhysicsService" then return {
+        IsCollisionGroupRegistered=function() return false end,
+        RegisterCollisionGroup=function() end, CollisionGroupSetCollidable=function() end,
+    } end
     error("Unexpected service "..name)
 end}
 local function setViewport(w,h)

@@ -12,7 +12,7 @@ FILES = [
 ]
 ALLOWED_SERVICES = {
     "RunService", "ServerScriptService", "StarterPlayer", "Players",
-    "ReplicatedStorage", "Lighting", "TweenService",
+    "ReplicatedStorage", "Lighting", "TweenService", "PhysicsService",
 }
 FORBIDDEN = re.compile(
     r"\b(?:DataStoreService|MemoryStoreService|HttpService|InsertService|AssetService|"

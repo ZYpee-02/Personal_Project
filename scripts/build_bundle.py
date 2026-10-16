@@ -14,6 +14,8 @@ with ZipFile(target, "w", ZIP_DEFLATED) as archive:
         ("StarterPlayerScripts/Realm.client.lua", "roblox/StarterPlayerScripts/Realm.client.lua"),
         ("MANUAL_STUDIO_SETUP.md", "MANUAL_STUDIO_SETUP.md"),
         ("README.md", "README.md"),
+        ("docs/SHARED_SKYWAY_REPLACEMENT.md", "docs/SHARED_SKYWAY_REPLACEMENT.md"),
+        ("docs/SHARED_SKYWAY_TEST_RESULTS.md", "docs/SHARED_SKYWAY_TEST_RESULTS.md"),
         ("docs/PLAYTEST.md", "docs/PLAYTEST.md"),
         ("docs/RACE_SHOW_REPLACEMENT.md", "docs/RACE_SHOW_REPLACEMENT.md"),
         ("docs/SPRINT_CONTACT_FIX.md", "docs/SPRINT_CONTACT_FIX.md"),

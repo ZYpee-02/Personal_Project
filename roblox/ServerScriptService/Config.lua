@@ -10,9 +10,9 @@ return {
     AutoActivities = true,
     AutoJoinPlayers = false, -- host is a spectator; JOIN tools still enqueue any username.
     SprintOnly = true, -- false restores Starfall/Sprint/Relay rotation. Sprint is always physical.
-    SprintCompetitors = 5,
+    SprintCompetitors = 16,
     SprintRaceSeconds = 120,
-    SprintWalkSpeed = 12, -- Winding route: about 107 seconds before waits/recovery.
+    SprintWalkSpeed = 12.5, -- Shared skyway: physical travel, not a finish timer.
     ResolveViewerUsernames = true, -- Verified JOIN uses native Roblox account lookup.
     EntranceSeconds = 4, -- Normal individual montage; bursts group three for 2.5s.
     SprintFinishBonus = 40,
@@ -27,11 +27,11 @@ return {
     VotingSeconds = 8,
     StormSeconds = 30, -- The automatic competition plays during this phase.
     ResultSeconds = 10,
-    MaxCrew = 18,
+    MaxCrew = 40,
     MaxQueuedArrivals = 30,
     OfflineDemoEnabled = true,
     DemoStudioOnly = true, -- Never imply the seeded crew are real LIVE viewers.
-    DemoNames = { "Demo_Astra", "Demo_Lumen", "Demo_Nova", "Demo_Fern", "Demo_Orion" },
+    DemoNames = { "Demo_Astra", "Demo_Lumen", "Demo_Nova", "Demo_Fern", "Demo_Orion", "Demo_Lyra", "Demo_Atlas", "Demo_Iris", "Demo_Rune", "Demo_Vega", "Demo_Echo", "Demo_Sage", "Demo_Kai", "Demo_Ember", "Demo_Jade", "Demo_Sol", "Demo_Cora", "Demo_Zen", "Demo_Milo", "Demo_Skye" },
     AutoSimulateGifts = true,
     DemoGiftSeconds = 18,
     SceneUpdatesPerSecond = 12, -- Bound server-side procedural animation replication.

@@ -32,9 +32,9 @@ end
 local function failed(label, issue)
     running = false
     remotes:SetAttribute("Ready", false)
-    remotes:SetAttribute("StartupState", "failed")
     remotes:SetAttribute("StartupStage", label)
     remotes:SetAttribute("StartupError", string.sub(tostring(issue), 1, 3500))
+    remotes:SetAttribute("StartupState", "failed")
     for _, connection in ipairs(connections) do connection:Disconnect() end
     warn("[Riftbound startup/runtime] " .. label .. "\n" .. tostring(issue))
 end
@@ -90,8 +90,8 @@ local function initialize()
         DemoNames = { "Demo_Astra", "Demo_Lumen", "Demo_Nova", "Demo_Fern", "Demo_Orion" },
         AutoSimulateGifts = true, DemoGiftSeconds = 18, StreamCameraDefault = true, HostUserIds = {},
         BaseMoneyPerSecond = 5, VoteMoneyPerSecond = 3, WinMoneyPerSecond = 2,
-        MaxMoneyPerSecond = 100, MaxBalance = 1000000000, MaxCrew = 18, MaxQueuedArrivals = 30,
-        PersistenceEnabled = false, AutoJoinPlayers = true, SprintOnly = true, SprintCompetitors = 5, SprintRaceSeconds = 120, SprintWalkSpeed = 12, ResolveViewerUsernames = true, EntranceSeconds = 4,
+        MaxMoneyPerSecond = 100, MaxBalance = 1000000000, MaxCrew = 40, MaxQueuedArrivals = 30,
+        PersistenceEnabled = false, AutoJoinPlayers = true, SprintOnly = true, SprintCompetitors = 16, SprintRaceSeconds = 120, SprintWalkSpeed = 12.5, ResolveViewerUsernames = true, EntranceSeconds = 4,
         SprintFinishBonus = 40, LoadAvatarAppearances = false, AppearanceTimeoutSeconds = 8,
         DemoAppearanceUserIds = { 1, 156, 261, 2, 3 },
     }
@@ -107,14 +107,14 @@ local function initialize()
     range("SprintWalkSpeed", 10, 14)
     range("EntranceSeconds", 3, 5)
     assert(workspace.StreamingEnabled ~= true, "For this playtest, Stop Play and set Workspace.StreamingEnabled=false in Properties.")
-    range("SprintCompetitors", 1, 5)
+    range("SprintCompetitors", 1, 20)
     assert(Config.SprintCompetitors == math.floor(Config.SprintCompetitors), "SprintCompetitors must be a whole number")
     range("SprintFinishBonus", 0, 1000000)
     range("AppearanceTimeoutSeconds", 1, 30)
     range("SceneUpdatesPerSecond", 4, 30)
     range("SnapshotSeconds", 0.25, 5)
     range("DemoGiftSeconds", 5, 3600)
-    range("MaxCrew", 1, 18)
+    range("MaxCrew", 1, 40)
     range("MaxQueuedArrivals", 1, 200)
     assert(Config.MaxCrew == math.floor(Config.MaxCrew) and Config.MaxQueuedArrivals == math.floor(Config.MaxQueuedArrivals), "Crew and queue limits must be whole numbers")
     for _, name in ipairs({ "BaseMoneyPerSecond", "VoteMoneyPerSecond", "WinMoneyPerSecond", "ActivityMoneyPerSecond", "RoundWinMoneyPerSecond", "CoinsPerPoint" }) do range(name, 0, 1000) end

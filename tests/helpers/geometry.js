@@ -32,6 +32,7 @@ end
 function cf:Lerp(b,t)
     return frame(self.Position:Lerp(b.Position,t),self.RightVector:Lerp(b.RightVector,t),self.UpVector:Lerp(b.UpVector,t),self.BackVector:Lerp(b.BackVector,t))
 end
+function CFrame.fromMatrix(p,r,u,b) return frame(p,r,u,b or r:Cross(u)) end
 function CFrame.lookAt(position,target)
     local back = position-target; back = back*(1/back.Magnitude)
     local right = Vector3.new(0,1,0):Cross(back); right = right*(1/right.Magnitude)

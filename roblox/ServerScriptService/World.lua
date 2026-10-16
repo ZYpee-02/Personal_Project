@@ -1,11 +1,12 @@
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local TweenService = game:GetService("TweenService")
+local PhysicsService = game:GetService("PhysicsService")
 local World = {}
 local root, core, gate, rift, shield, constellation, bloom, winds, scoreText
 local monuments = {}
 local avatars = {}
-local scenery = { clouds = {}, runes = {}, ribbons = {}, particles = {}, stars = {}, shrines = {}, sprintObstacles = {}, movingBridges = {}, sprintPads = {}, sprintHurdles = {}, waterfalls = {} }
+local scenery = { clouds = {}, runes = {}, ribbons = {}, particles = {}, stars = {}, shrines = {}, sprintObstacles = {}, sprintHurdles = {}, waterfalls = {} }
 local fantasyFolder
 local settings = {}
 local sceneState
@@ -85,38 +86,65 @@ local function tree(position, scale)
     end
 end
 
--- Winding route: 48 sequential gates; only Humanoid physics moves race roots.
+-- A single road, with two genuine fork/rejoin junctions. Z is monotonic:
+-- adjacent cells share their boundary vertices, never cross another track.
 local sectionNames = { "STARTING DASH", "MOVING BRIDGES", "HAZARD ZONE", "FINAL SPRINT" }
 local TRAIL_AMPLITUDE, TRAIL_STRIDE = 64, 24
-local LANE_PITCH = 16 -- World-X translation; enough clearance even at the tightest bend.
+local ROAD_HALF_WIDTH = 32
+local forks = { { first = 12, last = 18, safeSide = -1 }, { first = 30, last = 36, safeSide = 1 } }
+local function forkAt(cp)
+    for _, fork in ipairs(forks) do if cp >= fork.first and cp <= fork.last then return fork end end
+end
+local function roadSection(cp, route)
+    local center, half = math.sin(cp * math.pi / 12) * TRAIL_AMPLITUDE, ROAD_HALF_WIDTH
+    local fork = forkAt(cp)
+    if fork and route and route ~= "shared" then
+        local t = (cp - fork.first) / (fork.last - fork.first)
+        local wave = (t == 0 or t == 1) and 0 or math.sin(math.pi * t)
+        local side = route == "main" and fork.safeSide or -fork.safeSide
+        center = center + side * (16 + 16 * wave)
+        half = route == "shortcut" and (16 - 5 * wave) or 16
+    end
+    return center, half
+end
+-- Surface height (roots are +3): gentle climbs and real, shallow banking.
+local function roadPoint(cp, route, lateral)
+    local center = roadSection(cp, route)
+    local x = center + (lateral or 0)
+    local base = math.sin(cp * math.pi / 12) * TRAIL_AMPLITUDE
+    return Vector3.new(x, 68 + cp * .25 + math.sin(cp * math.pi / 12) * .06 * (x - base), 60 - cp * TRAIL_STRIDE)
+end
+function World.sprintPoint(grid, checkpoint)
+    if checkpoint <= 0 then
+        local index = math.max(0, math.min(19, grid - 1))
+        return Vector3.new((index % 5 - 2) * 8, 68, 60 + math.floor(index / 5) * 6)
+    end
+    return roadPoint(math.min(48, checkpoint), "shared", 0)
+end
+function World.routePoint(checkpoint, route, lateral) return roadPoint(checkpoint, route, lateral) end
+function World.roadSection(checkpoint, route) return roadSection(checkpoint, route) end
 function World.cameraBounds(state)
     if state.physicalSprint then
-        return { minX = -170, maxX = 170, minY = 54, maxY = 110, minZ = -1140, maxZ = 82, yaw = 60 }
+        return { minX = -170, maxX = 170, minY = 54, maxY = 110, minZ = -1140, maxZ = 102, yaw = 60 }
     end
 end
 function World.courseInfo()
     local length, headings = 0, {}
     for cp = 1, 48 do
-        local delta = World.sprintPoint(3, cp) - World.sprintPoint(3, cp - 1)
+        local delta = roadPoint(cp, "shared") - roadPoint(cp - 1, "shared")
         length = length + Vector3.new(delta.X, 0, delta.Z).Magnitude
-        headings[cp] = math.deg(math.atan(delta.X/delta.Z)) -- Z is strictly decreasing.
+        headings[cp] = math.deg(math.atan(delta.X / delta.Z))
     end
-    return { revision = "show-v9-skyblock", checkpoints = 48, length = length, stride = 24, lanePitch = LANE_PITCH,
-        sections = sectionNames, headings = headings, finishZ = -1092, gate = { x = -64, y = 80, z = 66 } }
-end
-function World.sprintPoint(lane, checkpoint)
-    local cp = math.max(0, math.min(48, checkpoint))
-    local rise = math.floor(cp / 12) * 3 + (cp < 48 and (cp % 4 >= 2 and 1 or 0) or 0)
-    return Vector3.new((lane - 3) * LANE_PITCH + math.sin(cp * math.pi / 12) * TRAIL_AMPLITUDE, 68 + rise, 60 - cp * TRAIL_STRIDE)
+    return { revision = "show-v10-shared-road", checkpoints = 48, length = length, stride = 24, roadWidth = 64,
+        maxRacers = 20, forks = forks, sections = sectionNames, headings = headings,
+        finishZ = -1092, gate = { x = -64, y = 80, z = 66 } }
 end
 local function routeDirection(cp)
-    local a, b = World.sprintPoint(3, math.max(0, cp - 1)), World.sprintPoint(3, math.min(48, cp + 1))
+    local a, b = roadPoint(math.max(0, cp - 1), "shared"), roadPoint(math.min(48, cp + 1), "shared")
     local delta = Vector3.new(b.X - a.X, 0, b.Z - a.Z)
     return delta * (1 / delta.Magnitude)
 end
-local function routeFrame(point, cp)
-    return CFrame.lookAt(point, point + routeDirection(cp))
-end
+local function routeFrame(point, cp) return CFrame.lookAt(point, point + routeDirection(cp)) end
 
 local function decoration(name, size, frame, color, material, transparency)
     local object = part(name, size, frame, color, material, fantasyFolder)
@@ -282,6 +310,7 @@ local function physical(record, enabled)
     for _, object in ipairs(model:GetDescendants()) do
         if object:IsA("BasePart") then
             object.Anchored, object.CanCollide = not enabled, enabled and object.Name == "RaceCollider"
+            object.CollisionGroup = "RiftboundRacers"
         elseif object:IsA("Motor6D") or object:IsA("Weld") or object:IsA("WeldConstraint") then
             object.Enabled = enabled
         end
@@ -321,280 +350,282 @@ function World.loadAppearance(username, userId)
     end)
 end
 
+-- Triangulated road quads use native WedgeParts, requiring no mesh assets.
+-- Each triangle is two right triangles with a one-stud extrusion BELOW the
+-- authored surface. Exact shared vertices remove the old rectangular overlaps.
+local function triangle(a, b, c, parent, cp, route, color, material)
+    local ab, ac, bc = b-a, c-a, c-b
+    if ab:Dot(ab) > ac:Dot(ac) and ab:Dot(ab) > bc:Dot(bc) then c,a=a,c
+    elseif ac:Dot(ac) > ab:Dot(ab) and ac:Dot(ac) > bc:Dot(bc) then a,b=b,a end
+    ab, ac, bc = b-a, c-a, c-b
+    local right = ac:Cross(ab); right = right * (1 / right.Magnitude)
+    local back = bc * (1 / bc.Magnitude)
+    local up = back:Cross(right)
+    local height = math.abs(ab:Dot(up))
+    local d = b + back * ab:Dot(back) * -1
+    for i, tip in ipairs({ b, c }) do
+        local length = math.abs((tip-a):Dot(back))
+        if length > .001 and height > .001 then
+            local sign = i == 1 and 1 or -1
+            local normal = right.Y > 0 and right or -right
+            local wedge = Instance.new("WedgePart")
+            wedge.Name, wedge.Size = "Road "..cp.." "..route.." triangle", Vector3.new(1, height, length)
+            wedge.CFrame = CFrame.fromMatrix((a+tip)*.5-normal*.5, right*sign, up, back*sign)
+            wedge.Anchored, wedge.CanCollide = true, true
+            wedge.TopSurface, wedge.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
+            wedge.Color, wedge.Material, wedge.Parent = color, material, parent
+            wedge:SetAttribute("Checkpoint", cp); wedge:SetAttribute("Route", route)
+            -- Exact collision-face vertices support independent offline geometry checks.
+            wedge:SetAttribute("SurfaceA", a); wedge:SetAttribute("SurfaceB", tip); wedge:SetAttribute("SurfaceC", d)
+        end
+    end
+end
+local function roadQuad(a, b, c, d, course, cp, route, color, material)
+    triangle(a,b,c,course,cp,route,color,material)
+    triangle(a,c,d,course,cp,route,color,material)
+end
+local function surface(cp, route, offset) return roadPoint(cp,route,offset)-Vector3.new(0,3,0) end
 local function buildSprint()
     local course = Instance.new("Model")
     course.Name, course.Parent = "SkybridgeSprint", root
-    course:SetAttribute("CourseRevision", "show-v9-skyblock")
-    -- A wide overlapping apron lets entrants establish real ground
-    -- contact before their first obstacle, rather than fall across a launch gap.
-    local start = part("START platform", Vector3.new(112, 2, 32), CFrame.new(0, 64, 62), Color3.fromRGB(117,132,103), Enum.Material.Grass, course)
-    for lane = 1, 5 do scenery.sprintPads[lane] = { [0] = start } end
-    label(start, "SKYBRIDGE / 120 SECOND CROSSING", Vector3.new(0, 9, 0), colors.gold, 350)
+    course:SetAttribute("CourseRevision", "show-v10-shared-road")
+    course:SetAttribute("SharedCheckpoints",48)
+    local start=part("START platform",Vector3.new(96,2,42),CFrame.new(0,64,81),Color3.fromRGB(117,132,103),Enum.Material.Grass,course)
+    label(start,"SHARED SKYWAY / 120 SECOND RACE",Vector3.new(0,9,0),colors.gold,350)
+    for row=0,3 do for col=0,4 do
+        local mark=part("Grid "..(row*5+col+1),Vector3.new(5,.05,3),CFrame.new((col-2)*8,65.03,60+row*6),colors.gold,Enum.Material.Neon,course)
+        mark.CanCollide=false
+    end end
     for _,x in ipairs({-37,0,37}) do
-        decoration("Starting island roots",Vector3.new(29,14,27),CFrame.new(x,55,62)*CFrame.Angles(.05,x*.02,.12),colors.rock,Enum.Material.Rock)
+        decoration("Starting island roots",Vector3.new(29,14,27),CFrame.new(x,55,81)*CFrame.Angles(.05,x*.02,.12),colors.rock,Enum.Material.Rock)
     end
-    for _,x in ipairs({-49,49}) do fantasyCrystal(Vector3.new(x,69,64),1.15,colors.mint) end
-    for cp = 1, 48 do
-        local section = math.min(4, math.floor((cp - 1) / 12) + 1)
-        local gap = section == 2 and 2.5 or 1.8
-        local a, b = World.sprintPoint(3, cp - 1), World.sprintPoint(3, cp)
-        local c = World.sprintPoint(3, math.min(48, cp + 1))
-        local incoming, outgoing = Vector3.new(b.X-a.X,0,b.Z-a.Z).Magnitude, Vector3.new(c.X-b.X,0,c.Z-b.Z).Magnitude
-        if cp == 48 then outgoing = incoming end
-        local span = (incoming + outgoing) / 2 - gap
-        local width = section == 2 and 5.8 or (cp % 6 == 0 and 9 or 6.8)
-        local palette = { colors.mint, Color3.fromRGB(125,191,243), Color3.fromRGB(239,184,126), colors.violet }
-        local stoneColors={Color3.fromRGB(126,137,121),Color3.fromRGB(139,108,75),Color3.fromRGB(115,121,134),Color3.fromRGB(186,179,159)}
-        for lane = 1, 5 do
-            local point = World.sprintPoint(lane, cp)
-            local thickness = section == 2 and 1 or (cp % 6 == 0 and 4 or 2.5)
-            local pad = part("Lane " .. lane .. " checkpoint " .. cp, Vector3.new(width, thickness, span),
-                routeFrame(point - Vector3.new(0, 3+thickness/2, 0), cp), stoneColors[section],
-                section==2 and Enum.Material.WoodPlanks or (section==4 and Enum.Material.Marble or Enum.Material.Slate), course)
-            scenery.sprintPads[lane][cp] = pad
-            pad:SetAttribute("Checkpoint", cp); pad:SetAttribute("Section", section)
-            pad:SetAttribute("Lane",lane)
-            pad:SetAttribute("ObstacleKind", section == 2 and "moving span" or (cp % 6 == 0 and "landing island" or "stepping stone"))
-            if section == 2 and cp % 2 == 0 then
-                scenery.movingBridges[#scenery.movingBridges + 1] = { part = pad, frame = pad.CFrame, phase = cp * 0.7 }
-            end
-            if section==2 then
-                for _,sign in ipairs({-1,1}) do
-                    local beam=decoration("Timber bridge girder",Vector3.new(.4,1,span),pad.CFrame*CFrame.new(sign*(width/2-.25),-.9,0),Color3.fromRGB(92,70,52),Enum.Material.Wood)
-                    if cp%2==0 then scenery.movingBridges[#scenery.movingBridges+1]={part=beam,frame=beam.CFrame,phase=cp*.7} end
+    for _,x in ipairs({-44,44}) do fantasyCrystal(Vector3.new(x,69,81),1.15,colors.mint) end
+    local stoneColors={Color3.fromRGB(126,137,121),Color3.fromRGB(139,108,75),Color3.fromRGB(115,121,134),Color3.fromRGB(186,179,159)}
+    for cp=1,48 do
+        local section=math.floor((cp-1)/12)+1
+        local fork=forkAt(cp-.5)
+        local routes=fork and {"main","shortcut"} or {"shared"}
+        for _,route in ipairs(routes) do
+            -- Only the risky shortcut has a gap. The broad main route is continuous.
+            local jump=route=="shortcut" and (cp==15 or cp==33)
+            local spans=jump and {{cp-1,cp-.55},{cp-.425,cp}} or {{cp-1,cp}}
+            for _,span in ipairs(spans) do
+                local lo,hi=span[1],span[2]
+                local _,w0=roadSection(lo,route); local _,w1=roadSection(hi,route)
+                roadQuad(surface(lo,route,-w0),surface(lo,route,w0),surface(hi,route,w1),surface(hi,route,-w1),
+                    course,cp,route,stoneColors[section],section==2 and Enum.Material.WoodPlanks or (section==4 and Enum.Material.Marble or Enum.Material.Slate))
+                -- Borders stay outside the driving surface; never block a junction.
+                for _,side in ipairs({-1,1}) do
+                    local a,b=surface(lo,route,side*(w0+1)),surface(hi,route,side*(w1+1))
+                    local beam=part("Skyway border",Vector3.new(.6,1,(b-a).Magnitude),CFrame.lookAt((a+b)*.5,b),route=="shortcut" and colors.gold or colors.mint,Enum.Material.Neon,course)
+                    beam.CanCollide,beam.CanTouch=false,false
                 end
             end
-            local edge = part("Checkpoint glow", Vector3.new(width, 0.12, 0.35), pad.CFrame * CFrame.new(0, thickness/2+0.05, 0), colors.mint, Enum.Material.Neon, course)
-            edge.CanCollide = false
-            if section~=2 then
-                local moss=decoration("Mossy trail crown",Vector3.new(width-.35,.12,span-.35),pad.CFrame*CFrame.new(0,thickness/2+.07,0),
-                    section==4 and Color3.fromRGB(153,167,143) or Color3.fromRGB(100,148,94),Enum.Material.Grass)
-                moss.CastShadow,moss.CanQuery=false,false
-            end
-            if section == 2 and cp % 2 == 0 then
-                scenery.movingBridges[#scenery.movingBridges + 1] = { part = edge, frame = edge.CFrame, phase = cp * 0.7 }
+            local point=roadPoint(cp,route)
+            local marker=part("Checkpoint "..cp.." "..route,Vector3.new(3,.1,2),CFrame.new(point-Vector3.new(0,2.9,0)),colors.gold,Enum.Material.Neon,course)
+            marker.CanCollide=false; marker:SetAttribute("Checkpoint",cp)
+            -- Direction chevrons are small, non-colliding and shared by all racers.
+            for _,side in ipairs({-1,1}) do
+                local arrow=part("Direction chevron",Vector3.new(.35,.1,2.6),routeFrame(point-Vector3.new(side*.7,2.85,0),cp)*CFrame.Angles(0,side*.5,0),colors.gold,Enum.Material.Neon,course)
+                arrow.CanCollide=false
             end
         end
-        local point = World.sprintPoint(3, cp)
-        for _, sign in ipairs({ -1, 1 }) do
-            part("Bridge support", Vector3.new(0.7, 5, 0.7), routeFrame(point, cp) * CFrame.new(sign * 46, -6, 0), colors.stone, Enum.Material.Wood, course)
-        end
-        if cp % 6 == 0 and cp < 48 then
-            local frame = routeFrame(point, cp)
-            -- Tall open arches, low hanging island rock and outward crystal fans
-            -- provide landmarks without a solid enclosure at camera height.
-            for _, sign in ipairs({ -1, 1 }) do
-                decoration("Trail arch pillar", Vector3.new(1.5, 13, 1.5), frame * CFrame.new(sign*46, 3, 0), Color3.fromRGB(154,158,143), Enum.Material.Marble)
-                fantasyCrystal(frame:PointToWorldSpace(Vector3.new(sign*50, -1, 0)), 0.8, palette[section])
+        local point=roadPoint(cp,"shared")
+        if cp%6==0 and cp<48 then
+            local frame=routeFrame(point,cp)
+            for _,side in ipairs({-1,1}) do
+                decoration("Trail arch pillar",Vector3.new(1.5,13,1.5),frame*CFrame.new(side*46,3,0),Color3.fromRGB(154,158,143),Enum.Material.Marble)
+                fantasyCrystal(frame:PointToWorldSpace(Vector3.new(side*50,-1,0)),.8,colors.mint)
             end
-            local beam=decoration("Trail arch beam",Vector3.new(94,1,1.5),frame*CFrame.new(0,10,0),palette[section],Enum.Material.Neon)
-            beam.CanCollide=false
-            label(beam, sectionNames[section] .. " / " .. cp .. " OF 48", Vector3.new(0,3,0), colors.gold, 300)
+            local beam=decoration("Trail arch beam",Vector3.new(94,1,1.5),frame*CFrame.new(0,10,0),colors.mint,Enum.Material.Neon)
+            label(beam,sectionNames[section].." / "..cp.." OF 48",Vector3.new(0,3,0),colors.gold,300)
             buildFantasyIsland(point,cp%12==0 and -1 or 1,section)
         end
-        if cp % 12 == 1 then
-            local index = math.floor((cp - 1) / 12) + 1
-            local beacon = decoration("Section " .. index .. " beacon", Vector3.new(2, 12, 2), CFrame.new(point.X-65, point.Y + 2, point.Z), palette[section], Enum.Material.Neon)
-            label(beacon, index .. " / " .. sectionNames[index], Vector3.new(0, 9, 0), colors.gold, 330)
-            -- Break up the long skyline with floating section islands and crystal fans.
-            buildFantasyIsland(point,1,index)
+        if cp%12==1 then
+            local beacon=decoration("Section "..section.." beacon",Vector3.new(2,12,2),CFrame.new(point.X-65,point.Y+2,point.Z),colors.violet,Enum.Material.Neon)
+            label(beacon,section.." / "..sectionNames[section],Vector3.new(0,9,0),colors.gold,330)
+            buildFantasyIsland(point,1,section)
         end
     end
-    for i, cp in ipairs({ 26, 30, 34 }) do
-        local from, to = World.sprintPoint(3, cp - 1), World.sprintPoint(3, cp)
-        local point = (from + to) * 0.5
-        local frame = CFrame.lookAt(point, point + Vector3.new(to.X-from.X,0,to.Z-from.Z))
-        local obstacle = part("Moving wind gate " .. i, Vector3.new(4, 11, 2), frame * CFrame.new(0,2,0), colors.gold, Enum.Material.Neon, course)
-        scenery.sprintObstacles[#scenery.sprintObstacles + 1] = { part = obstacle, frame = frame, phase = i * 2.1, checkpoint = cp }
+    -- Moving bridge slalom: broad fixed timber deck, moving partial-width gates.
+    -- The road remains connected; NPCs can pass beside these and overtake.
+    for i,cp in ipairs({20,23,26,29,38,42}) do
+        local point=roadPoint(cp-.5,"shared")
+        local obstacle=part("Moving wind gate "..i,Vector3.new(9,5,1.5),CFrame.new(point),colors.violet,Enum.Material.Neon,course)
+        scenery.sprintObstacles[#scenery.sprintObstacles+1]={part=obstacle,origin=point,phase=i*2.1,checkpoint=cp}
     end
-    for _, cp in ipairs({ 4, 8, 16, 20, 28, 32, 36, 40, 44 }) do
-        local from,to = World.sprintPoint(3, cp-1),World.sprintPoint(3, cp)
-        local point = (from+to)*0.5
-        local frame = CFrame.lookAt(point,point+Vector3.new(to.X-from.X,0,to.Z-from.Z))
-        scenery.sprintHurdles[cp] = {}
-        -- A shared crossbar meets translated lanes at different distances on a
-        -- bend. Give each lane its own physically aligned takeoff hurdle.
-        for lane=1,5 do
-            local lanePoint=(World.sprintPoint(lane,cp-1)+World.sprintPoint(lane,cp))*0.5
-            local laneFrame=CFrame.lookAt(lanePoint,lanePoint+Vector3.new(to.X-from.X,0,to.Z-from.Z))
-            local name=lane==3 and "Jump hurdle "..cp or "Lane "..lane.." hurdle "..cp
-            scenery.sprintHurdles[cp][lane]=part(name,Vector3.new(5.6,1.6,1),laneFrame*CFrame.new(0,-2.2,0),colors.violet,Enum.Material.Neon,course)
-        end
-        for _, sign in ipairs({-1,1}) do
-            local post=decoration("Hurdle flag",Vector3.new(0.6,5,0.6),frame*CFrame.new(sign*46,-0.5,0),colors.gold,Enum.Material.Neon)
-            post.CanCollide=false
-        end
+    for _,cp in ipairs({4,8,40,44}) do
+        local point=roadPoint(cp-.5,"shared")
+        local hurdle=part("Jump hurdle "..cp,Vector3.new(18,1.6,1),CFrame.new(point-Vector3.new(0,2.2,0)),colors.violet,Enum.Material.Neon,course)
+        scenery.sprintHurdles[cp]=hurdle
     end
-    local finish = World.sprintPoint(3, 48)
-    part("FINISH island", Vector3.new(96, 3, 18), CFrame.new(0, finish.Y - 4.5, -1115), colors.grass, Enum.Material.Grass, course)
-    for _, x in ipairs({ -46, 46 }) do
-        part("Finish arch column", Vector3.new(2, 21, 2), CFrame.new(x, finish.Y + 6, finish.Z), colors.gold, Enum.Material.Neon, course)
-    end
-    local arch = part("Finish arch", Vector3.new(94, 2, 3), CFrame.new(0, finish.Y + 17, finish.Z), colors.mint, Enum.Material.Neon, course)
-    label(arch, "THE RIFTBOUND CROWN / FINISH", Vector3.new(0, 6, 0), colors.gold, 350)
-    for rank, x in ipairs({ 0, -10, 10 }) do
-        local h = ({ 4, 2.5, 1.5 })[rank]
-        part("Sprint podium " .. rank, Vector3.new(8, h, 8), CFrame.new(x, 77 + h / 2, -1115), rank == 1 and colors.gold or colors.stone, Enum.Material.Marble, course)
+    part("FINISH island",Vector3.new(96,3,36),CFrame.new(0,75.5,-1110),colors.grass,Enum.Material.Grass,course)
+    for _,x in ipairs({-46,46}) do part("Finish arch column",Vector3.new(2,21,2),CFrame.new(x,86,-1092),colors.gold,Enum.Material.Neon,course) end
+    local arch=part("Finish arch",Vector3.new(94,2,3),CFrame.new(0,97,-1092),colors.mint,Enum.Material.Neon,course)
+    label(arch,"THE RIFTBOUND CROWN / FINISH",Vector3.new(0,6,0),colors.gold,350)
+    for rank,x in ipairs({0,-10,10}) do
+        local h=({4,2.5,1.5})[rank]
+        part("Sprint podium "..rank,Vector3.new(8,h,8),CFrame.new(x,77+h/2,-1115),rank==1 and colors.gold or colors.stone,Enum.Material.Marble,course)
     end
 end
-
 function World.stepCourse(now)
-    for _, obstacle in ipairs(scenery.sprintObstacles) do
-        obstacle.part.CFrame = obstacle.frame * CFrame.new(math.sin(now * .75 + obstacle.phase) * 42, 2, 0)
-    end
-    for _, bridge in ipairs(scenery.movingBridges) do
-        bridge.part.CFrame = bridge.frame * CFrame.new(math.sin(now * 0.65 + bridge.phase) * 1.25, math.sin(now * 0.65 + bridge.phase) * 0.2, 0)
-        bridge.part.AssemblyLinearVelocity = bridge.frame:VectorToWorldSpace(Vector3.new(math.cos(now * 0.65 + bridge.phase) * 0.8125, math.cos(now * 0.65 + bridge.phase) * 0.13, 0))
+    for _,obstacle in ipairs(scenery.sprintObstacles) do
+        obstacle.part.CFrame=CFrame.new(obstacle.origin+Vector3.new(math.sin(now*.75+obstacle.phase)*20,-.5,0))
     end
 end
-
-local function sprintSupport(lane, checkpoint)
-    return scenery.sprintPads[lane] and scenery.sprintPads[lane][checkpoint]
+local function gridSlot(member, state, index)
+    return (((member.gridSlot or index)-1+(state.round-1)*7)%math.max(1,state.activityEntrants))+1
 end
-
--- Intersect a horizontal route ray with a rotated support rectangle. Distances
--- are along the actual travel direction, never a world-Z assumption at a bend.
-local function supportInterval(pad, origin, direction)
-    local p = pad.CFrame:PointToObjectSpace(Vector3.new(origin.X, pad.Position.Y, origin.Z))
-    local d = pad.CFrame:VectorToObjectSpace(direction)
-    local near, far = -math.huge, math.huge
-    for _, axis in ipairs({ "X", "Z" }) do
-        local half = pad.Size[axis] / 2
-        if math.abs(d[axis]) < 0.00001 then
-            if math.abs(p[axis]) > half then return nil end
-        else
-            local a, b = (-half-p[axis])/d[axis], (half-p[axis])/d[axis]
-            near, far = math.max(near, math.min(a,b)), math.min(far, math.max(a,b))
+local function resetRacer(record, member, now)
+    local race=record.race
+    local point=member.score==0 and World.sprintPoint(race.grid,0) or roadPoint(member.score,race.route,race.lateral)
+    local target=roadPoint(math.min(48,member.score+1),race.route,race.lateral)
+    record.model:PivotTo(CFrame.lookAt(point+Vector3.new(0,.15,0),Vector3.new(target.X,point.Y+.15,target.Z)))
+    local main=record.model.PrimaryPart
+    main.AssemblyLinearVelocity,main.AssemblyAngularVelocity=Vector3.new(),Vector3.new()
+    race.position,race.sampleAt,race.lastMoved=main.Position,now,now
+    race.lastJump,race.lastCommand,race.jumpGate=now-1,now-1,nil
+    record.model.Humanoid.Jump=false
+end
+-- Interpolate the AUTHORED road edges, rather than a sine approximation between
+-- vertices. The same corridor is used for steering and physical gate validation.
+local function corridor(cp, route)
+    local lo=math.max(0,math.min(47,math.floor(cp)))
+    local t=math.max(0,math.min(1,cp-lo))
+    local a,wa=roadSection(lo,route); local b,wb=roadSection(lo+1,route)
+    return a+(b-a)*t,wa+(wb-wa)*t
+end
+local function chooseRoute(member, race, bodies, fork)
+    local counts={main=0,shortcut=0}
+    for _,body in ipairs(bodies) do
+        if body.member~=member and math.abs(body.member.distance-member.distance)<4 then
+            local other=body.record.race
+            if other and counts[other.route] then counts[other.route]=counts[other.route]+1 end
         end
     end
-    if near > far then return nil end
-    return near, far
+    local current=race.position.X-math.sin(fork.first*math.pi/12)*TRAIL_AMPLITUDE
+    -- Observed congestion, turn distance and recovery risk. Never rank/name/pace.
+    local safeCost=counts.main*4+math.abs(current-fork.safeSide*16)*.1
+    local riskCost=counts.shortcut*5+math.abs(current+fork.safeSide*16)*.1+((member.recoveries or 0)>0 and 8 or 1)
+    race.route=safeCost<=riskCost and "main" or "shortcut"
+    race.fork=fork.first; member.route=race.route
+    race.lateral=math.max(-7,math.min(7,race.lateral))
 end
-
-local function resetRacer(record, member, lane, now)
-    local pad = sprintSupport(lane, member.score)
-    local point = World.sprintPoint(lane, member.score)
-    -- Use the current moving support, not its authored rest pose. Collider feet
-    -- sit three studs below the root; spawn just above the actual surface.
-    if pad then point = Vector3.new(pad.Position.X, pad.Position.Y + pad.Size.Y / 2 + 3, pad.Position.Z) end
-    if member.score == 0 then point = Vector3.new(World.sprintPoint(lane, 0).X, point.Y, 60) end
-    local target = World.sprintPoint(lane, math.min(48, member.score + 1))
-    local spawn = point + Vector3.new(0, 0.15, 0)
-    record.model:PivotTo(CFrame.lookAt(spawn, Vector3.new(target.X, spawn.Y, target.Z)))
-    local main = record.model.PrimaryPart
-    main.AssemblyLinearVelocity, main.AssemblyAngularVelocity = Vector3.new(), Vector3.new()
-    record.race.position, record.race.sampleAt, record.race.lastMoved = main.Position, now, now
-    record.race.lastJump, record.race.lastCommand = now - 1, 0
-    record.race.jumpGate = nil
-    record.model.Humanoid.Jump = false
-end
-
 function World.sprintStep(state, now)
     World.stepCourse(now)
-    if state.phase ~= "storm" or state.activity.id ~= "sprint" then return end
-    local lane = 0
-    for _, key in ipairs(state.crewOrder) do
-        local member, record = state.crew[key], avatars[key]
+    if state.phase~="storm" or state.activity.id~="sprint" then return end
+    local bodies={}
+    for index,key in ipairs(state.crewOrder) do
+        local member,record=state.crew[key],avatars[key]
         if member.activityEntered then
-            lane = lane + 1
             if not record or not record.model.PrimaryPart or not record.model:FindFirstChild("Head") or not record.model:FindFirstChildOfClass("Humanoid") then
-                state:raceDNF(member.username, state.round)
+                state:raceDNF(member.username,state.round)
             else
-                local model, humanoid = record.model, record.model:FindFirstChildOfClass("Humanoid")
-                if not record.race or record.race.round ~= state.round then
-                    if record.scale ~= 1 then model:ScaleTo(1); record.scale = 1 end
-                    local rotatedLane = (((member.raceLane or lane) + state.round - 2) % 5) + 1
-                    record.race = { round = state.round, lane = rotatedLane }
-                    physical(record, true)
-                    resetRacer(record, member, rotatedLane, now)
+                if not record.race or record.race.round~=state.round then
+                    if record.scale~=1 then record.model:ScaleTo(1);record.scale=1 end
+                    local grid=gridSlot(member,state,index)
+                    record.race={round=state.round,grid=grid,route="shared",lateral=((grid-1)%5-2)*8}
+                    member.route="shared"
+                    physical(record,true);resetRacer(record,member,now)
                 end
-                local race, main = record.race, model.PrimaryPart
-                if member.raceStatus == "racing" then
-                    if humanoid.Health <= 0 then state:raceDNF(member.username, state.round)
-                    else
-                        local position = main.Position
-                        local dt = math.max(0.001, now - race.sampleAt)
-                        if position.Y < 54 or math.abs(position.X) > 110 or position.Z < -1120 or position.Z > 82
-                            or (position - race.position).Magnitude > math.max(8, dt * 90) or now - race.lastMoved > 6 then
-                            member.recoveries = (member.recoveries or 0) + 1
-                            resetRacer(record, member, race.lane, now)
-                            position = main.Position
-                        end
-                        local nextGate = member.score + 1
-                        local target = World.sprintPoint(race.lane, nextGate)
-                        local delta = target - position
-                        local horizontal = Vector3.new(delta.X, 0, delta.Z).Magnitude
-                        local passed, at = false, now
-                        if nextGate == 48 then
-                            local previous = World.sprintPoint(race.lane,47)
-                            local direction = Vector3.new(target.X-previous.X,0,target.Z-previous.Z)
-                            direction = direction * (1/direction.Magnitude)
-                            local before, after = (race.position-target):Dot(direction), (position-target):Dot(direction)
-                            local lateral = Vector3.new(delta.X,0,delta.Z) - direction*Vector3.new(delta.X,0,delta.Z):Dot(direction)
-                            if before < 0 and after >= 0 and lateral.Magnitude <= 2.8 and math.abs(delta.Y) <= 4 then
-                                local fraction = -before / math.max(0.0001, after-before)
-                                at = race.sampleAt + (now - race.sampleAt) * math.max(0, math.min(1, fraction))
-                                passed = true
-                            end
-                        else passed = horizontal <= 2.8 and math.abs(delta.Y) <= 3.5 and humanoid.FloorMaterial ~= Enum.Material.Air end
-                        if passed then state:recordCheckpoint(member.username, nextGate, at, state.round) end
-                        if (position - race.position).Magnitude > 0.08 then race.lastMoved = now end
-                        if member.raceStatus == "racing" then
-                            local from = World.sprintPoint(race.lane, member.score)
-                            local to = World.sprintPoint(race.lane, member.score + 1)
-                            local segment = Vector3.new(to.X - from.X, 0, to.Z - from.Z)
-                            local direction = segment * (1 / segment.Magnitude)
-                            local offset = Vector3.new(position.X - from.X, 0, position.Z - from.Z)
-                            state:raceDistance(member.username, member.score + offset:Dot(segment) / segment:Dot(segment), state.round)
-                            local blocked = false
-                            for _, obstacle in ipairs(scenery.sprintObstacles) do
-                                if obstacle.checkpoint == member.score + 1 then
-                                    local relative = obstacle.part.CFrame:PointToObjectSpace(position)
-                                    if relative.Z > 2 and relative.Z < 9 and math.abs(relative.X) < 4 then blocked = true end
-                                end
-                            end
-                            if blocked then
-                                humanoid:MoveTo(position); race.lastMoved, race.lastCommand = now, 0
-                            elseif now - race.lastCommand > 0.4 then
-                                local goal = World.sprintPoint(race.lane, member.score + 1)
-                                if member.score == 47 then goal = goal + direction * 4 end
-                                humanoid:MoveTo(goal)
-                                race.lastCommand = now
-                            end
-                            local cp = member.score + 1
-                            local support, landing = sprintSupport(race.lane, member.score), sprintSupport(race.lane, cp)
-                            if support and landing and not blocked and race.jumpGate ~= cp then
-                                local _, edge = supportInterval(support, from, direction)
-                                local entry = supportInterval(landing, from, direction)
-                                local rise = landing.Position.Y + landing.Size.Y / 2 - support.Position.Y - support.Size.Y / 2
-                                local hurdle = scenery.sprintHurdles[cp] and scenery.sprintHurdles[cp][race.lane]
-                                local hurdleEntry = hurdle and supportInterval(hurdle, from, direction)
-                                local gap = edge and entry and entry-edge or 0
-                                if hurdleEntry and edge then edge = math.min(edge,hurdleEntry) end
-                                -- Launch BEFORE the actual support edge. A fixed
-                                -- distance from the next pad was already airborne
-                                -- at short pads and the original starting gap.
-                                local edgeDistance = edge and edge-(position-from):Dot(direction)
-                                if edgeDistance and (gap > 0.25 or rise > 0.5 or hurdle) and edgeDistance <= 2 and edgeDistance >= -0.5
-                                    and now - race.lastJump > 0.4 and humanoid.FloorMaterial ~= Enum.Material.Air then
-                                    humanoid.Jump, race.lastJump, race.jumpGate = true, now, cp
-                                end
-                            end
-                        end
-                        race.position, race.sampleAt = position, now
-                    end
-                end
-                if member.raceStatus ~= "racing" and record.physical then
-                    record.frame = main.CFrame
-                    physical(record, false)
-                end
+                if member.raceStatus=="racing" then bodies[#bodies+1]={member=member,record=record,position=record.model.PrimaryPart.Position} end
             end
         end
+    end
+    for _,body in ipairs(bodies) do
+        local member,record=body.member,body.record
+        local model,race=record.model,record.race
+        local humanoid,main=model:FindFirstChildOfClass("Humanoid"),model.PrimaryPart
+        if humanoid.Health<=0 then state:raceDNF(member.username,state.round)
+        else
+            local position=main.Position
+            local dt=math.max(.001,now-race.sampleAt)
+            local cp=(60-position.Z)/TRAIL_STRIDE
+            local center,half=corridor(cp,race.route)
+            local offRoad=cp>0 and (math.abs(position.X-center)>half+1.5 or cp<member.score-.5 or cp>member.score+1.25)
+            if position.Y<54 or math.abs(position.X)>150 or position.Z < -1120 or position.Z>102 or offRoad
+                or (position-race.position).Magnitude>math.max(8,dt*90) or now-race.lastMoved>6 then
+                member.recoveries=(member.recoveries or 0)+1
+                member.lastRecoveryGate=member.score
+                member.lastRecoveryReason=position.Y<54 and "fall" or (offRoad and "route corridor" or (now-race.lastMoved>6 and "stalled" or "position jump"))
+                resetRacer(record,member,now)
+                position=main.Position;cp=(60-position.Z)/TRAIL_STRIDE
+            end
+            local gate=member.score+1
+            local target=roadPoint(gate,race.route)
+            local gateCenter,gateHalf=roadSection(gate,race.route)
+            local grounded=humanoid.FloorMaterial~=Enum.Material.Air
+            local passed=position.Z<=target.Z+.65 and math.abs(position.X-gateCenter)<=gateHalf-1
+                and math.abs(position.Y-roadPoint(gate,race.route,position.X-gateCenter).Y)<3.5 and grounded
+            local at=now
+            if gate==48 then
+                passed=passed and race.position.Z>target.Z and position.Z<=target.Z
+                if passed then at=race.sampleAt+(now-race.sampleAt)*(race.position.Z-target.Z)/math.max(.0001,race.position.Z-position.Z) end
+            end
+            if passed then
+                if state:recordCheckpoint(member.username,gate,at,state.round,race.route) then race.lastCommand=now-1 end
+            end
+            if (position-race.position).Magnitude>.08 then race.lastMoved=now end
+            if member.raceStatus=="racing" then
+                local sectionFork
+                for _,fork in ipairs(forks) do
+                    if member.score>=fork.first-2 and member.score<fork.last then sectionFork=fork end
+                end
+                if sectionFork and race.fork~=sectionFork.first then chooseRoute(member,race,bodies,sectionFork)
+                elseif not sectionFork then race.route,race.fork,member.route="shared",nil,"shared" end
+                gate=member.score+1
+                state:raceDistance(member.username,member.score+math.max(0,cp-member.score),state.round)
+                if now-race.lastCommand>=.3 then
+                    local goalCenter,goalHalf=roadSection(gate,race.route)
+                    local best,cost=race.lateral,math.huge
+                    for _,shift in ipairs({0,-4,4,-8,8}) do
+                        local lateral=math.max(-goalHalf+3,math.min(goalHalf-3,race.lateral+shift))
+                        local x=goalCenter+lateral
+                        local score=math.abs(shift)*.25
+                        for _,other in ipairs(bodies) do
+                            if other.member~=member then
+                                local ahead=position.Z-other.position.Z
+                                if ahead>=-1 and ahead<16 then score=score+math.max(0,5-math.abs(x-(other.position.X+goalCenter-center)))*(16-ahead)*.5 end
+                            end
+                        end
+                        for _,obstacle in ipairs(scenery.sprintObstacles) do
+                            if obstacle.checkpoint==gate then score=score+math.max(0,9-math.abs(x-obstacle.part.Position.X))*4 end
+                        end
+                        if score<cost then best,cost=lateral,score end
+                    end
+                    -- Small lateral steps permit overtaking without crossing a fork median.
+                    race.lateral=best
+                    local goal=roadPoint(gate,race.route,best)
+                    if gate==48 then goal=goal+Vector3.new(0,0,-3) end
+                    humanoid:MoveTo(goal);race.lastCommand=now
+                end
+                local fork=forkAt(gate-.5)
+                local jump=race.route=="shortcut" and fork and (gate==15 or gate==33)
+                local edgeZ=60-(gate-.55)*TRAIL_STRIDE
+                local hurdle=scenery.sprintHurdles[gate]
+                local obstacleZ=hurdle and hurdle.Position.Z+1.5
+                local distance=jump and (position.Z-edgeZ) or (obstacleZ and math.abs(position.X-hurdle.Position.X)<11 and position.Z-obstacleZ)
+                if distance and distance>=-.5 and distance<=2.5 and grounded and race.jumpGate~=gate and now-race.lastJump>.4 then
+                    humanoid.Jump,race.lastJump,race.jumpGate=true,now,gate
+                end
+                -- Slow sweeping gates are waited out if directly in front of a body.
+                for _,obstacle in ipairs(scenery.sprintObstacles) do
+                    local d=position-obstacle.part.Position
+                    if obstacle.checkpoint==gate and d.Z>1 and d.Z<5 and math.abs(d.X)<6 then
+                        humanoid:MoveTo(position);race.lastCommand=0;race.lastMoved=now
+                    end
+                end
+            end
+            race.position,race.sampleAt=position,now
+        end
+        if member.raceStatus~="racing" and record.physical then record.frame=main.CFrame;physical(record,false) end
     end
 end
 
 function World.build(config)
     settings = config or {}
+    if not PhysicsService:IsCollisionGroupRegistered("RiftboundRacers") then PhysicsService:RegisterCollisionGroup("RiftboundRacers") end
+    PhysicsService:CollisionGroupSetCollidable("RiftboundRacers","RiftboundRacers",false)
     root = Instance.new("Model")
     root.Name = "RiftboundRealm"
     root.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
@@ -782,7 +813,7 @@ function World.preparePlayer(player)
 end
 
 function World.crewPosition(slot)
-    local angle = slot * math.pi * 2 / 18
+    local angle = slot * math.pi * 2 / math.max(18, settings.MaxCrew or 40)
     return CFrame.lookAt(Vector3.new(math.sin(angle) * 32, 39, math.cos(angle) * 32), Vector3.new(0, 39, 0))
 end
 
@@ -886,7 +917,7 @@ local function destination(member, state, now, scale)
     if state.activity.id == "sprint" then
         if state.phase == "voting" or state.phase == "gathering" then
             for lane, username in ipairs(state.nextCohort or {}) do
-                if username == member.username then return World.sprintPoint(((lane + (state.phase == "gathering" and state.round + 1 or state.round) - 2) % 5) + 1, 0), false end
+                if username == member.username then return World.sprintPoint(((lane-1+((state.phase == "gathering" and state.round+1 or state.round)-1)*7)%math.max(1,#state.nextCohort))+1,0), false end
             end
         end
         return World.crewPosition(member.slot).Position, false
@@ -911,7 +942,7 @@ local function destination(member, state, now, scale)
             return t < 1 and shrine:Lerp(heart, t) or heart:Lerp(shrine, t - 1), false
         end
     end
-    local a = member.slot * math.pi * 2 / 18 + math.sin(now * 0.2 + member.slot) * 0.035
+    local a = member.slot * math.pi * 2 / math.max(18, settings.MaxCrew or 40) + math.sin(now * 0.2 + member.slot) * 0.035
     return Vector3.new(math.sin(a) * 28, y, math.cos(a) * 28), false
 end
 

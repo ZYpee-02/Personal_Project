@@ -1,62 +1,48 @@
-# Riftbound Live — fantasy skyblock race show
+# Riftbound Live — shared fantasy skyway race show
 
-An automated physical obstacle race for portrait LIVE capture: five NPC racers,
-a 1,281-stud S-shaped route, 48 measured gates, four sections and a 120-second deadline.
-Section cameras follow actual competitors, with regular spotlights, finish-line
-coverage and winner celebrations. Queued viewer arrivals get a Star Gate montage
-while the competition keeps running.
+One broad, banked adventure road with two split-and-rejoin shortcuts, a 20-position
+starting grid, 48 measured gates and a 120-second deadline. The default field is
+16 NPCs; the offline demo seeds 20 viewers and rotates cohorts automatically.
+Racers share the road, steer around traffic and hazards, and choose routes.
+Native Humanoid movement and observed finish crossings determine the results.
 
-![Winding trail plan](docs/SKYBRIDGE_ROUTE.svg)
+![Shared skyway plan — not a gameplay screenshot](docs/SKYBRIDGE_ROUTE.svg)
 
-**v9 upgrade from v7/v8: replace World and the client Realm together.** Follow
-[the two-file replacement instructions](docs/FANTASY_SKYBLOCK_REPLACEMENT.md).
-For older installations, replace all FIVE raw scripts using
-[exact replacements and Studio checks](docs/RACE_SHOW_REPLACEMENT.md).
-MANUAL_STUDIO_SETUP.md contains every complete source. Keep
-Workspace.StreamingEnabled=false for this playtest; the exported place already does.
-No Command Bar installer, plugin or Node bridge is required.
+**v10: replace all five complete raw sources together**, including existing v9
+installations. [Exact replacement instructions](docs/SHARED_SKYWAY_REPLACEMENT.md)
+list every file, Studio parent/type, settings and native playtests.
+MANUAL_STUDIO_SETUP.md includes all five complete source blocks. GitHub source
+updates do not automatically sync into an open Roblox Studio place.
 
-| Section | Gates | Main challenge |
+| Section | Gates | Shared road features |
 | --- | --- | --- |
-| Starting Dash | 1–12 | Mossy slate, grassy islands and height changes |
-| Moving Bridges | 13–24 | Timber spans, waterfall islands and lane hurdles |
-| Hazard Zone | 25–36 | Stone ruins, sweeping magical gates and jumps |
-| Final Sprint | 37–48 | Marble trail and dramatic crown arch |
+| Starting Dash | 1–12 | Mossy slate, banked curves, broad grid, partial-width hurdles |
+| Moving Bridges | 13–24 | Timber main bridge, inside jump shortcut, moving slalom gates |
+| Hazard Zone | 25–36 | Stone ruins, sweeping gates, second split/rejoin shortcut |
+| Final Sprint | 37–48 | Marble turns, overtakes and crown finish |
 
-Lanes use 16-stud pitch with checked moving-support envelopes. Floating meadows,
-trees, crystals, portals, waterfalls and clouds flank the route. Decorative parts
-are non-colliding; Stream can locally hide tagged scenery that obscures racers.
+Floating meadows, trees, crystals, portals, waterfalls and clouds flank the course.
+The director follows the lead pack, real changes of leader, shortcut battles,
+other competitors and the finish. Close entrance montages queue without pausing
+the race. Stream/Roam controls and reversible camera visibility safeguards remain.
 
-All racers use equal movement settings. The 12-stud/second baseline is about 107
-seconds before waits/recovery. Actual roots, grounded checkpoints and a physical
-finish-plane crossing determine results; no timer or name determines a winner.
-Falls recover only to verified pads and retain the clock. Rewards remain fictional,
-server authoritative and in memory: $2/checkpoint, $40 finish and $120/$75/$40 podium
-prizes, plus existing passive/vote/activity earnings and caps. Gifts stay cosmetic.
+The economy stays fictional and in memory: $2/checkpoint, $40 finish and
+$120/$75/$40 podium prizes, plus existing capped earnings and cosmetic gifts.
+Grounded sequential gates, route corridors, fall recovery, measured finish times
+and DNFs remain authoritative. All racers have equal movement settings; there
+are no predetermined winners. NPC-to-NPC body collisions are disabled to avoid
+crowd pileups; road and hazard collisions remain active with local steering.
 
-The director fits nearby avatars at medium distance rather than zooming out to the
-whole map. It tracks the lead section, periodically shows other competitors, and
-uses dedicated finish/podium shots. Safe fallbacks, daylight, opacity restoration
-and the working ROAM VIEW / STREAM VIEW controls remain. A named Studio Baseplate
-is hidden locally in Stream and restored in Roam for a sky background. Five readable
-live-position rows, progress, countdowns and large entrance/winner names support
-portrait capture and landscape testing. Client diagnostics identify **race-show-v9**.
+Keep Workspace.StreamingEnabled=false. DataStoreService, custom HTTP and real
+TikTok integration remain disabled. OFFLINE JOIN uses procedural avatars;
+optional verified joins use bounded native Roblox username/appearance APIs.
+To avoid authored account requests set ResolveViewerUsernames=false and
+LoadAvatarAppearances=false. Initial arrival montages may make the first race
+smaller; subsequent cohorts fill once newcomers complete their entrances.
 
-**OFFLINE JOIN** creates a local stand-in. **ROBLOX JOIN / VERIFY ACCOUNT** uses a
-bounded native username lookup, then optional native avatar appearance APIs.
-Normal entrances last four seconds; bursts group three for 2.5 seconds. Entrants
-become eligible for the next cohort after presentation. Unraced viewers get priority;
-returning racers rotate. Studio Demo_ viewers and gifts/follows remain explicitly
-simulated. DataStoreService, custom HTTP and external TikTok integration stay disabled.
-For zero authored account/appearance calls, use OFFLINE JOIN and set
-ResolveViewerUsernames=false and LoadAvatarAppearances=false.
-
-Validation includes all authored route sections, geometric jump feasibility,
-speed-limited navigation commands, measured timing/rewards, queues, account lookup
-failures, section/entrance/finish framing, Roam restoration and exact raw/export
-source checks. **Cloud mocks do not reproduce native Roblox physics or rendering.**
-The 90–120-second finish target still needs real Studio timing and jump/contact
-validation. See the [playtest checklist and limits](docs/RACE_SHOW_REPLACEMENT.md).
+[Available test results and limits](docs/SHARED_SKYWAY_TEST_RESULTS.md) distinguish
+5/10/15/20-racer cloud contact approximations from required native Studio physics,
+rendering and performance checks. Client diagnostics identify **race-show-v10**.
 
 ## Development checks
 

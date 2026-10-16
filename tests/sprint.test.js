@@ -7,6 +7,8 @@ const config = read('Config.lua'), domain = read('RealmState.lua'), world = read
 const rules = `
 local Config=(function() ${config} end)()
 local Realm=(function() ${domain} end)()
+Config.SprintCompetitors=5
+Config.DemoNames={"Demo_Astra","Demo_Lumen","Demo_Nova","Demo_Fern","Demo_Orion"}
 local function start(count)
     local state=Realm.new(Config,0)
     for i=1,count do assert(state:addCrew("Racer_"..i,i)) end
@@ -98,15 +100,13 @@ assert(workspace.RiftboundRealm.SkybridgeSprint)
 for i=1,5 do
     assert(rig(i).PrimaryPart.ServerOwned and not rig(i).PrimaryPart.Anchored)
     assert(rig(i).RaceCollider.CanCollide and not rig(i).Torso.CanCollide)
-    assert(rig(i).Humanoid.MoveGoal and rig(i).Humanoid.WalkSpeed==12)
+    assert(rig(i).Humanoid.MoveGoal and rig(i).Humanoid.WalkSpeed==12.5)
 end
 move(1,World.sprintPoint(1,0)+Vector3.new(0,0,-10),20.8)
 assert(not rig(1).Humanoid.Jump,"continuous starting apron requested an unnecessary jump")
 move(1,World.sprintPoint(1,1),21.2)
 assert(state.crew.racer_1.score==1)
-local pad=workspace.RiftboundRealm.SkybridgeSprint['Lane 1 checkpoint 1']
-move(1,World.sprintPoint(1,1)+pad.CFrame.LookVector*(pad.Size.Z/2-1.8),21.4)
-assert(rig(1).Humanoid.Jump,"controller did not request a jump before the actual pad edge")
+assert(not rig(1).Humanoid.Jump,'continuous road should not trigger an edge jump')
 local position=rig(1).PrimaryPart.Position
 publish(21.4)
 assert((rig(1).PrimaryPart.Position-position).Magnitude<0.0001,"renderer teleported a racing root")
@@ -124,29 +124,27 @@ now=29; World.sprintStep(state,now)
 assert(state.crew.racer_1.score==1 and (rig(1).PrimaryPart.Position-safe).Magnitude<0.001)
 `));
 
-test('takeoff needs ground contact, fires once per gate and recovery uses the moving support pose', () => runLua(scene + `
-move(1,World.sprintPoint(1,1),21)
-local pad=workspace.RiftboundRealm.SkybridgeSprint['Lane 1 checkpoint 1']
-local edge=World.sprintPoint(1,1)+pad.CFrame.LookVector*(pad.Size.Z/2-1.8)
+test('jumping a shared hurdle requires ground, fires once per gate, and recovery retains route progress', () => runLua(scene + `
+for cp=1,3 do move(1,World.routePoint(cp,'shared'),20+cp) end
+local point=World.routePoint(3.5,'shared')+Vector3.new(0,0,3.5)
 rig(1).Humanoid.FloorMaterial=Enum.Material.Air
-move(1,edge,21.2); assert(not rig(1).Humanoid.Jump,'airborne jump was requested')
+move(1,point,23.9);assert(not rig(1).Humanoid.Jump)
 rig(1).Humanoid.FloorMaterial=Enum.Material.Slate
-move(1,edge,21.3); assert(rig(1).Humanoid.Jump)
+move(1,point,24);assert(rig(1).Humanoid.Jump,'hurdle takeoff missing')
 rig(1).Humanoid.Jump=false
-move(1,edge,21.8); assert(not rig(1).Humanoid.Jump,'repeated takeoff on the same gate')
-for cp=2,14 do move(1,World.sprintPoint(1,cp),22+cp) end
-move(1,Vector3.new(0,40,-270),37)
-local bridge=workspace.RiftboundRealm.SkybridgeSprint['Lane 1 checkpoint 14']
-local root=rig(1).PrimaryPart.Position
-assert(state.crew.racer_1.score==14 and state.crew.racer_1.recoveries==1)
-assert(math.abs(root.X-bridge.Position.X)<0.001 and math.abs(root.Z-bridge.Position.Z)<0.001,'recovery missed moving support')
-assert(math.abs(root.Y-(bridge.Position.Y+bridge.Size.Y/2+3.15))<0.001,'recovery collider overlaps support')
+move(1,point,24.5);assert(not rig(1).Humanoid.Jump,'repeated takeoff')
+move(1,Vector3.new(0,40,0),25)
+assert(state.crew.racer_1.score==3 and state.crew.racer_1.recoveries==1)
+assert(math.abs(rig(1).PrimaryPart.Position.Z-World.routePoint(3,'shared').Z)<.001)
 `));
 
 test('physical finish crossing interpolates time, freezes finishers and preserves racing gift fairness', () => runLua(scene + `
 assert(state:gift("Racer_1","giant",1,20)); publish(20)
 assert(rig(1).AppliedScale==nil or rig(1).AppliedScale==1,"giant changed physical size")
-for cp=1,47 do move(1,World.sprintPoint(1,cp),20+cp) end
+for cp=1,47 do
+    local route=state.crew.racer_1.route or 'shared'
+    move(1,World.routePoint(cp,route),20+cp)
+end
 local endPoint=World.sprintPoint(1,48)+Vector3.new(0,0,-1)
 move(1,endPoint,68)
 local m=state.crew.racer_1
@@ -258,31 +256,33 @@ task.spawn=function(fn,...)
 end
 task.wait=function(seconds) return coroutine.yield(seconds or 0.03) end
 local last,results,previousPhase=nil,0,nil
+print=function() end
+warn=function(message) error(message.." "..tostring(remotes:GetAttribute("StartupError"))) end
 local snapshotConnection=remotes.Snapshot.OnClientEvent:Connect(function(snapshot)
     last=snapshot
     if snapshot.phase=="result" and previousPhase~="result" then
         results=results+1
-        assert(#snapshot.winners==3 and snapshot.winners[1].elapsed>=90 and snapshot.winners[1].elapsed<=120, "mock race duration outside target")
+        assert(#snapshot.winners==3 and snapshot.winners[1].elapsed>=90 and snapshot.winners[1].elapsed<=120, "mock race duration outside target: round="..snapshot.round.." winners="..#snapshot.winners.." first="..(snapshot.winners[1] and snapshot.winners[1].elapsed or -1))
     end
     previousPhase=snapshot.phase
 end)
 ;(function() ${server} end)()
 assert(remotes:GetAttribute("Ready"))
 ;(function() ${client} end)()
-for step=1,1100 do
-    now=step*0.4
+for step=1,8800 do
+    now=step*0.05
     -- This is explicit mocked movement, not Roblox collision/jump simulation.
     for _,model in ipairs(workspace.RiftboundRealm:GetChildren()) do
         local main=model.PrimaryPart
         local humanoid=model:FindFirstChildOfClass("Humanoid")
         if main and humanoid and not main.Anchored and humanoid.MoveGoal then
             local delta=humanoid.MoveGoal-main.Position
-            local amount=math.min(1,4.8/math.max(0.001,delta.Magnitude))
+            local amount=math.min(1,Config.SprintWalkSpeed*.05/math.max(0.001,delta.Magnitude))
             model:PivotTo(CFrame.new(main.Position+delta*amount))
-            main.AssemblyLinearVelocity=delta*amount*2.5
+            main.AssemblyLinearVelocity=delta*amount*20
         end
     end
-    runtime.Heartbeat:Fire(0.4)
+    runtime.Heartbeat:Fire(0.05)
     local count=#jobs
     for i=1,count do
         local job=jobs[i]
@@ -290,7 +290,7 @@ for step=1,1100 do
             local ok,delay=coroutine.resume(job.co); assert(ok,delay); job.wake=now+(delay or 0)
         end
     end
-    renderStep(0.4)
+    if step%8==0 then renderStep(0.4) end
 end
 assert(results>=3 and #last.crew==5 and last.followers>0,"autonomous Sprint did not repeat")
 assert(last.physicalSprint and last.cameraBounds)
@@ -303,3 +303,17 @@ assert(string.find(playerGui.RiftboundHUD.VerticalStreamCanvas.RoundDock.Instruc
 assert(playerGui.RiftboundHUD.VerticalStreamCanvas.RoundLeaders.Score1.Text=="DNF",playerGui.RiftboundHUD.VerticalStreamCanvas.RoundLeaders.Score1.Text)
 `);
 });
+
+test('20 racers enter a shared cohort; route labels, skips and branch shortcuts remain bounded',()=>runLua(rules+`
+Config.SprintCompetitors=20
+local state=start(24)
+assert(state.activityEntrants==20 and #state:nextCohort()==20)
+for i=1,20 do assert(state.crew['racer_'..i].gridSlot==i) end
+assert(not state.crew.racer_21.activityEntered)
+assert(not state:recordCheckpoint('Racer_1',1,21,state.round,'shortcut'))
+for cp=1,10 do assert(state:recordCheckpoint('Racer_1',cp,20+cp,state.round,'shared')) end
+assert(not state:recordCheckpoint('Racer_1',11,31,state.round,'teleport'))
+assert(state:recordCheckpoint('Racer_1',11,31,state.round,'main'))
+assert(not state:recordCheckpoint('Racer_1',18,32,state.round,'shortcut'))
+assert(state.crew.racer_1.score==11)
+`));

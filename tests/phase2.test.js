@@ -121,7 +121,7 @@ local storage = instance("ReplicatedStorage", "ReplicatedStorage")
 local world = {
     build = function(c) assert(c.PersistenceEnabled == false) end,
     offlineAvatar = function() return { Destroy = function() end } end,
-    arrive = function(_, slot, username) arrivals = arrivals + 1; assert(slot <= 18) end,
+    arrive = function(_, slot, username) arrivals = arrivals + 1; assert(slot <= Config.MaxCrew) end,
     render = function(s)
         captures[#captures + 1] = s
         if s.phase == "result" and #s.winners > 0 then sawResult = true end
@@ -164,7 +164,7 @@ task = {
     wait = function(seconds) return coroutine.yield(seconds or 0.03) end,
 }
 (function() ${server} end)()
-for step = 1, 3400 do
+for step = 1, 4200 do
     now = step / 10
     runtime.Heartbeat:Fire(0.1)
     local count = #jobs

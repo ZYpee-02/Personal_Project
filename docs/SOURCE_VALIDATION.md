@@ -1,3 +1,7 @@
+> **Current v10 shared skyway:** replace all five sources using
+> [SHARED_SKYWAY_REPLACEMENT.md](SHARED_SKYWAY_REPLACEMENT.md). The older
+> release notes below are historical; do not mix their scripts with v10.
+
 > Current v7 race-show upgrade: replace all five sources using
 > [RACE_SHOW_REPLACEMENT.md](RACE_SHOW_REPLACEMENT.md). The older notes below describe
 > previous builds; their short-course dimensions and camera settings are historical.

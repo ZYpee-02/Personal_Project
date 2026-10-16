@@ -1,8 +1,8 @@
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
+import { performance } from 'node:perf_hooks';
 import { runLua } from './helpers/lua.js';
 import { presentationEngine } from './helpers/presentation-engine.js';
-
 const read = name => readFileSync(new URL(`../roblox/ServerScriptService/${name}`, import.meta.url), 'utf8');
 const scene = presentationEngine + `
 local Config=(function() ${read('Config.lua')} end)()
@@ -10,39 +10,53 @@ Config.LoadAvatarAppearances=false
 local Realm=(function() ${read('RealmState.lua')} end)()
 local World=(function() ${read('World.lua')} end)()
 World.build(Config)
-local state=Realm.new(Config,0)
-for i=1,5 do
-    assert(state:addCrew('Contact_'..i,0))
-    World.arrive(World.offlineAvatar('Contact_'..i),i,'Contact_'..i)
-end
-state:advance(12); state:advance(20)
-now=20; World.sprintStep(state,now)
 local course=workspace.RiftboundRealm.SkybridgeSprint
-print=function() end
-
--- Simplified yaw-rotated rectangle contact approximation, NOT Roblox physics. It uses
--- actual pad bounds, horizontal MoveTo speed, gravity, vertical jump velocity,
--- a 50ms jump response and 20Hz controller samples. FloorMaterial is Air after
--- leaving support: unlike the older command-only stub it cannot walk on air.
-local bodies={}
-for i=1,5 do bodies[i]={vy=0,grounded=false,position=workspace.RiftboundRealm['Traveler_Contact_'..i].PrimaryPart.Position} end
-local function overlaps(pad,p)
-    local q=pad.CFrame:PointToObjectSpace(p)
-    return math.abs(q.X)<=pad.Size.X/2 and math.abs(q.Z)<=pad.Size.Z/2
+local function surfaceY(triangle,p)
+    local a,b,c=triangle:GetAttribute('SurfaceA'),triangle:GetAttribute('SurfaceB'),triangle:GetAttribute('SurfaceC')
+    local v,w,q=b-a,c-a,p-a
+    local denominator=v.X*w.Z-w.X*v.Z
+    if math.abs(denominator)<.000001 then return nil end
+    local u=(q.X*w.Z-w.X*q.Z)/denominator
+    local t=(v.X*q.Z-q.X*v.Z)/denominator
+    if u>=-.00001 and t>=-.00001 and u+t<=1.00001 then return a.Y+u*v.Y+t*w.Y end
 end
-local function simulate(seconds)
-    local dt=0.025
-    for step=1,seconds/dt do
+local triangles,obstacles={},{}
+for _,p in ipairs(course:GetChildren()) do
+    if p.Name:find('Moving wind gate',1,true) or p.Name:find('Jump hurdle',1,true) then obstacles[#obstacles+1]=p end
+    if p:GetAttribute('SurfaceA') then
+        local cp=p:GetAttribute('Checkpoint');triangles[cp]=triangles[cp] or {};table.insert(triangles[cp],p)
+    end
+end
+local function floorAt(p)
+    if p.Z>=60 and p.Z<=102 and math.abs(p.X)<=48 then return 65 end
+    if p.Z<=-1092 and p.Z>=-1128 and math.abs(p.X)<=48 then return 77 end
+    local cp=math.max(1,math.min(48,math.ceil((60-p.Z)/24)))
+    for _,triangle in ipairs(triangles[cp]) do local y=surfaceY(triangle,p);if y then return y end end
+end
+local function simulate(count)
+    Config.SprintCompetitors=count
+    local state=Realm.new(Config,0)
+    local bodies={}
+    for i=1,count do
+        state:addCrew('Contact_'..i,0)
+        World.arrive(World.offlineAvatar('Contact_'..i),i,'Contact_'..i)
+        bodies[i]={vy=0,grounded=false}
+    end
+    state:advance(12); state:advance(20);now=20;World.sprintStep(state,now)
+    local seenRoutes,rankChanges,previousLeader={},0,nil
+    local dt=.05
+    for step=1,2400 do
         now=20+step*dt
-        if step%2==0 then World.sprintStep(state,now) end
-        for i=1,5 do
-            local member=state.crew['contact_'..i]
+        World.sprintStep(state,now)
+        for i=1,count do
+            local m=state.crew['contact_'..i]
             local model=workspace.RiftboundRealm['Traveler_Contact_'..i]
             local h,p,b=model.Humanoid,model.PrimaryPart,bodies[i]
-            if member.raceStatus=='racing' then
-                if (p.Position-b.position).Magnitude>0.1 then b.vy,b.grounded,b.jumpAt=0,false,nil end -- recovery
+            if m.raceStatus=='racing' then
+                if b.position and (p.Position-b.position).Magnitude>.1 then b.vy,b.grounded,b.jumpAt=0,false,nil end
+                if m.route~='shared' then seenRoutes[m.route]=true end
                 if h.Jump then
-                    if b.grounded and not b.jumpAt then b.jumpAt=now+0.05 end
+                    if b.grounded and not b.jumpAt then b.jumpAt=now+.05 end
                     h.Jump=false
                 end
                 if b.jumpAt and now>=b.jumpAt then
@@ -50,67 +64,62 @@ local function simulate(seconds)
                     b.jumpAt=nil
                 end
                 local old=p.Position
-                local d=h.MoveGoal-old; d=Vector3.new(d.X,0,d.Z)
-                local next=old+d*math.min(1,h.WalkSpeed*dt/math.max(0.001,d.Magnitude))
-                if b.checkpoint~=member.score then
-                    b.checkpoint=member.score
-                    b.pads={course['START platform']}
-                    local lane=((member.raceLane+state.round-2)%5)+1
-                    for cp=math.max(1,member.score),math.min(48,member.score+2) do
-                        b.pads[#b.pads+1]=course['Lane '..lane..' checkpoint '..cp]
+                local d=h.MoveGoal-old;d=Vector3.new(d.X,0,d.Z)
+                local next=old+d*math.min(1,h.WalkSpeed*dt/math.max(.001,d.Magnitude))
+                -- Native ground collision, friction, Humanoid step-up and crowd
+                -- contacts are NOT available. Approximate only triangle contact,
+                -- vertical obstacle faces, gravity and 50ms jump response.
+                for _,o in ipairs(obstacles) do
+                    if o.Name:find('Moving wind gate',1,true) or o.Name:find('Jump hurdle',1,true) then
+                        local q=o.CFrame:PointToObjectSpace(next)
+                        if math.abs(q.X)<=o.Size.X/2+1 and math.abs(q.Z)<=o.Size.Z/2+1
+                            and old.Y-3<o.Position.Y+o.Size.Y/2 and old.Y+2>o.Position.Y-o.Size.Y/2 then next=old;break end
                     end
-                    b.obstacles={}
-                    local hurdle=course[(lane==3 and 'Jump hurdle ' or 'Lane '..lane..' hurdle ')..(member.score+1)]
-                    if hurdle then b.obstacles[#b.obstacles+1]=hurdle end
-                    for index,cp in ipairs({26,30,34}) do
-                        if cp==member.score+1 then b.obstacles[#b.obstacles+1]=course['Moving wind gate '..index] end
-                    end
-                end
-                local pads=b.pads
-                -- A vertical pad face above the feet blocks walking; it cannot
-                -- silently lift the root toward a three-dimensional MoveTo goal.
-                for _,pad in ipairs(pads) do
-                    local top=pad.Position.Y+pad.Size.Y/2
-                    if overlaps(pad,next) and old.Y-3<top-0.5 and old.Y+2>top-pad.Size.Y then next=old; break end
-                end
-                for _,obstacle in ipairs(b.obstacles) do
-                    local top=obstacle.Position.Y+obstacle.Size.Y/2
-                    if overlaps(obstacle,next) and old.Y-3<top and old.Y+2>top-obstacle.Size.Y then next=old; break end
                 end
                 b.vy=b.vy-196.2*dt
                 next=Vector3.new(next.X,old.Y+b.vy*dt,next.Z)
-                b.grounded=false
-                if b.vy<=0 then
-                    for _,pad in ipairs(pads) do
-                        local y=pad.Position.Y+pad.Size.Y/2+3
-                        if overlaps(pad,next) and old.Y>=y-0.08 and next.Y<=y then
-                            next=Vector3.new(next.X,y,next.Z); b.vy,b.grounded=0,true; break
-                        end
-                    end
+                local y=floorAt(next)
+                local wasGrounded=b.grounded;b.grounded=false
+                if y and b.vy<=0 and old.Y>=y+3-(wasGrounded and .5 or .08) and next.Y<=y+3 then
+                    next=Vector3.new(next.X,y+3,next.Z);b.vy,b.grounded=0,true
                 end
                 h.FloorMaterial=b.grounded and Enum.Material.Slate or Enum.Material.Air
-                model:PivotTo(CFrame.new(next)); p.AssemblyLinearVelocity=Vector3.new(0,b.vy,0)
-                b.position=next
+                model:PivotTo(CFrame.new(next));p.AssemblyLinearVelocity=Vector3.new(0,b.vy,0);b.position=next
             end
+        end
+        if step%10==0 then
+            local leader=state:activityLeaderboard()[1].username
+            if previousLeader and previousLeader~=leader then rankChanges=rankChanges+1 end
+            previousLeader=leader
         end
         if state:raceComplete() then break end
     end
+    state:advance(140) -- unfinished bodies must become real DNFs at the deadline
+    local minTime,maxTime,recoveries,finished,dnfs=math.huge,0,0,0,0
+    for _,m in pairs(state.crew) do
+        recoveries=recoveries+m.recoveries
+        assert(m.score>=44,'failed to physically traverse all four sections: '..m.username..' cp='..m.score)
+        if m.finishedAt>0 then
+            assert(m.score==48 and m.raceStatus=='finished','invalid finisher')
+            local elapsed=m.finishedAt-m.enteredAt
+            assert(elapsed>=90 and elapsed<=120,'duration outside target '..elapsed)
+            minTime,maxTime=math.min(minTime,elapsed),math.max(maxTime,elapsed);finished=finished+1
+        else
+            assert(m.raceStatus=='dnf' and m.placement==0 and m.score<48,'deadline fabricated a finisher')
+            dnfs=dnfs+1
+        end
+    end
+    assert(finished>=math.ceil(count*.85),'fewer than 85% of the field finished the 120s contact approximation')
+    assert(recoveries==0,'avoidable contact-model fall/stall: '..recoveries)
+    assert(seenRoutes.main and seenRoutes.shortcut,'route choice did not exercise both paths')
+    assert(rankChanges>0,'no observed changes of lead')
+    print(string.format('CONTACT count=%d finished=%d DNF=%d time=%.2f..%.2f recoveries=%d leadChanges=%d',count,finished,dnfs,minTime,maxTime,recoveries,rankChanges))
 end
 `;
-
-test('all lanes leave the start and cross Starting Dash with gravity and loss of ground support', () => runLua(scene + `
-simulate(30)
-for _,m in pairs(state.crew) do
-    assert(m.score>=12,'start/contact loop: '..m.username..' cp='..m.score..' recoveries='..m.recoveries)
-    assert(m.recoveries==0,'avoidable fall in Starting Dash: '..m.username..' cp='..m.score..' recoveries='..m.recoveries)
-end
-`));
-
-test('edge-triggered jumps traverse all four sections with simplified gravity, hurdle faces and moving supports', () => runLua(scene + `
-simulate(120)
-for _,m in pairs(state.crew) do
-    assert(m.score==48,'contact model did not finish: '..m.username..' cp='..m.score..' recoveries='..m.recoveries)
-    assert(m.recoveries==0,'contact model fell: '..m.username..' recoveries='..m.recoveries)
-    assert(m.finishedAt-m.enteredAt>=90 and m.finishedAt-m.enteredAt<=120,'contact model duration outside target')
-end
-`));
+for (const count of [5,10,15,20]) {
+    test(`${count} NPCs race the shared road and both forks with measured results and deadline DNFs`, () => {
+        const started=performance.now();
+        runLua(scene+`simulate(${count})`);
+        console.log(`CONTACT ${count} NPCs cloud interpreter wall time ${((performance.now()-started)/1000).toFixed(2)}s; not Roblox FPS`);
+    });
+}

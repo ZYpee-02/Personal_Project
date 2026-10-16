@@ -1,3 +1,7 @@
+> **Current v10 shared skyway:** replace all five sources using
+> [SHARED_SKYWAY_REPLACEMENT.md](SHARED_SKYWAY_REPLACEMENT.md). The older
+> release notes below are historical; do not mix their scripts with v10.
+
 # v9 — fantasy skyblock world and separated race lanes
 
 ## Exact Studio update

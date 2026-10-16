@@ -1,3 +1,7 @@
+> **Current v10 shared skyway:** replace all five sources using
+> [SHARED_SKYWAY_REPLACEMENT.md](SHARED_SKYWAY_REPLACEMENT.md). The older
+> release notes below are historical; do not mix their scripts with v10.
+
 # Riftbound Live — cinematic two-minute fantasy race show (v9)
 
 Already on v7/v8? Use [the fantasy world two-file update](FANTASY_SKYBLOCK_REPLACEMENT.md).
