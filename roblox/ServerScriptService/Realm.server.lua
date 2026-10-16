@@ -86,16 +86,20 @@ local function initialize()
     local defaults = {
         SceneUpdatesPerSecond = 12, SnapshotSeconds = 0.5, AutoActivities = true,
         ActivityMoneyPerSecond = 2, RoundWinMoneyPerSecond = 1, CoinsPerPoint = 2,
-        RoundPrizes = { 120, 75, 40 }, OfflineDemoEnabled = true, DemoStudioOnly = true,
+        RoundPrizes = { 120, 75, 40 }, OfflineDemoEnabled = false, DemoStudioOnly = true,
         DemoNames = { "Demo_Astra", "Demo_Lumen", "Demo_Nova", "Demo_Fern", "Demo_Orion" },
-        AutoSimulateGifts = true, DemoGiftSeconds = 18, StreamCameraDefault = true, HostUserIds = {},
+        AutoSimulateGifts = false, DemoPowerups = true, DemoGiftSeconds = 18, StreamCameraDefault = true, HostUserIds = {},
         BaseMoneyPerSecond = 5, VoteMoneyPerSecond = 3, WinMoneyPerSecond = 2,
         MaxMoneyPerSecond = 100, MaxBalance = 1000000000, MaxCrew = 40, MaxQueuedArrivals = 30,
-        PersistenceEnabled = false, AutoJoinPlayers = true, SprintOnly = true, SprintCompetitors = 16, SprintRaceSeconds = 120, SprintWalkSpeed = 12.5, ResolveViewerUsernames = true, EntranceSeconds = 4,
+        PersistenceEnabled = false, AutoJoinPlayers = false, SprintOnly = true, SprintCompetitors = 20, SprintRaceSeconds = 120, SprintWalkSpeed = 12.5, ResolveViewerUsernames = true, EntranceSeconds = 4,
+        RegistrationSeconds = 30, MinimumRacers = 2, StartCountdownSeconds = 4, MaxSessionMembers = 500,
         SprintFinishBonus = 40, LoadAvatarAppearances = false, AppearanceTimeoutSeconds = 8,
         DemoAppearanceUserIds = { 1, 156, 261, 2, 3 },
     }
     for name, value in pairs(defaults) do if Config[name] == nil then Config[name] = value end end
+    assert(Config.AutoActivities == true, "AutoActivities must stay true for the automatic tournament")
+    assert(Config.SprintOnly == true, "SprintOnly must stay true for the physical Skybridge tournament")
+    assert(Config.AutoJoinPlayers == false, "AutoJoinPlayers must stay false; viewers must register freshly each round")
     assert(Config.PersistenceEnabled == false, "PersistenceEnabled must stay false; this game has no save implementation")
     local function range(name, minimum, maximum)
         local value = Config[name]
@@ -107,7 +111,12 @@ local function initialize()
     range("SprintWalkSpeed", 10, 14)
     range("EntranceSeconds", 3, 5)
     assert(workspace.StreamingEnabled ~= true, "For this playtest, Stop Play and set Workspace.StreamingEnabled=false in Properties.")
-    range("SprintCompetitors", 1, 20)
+    range("RegistrationSeconds", 5, 120)
+    range("MinimumRacers", 2, 20)
+    range("StartCountdownSeconds", 4, 8)
+    range("MaxSessionMembers", 40, 1000)
+    range("SprintCompetitors", 2, 20)
+    assert(Config.MinimumRacers<=Config.SprintCompetitors, "MinimumRacers cannot exceed SprintCompetitors")
     assert(Config.SprintCompetitors == math.floor(Config.SprintCompetitors), "SprintCompetitors must be a whole number")
     range("SprintFinishBonus", 0, 1000000)
     range("AppearanceTimeoutSeconds", 1, 30)
@@ -120,7 +129,7 @@ local function initialize()
     for _, name in ipairs({ "BaseMoneyPerSecond", "VoteMoneyPerSecond", "WinMoneyPerSecond", "ActivityMoneyPerSecond", "RoundWinMoneyPerSecond", "CoinsPerPoint" }) do range(name, 0, 1000) end
     range("MaxMoneyPerSecond", 1, 1000)
     range("MaxBalance", 1, 1000000000)
-    for _, name in ipairs({ "AutoActivities", "OfflineDemoEnabled", "DemoStudioOnly", "AutoSimulateGifts", "StreamCameraDefault", "SprintOnly", "LoadAvatarAppearances", "AutoJoinPlayers", "ResolveViewerUsernames" }) do
+    for _, name in ipairs({ "AutoActivities", "OfflineDemoEnabled", "DemoStudioOnly", "AutoSimulateGifts", "DemoPowerups", "StreamCameraDefault", "SprintOnly", "LoadAvatarAppearances", "AutoJoinPlayers", "ResolveViewerUsernames" }) do
         assert(type(Config[name]) == "boolean", "Config." .. name .. " must be true or false")
     end
     assert(type(Config.DemoAppearanceUserIds) == "table", "DemoAppearanceUserIds must be a table")
@@ -130,7 +139,7 @@ local function initialize()
     for i = 1, 3 do assert(type(Config.RoundPrizes[i]) == "number" and Config.RoundPrizes[i] >= 0 and Config.RoundPrizes[i] <= 1000000, "RoundPrizes needs three finite nonnegative amounts") end
     stage("Creating RealmState")
     local state = Realm.new(Config, os.clock())
-    for _, name in ipairs({ "tick", "advance", "snapshot", "addCrew", "vote", "gift", "follow", "bless", "recordCheckpoint", "raceDistance", "raceComplete", "raceDNF", "queueEntrance", "advanceEntrances", "nextCohort" }) do
+    for _, name in ipairs({ "tick", "advance", "snapshot", "addCrew", "vote", "gift", "follow", "bless", "recordCheckpoint", "raceDistance", "raceComplete", "raceDNF", "queueEntrance", "advanceEntrances", "nextCohort", "registrationCheck", "register", "unregister", "activatePowerup" }) do
         assert(type(state[name]) == "function", "RealmState is missing " .. name .. "(). Replace its complete Phase 2 source.")
     end
     local initial = state:snapshot(os.clock())
@@ -163,42 +172,67 @@ local function initialize()
         if player and player.Parent then noticeRemote:FireClient(player, message) end
     end
 
-    local function arrival(username, appearanceUserId, offline)
-        if not World.validUsername(username) then
-            return false, "Enter a Roblox username, not a display name."
+    local inputSequence, seenInputs, seenRound = 0, {}, state.round
+    local inputCount = 0
+    local function envelope(kind, username, roundId, extra)
+        inputSequence=inputSequence+1
+        local event={type=kind,username=username,roundId=roundId,eventId="offline:"..inputSequence,submittedAt=os.clock()}
+        for key,value in pairs(extra or {}) do event[key]=value end
+        return event
+    end
+    local function arrival(event)
+        local username=event.username
+        local ok,issue=state:registrationCheck(username,event.roundId,event.submittedAt,os.clock(),event.eventId)
+        if not ok then return false,issue end
+        if not World.validUsername(username) then return false,"Enter a Roblox username, not a display name." end
+        local userId=type(event.appearanceUserId)=="number" and event.appearanceUserId or 0
+        if userId==0 and event.offline~=true then
+            userId,issue=World.resolveUsername(username)
+            if not userId then return false,issue end
         end
-        if state.crew[string.lower(username)] then return false, "That traveler is already here." end
-        if #state.crewOrder >= Config.MaxCrew then return false, "The island is full for this session." end
-        if #state.entranceQueue >= Config.MaxQueuedArrivals then return false, "The Star Gate entrance queue is full. Try again shortly." end
-        local userId = type(appearanceUserId) == "number" and appearanceUserId or 0
-        if userId == 0 and not offline then
-            local issue
-            userId, issue = World.resolveUsername(username)
-            if not userId then return false, issue end
-        end
-        local model = World.offlineAvatar(username)
+        -- Native lookup yields. Revalidate the original window AFTER it returns.
         state:tick(os.clock())
-        local added, member = state:addCrew(username, userId)
-        if not added then model:Destroy(); return false, member end
-        state:queueEntrance(username)
+        local registered,member=state:register(username,userId,event.roundId,event.submittedAt,os.clock(),event.eventId)
+        if not registered then return false,member end
+        local model=World.offlineAvatar(member.username)
+        World.arrive(model,member.slot,member.username)
+        World.loadAppearance(member.username,userId)
         state:advanceEntrances(os.clock())
-        World.arrive(model, member.slot, username)
-        World.loadAppearance(username, userId)
-        return true, username .. (offline and " queued / OFFLINE stand-in." or " queued / Roblox avatar.")
+        return true,member.username.." registered for round "..event.roundId..(event.offline and " / OFFLINE" or " / ROBLOX")
     end
-
     local function apply(event)
-        if event.type == "join" then return arrival(event.username, event.appearanceUserId, event.offline == true) end
-        if event.type == "vote" then return state:vote("live:" .. event.viewer, event.choice, event.username, os.clock()) end
-        if event.type == "blessing" then return state:bless(event.kind, os.clock()) end
-        if event.type == "gift" then return state:gift(event.username, event.kind, event.count, os.clock()) end
-        if event.type == "follow" then return state:follow(event.viewer) end
-        return false, "Unsupported event."
+        if event.type=="register" or event.type=="join" then return arrival(event) end
+        if event.type=="withdraw" then return state:unregister(event.username,event.roundId,os.clock(),event.eventId) end
+        if event.type=="powerup" then return state:activatePowerup(event.username,event.kind,os.clock(),event.roundId,event.eventId) end
+        if event.type=="vote" then return state:vote("live:"..event.viewer,event.choice,event.username,os.clock()) end
+        if event.type=="blessing" then return state:bless(event.kind,os.clock()) end
+        if event.type=="gift" then return state:gift(event.username,event.kind,event.count,os.clock()) end
+        if event.type=="follow" then return state:follow(event.viewer) end
+        return false,"Unsupported event."
     end
-
     local function enqueue(event, done)
-        if #tasks >= Config.MaxQueuedArrivals then return false end
-        table.insert(tasks, { event = event, done = done })
+        if type(event)~="table" then return false,"An event table is required." end
+        local scoped=event.type=="register" or event.type=="join" or event.type=="withdraw" or event.type=="powerup"
+        if scoped then
+            if event.roundId~=state.round then return false,"Stale round ID. Submit again during the correct registration window." end
+            if type(event.eventId)~="string" or #event.eventId<1 or #event.eventId>96 or not string.match(event.eventId,"^[%w_:%-%.]+$") then return false,"A valid unique eventId is required." end
+            if type(event.submittedAt)~="number" or event.submittedAt~=event.submittedAt or event.submittedAt>os.clock()
+                or event.submittedAt<state.registrationOpenedAt then return false,"An entry timestamp from this server window is required." end
+            if event.type=="register" or event.type=="join" then
+                local ok,issue=state:registrationCheck(event.username,event.roundId,event.submittedAt,os.clock(),event.eventId)
+                if not ok then return false,issue end
+            elseif event.type=="withdraw" and state.phase~="registration" then return false,"The roster is locked."
+            elseif event.type=="powerup" and (state.phase~="storm" or event.submittedAt<state.activityStarted) then return false,"Power-up visuals require a new request during racing." end
+            if seenRound~=state.round then seenInputs,seenRound,inputCount={},state.round,0 end
+            if seenInputs[event.eventId] then return false,"Repeated event rejected." end
+            if inputCount>=1024 then return false,"This window's event budget is full." end
+            seenInputs[event.eventId]=true;inputCount=inputCount+1
+        end
+        if #tasks>=Config.MaxQueuedArrivals then return false,"The event queue is full. Try again shortly." end
+        -- Copy scalar fields: callers cannot mutate a table already queued.
+        local copy={}
+        for _,key in ipairs({"type","username","roundId","eventId","submittedAt","offline","appearanceUserId","kind","count","viewer","choice","demo"}) do copy[key]=event[key] end
+        tasks[#tasks+1]={event=copy,done=done}
         return true
     end
 
@@ -209,7 +243,8 @@ local function initialize()
         if not running then return false, "Riftbound is not running. Check StartupError." end
         if type(event) ~= "table" then return false, "An event table is required." end
         local completed, accepted, message = false, false, "Queue full."
-        if not enqueue(event, function(ok, result) accepted, message, completed = ok, result, true end) then return false, message end
+        local queued,issue=enqueue(event, function(ok, result) accepted, message, completed = ok, result, true end)
+        if not queued then return false,issue end
         while running and not completed do task.wait(0.1) end
         if not completed then return false, "Riftbound stopped before processing the event." end
         return accepted, message
@@ -245,15 +280,13 @@ local function initialize()
         if World.preparePlayer then World.preparePlayer(player) end
         player:SetAttribute("RiftboundHost", host(player))
         player:SetAttribute("RiftboundStreamCamera", Config.StreamCameraDefault)
-        if Config.AutoJoinPlayers then
-            enqueue({ type = "join", username = player.Name, appearanceUserId = player.UserId }, function(_, message) notify(player, message) end)
-        end
+
     end
     Players.PlayerAdded:Connect(playerAdded)
     for _, player in ipairs(Players:GetPlayers()) do task.spawn(playerAdded, player) end
     Players.PlayerRemoving:Connect(function(player) lastAction[player.UserId] = nil end)
 
-    actionRemote.OnServerEvent:Connect(function(player, action, payload)
+    actionRemote.OnServerEvent:Connect(function(player, action, payload, roundId)
         if not running then return end
         if type(action) ~= "string" or type(payload) ~= "string" or #payload > 100 then return end
         local now = os.clock()
@@ -263,10 +296,15 @@ local function initialize()
             local _, message = state:vote("player:" .. player.UserId, payload, player.Name, now)
             notify(player, message)
         elseif host(player) then
-            if action == "join" or action == "offlineJoin" then
-                if not enqueue({ type = "join", username = payload, offline = action == "offlineJoin" }, function(_, message) notify(player, message) end) then
-                    notify(player, "The arrival queue is full. Try again shortly.")
-                end
+            if action=="join" or action=="offlineJoin" or action=="withdraw" or action=="powerupTrail" or action=="powerupShield" or action=="powerupStarburst" then
+                local kind=({powerupTrail="trail",powerupShield="shield",powerupStarburst="starburst"})[action]
+                local event=envelope(kind and "powerup" or action=="withdraw" and "withdraw" or "register",payload,roundId,{offline=action=="offlineJoin",kind=kind})
+                local ok,issue=enqueue(event,function(_,message) notify(player,message) end)
+                if not ok then notify(player,issue) end
+            elseif action=="demoToggle" then
+                if Config.DemoStudioOnly and not RunService:IsStudio() then notify(player,"Demo testing is Studio-only.");return end
+                demoEnabled=not demoEnabled
+                notify(player,demoEnabled and "DEMO TESTING ON / fresh registration events each round" or "DEMO TESTING OFF / waiting for challengers")
             elseif action == "blessing" then
                 local _, message = state:bless(payload, now)
                 notify(player, message)
@@ -281,32 +319,38 @@ local function initialize()
             elseif action == "follow" then
                 local _, message = state:follow("demo:" .. string.lower(payload))
                 notify(player, message)
-            elseif action == "rift" then
-                if state.phase == "gathering" then state.deadline = now end
+            elseif action=="rift" then
+                notify(player,"The race starts automatically after 2+ fresh registrations and the countdown.")
             end
         end
         guarded("Publishing player action", publish)
     end)
 
     task.spawn(function()
-        if not demoEnabled then return end
-        task.wait(2)
-        for i, name in ipairs(Config.DemoNames) do
-            if not running then return end
-            enqueue({ type = "join", username = name, appearanceUserId = Config.DemoAppearanceUserIds[i], offline = true })
-            task.wait(0.65)
-        end
-        if not Config.AutoSimulateGifts then return end
-        local nextTarget, kinds = 0, { "bloom", "aurora", "giant" }
+        local seededRound=0
+        local nextGift,visualIndex=0,0
         while running do
-            task.wait(math.max(5, Config.DemoGiftSeconds))
-            if not running then break end
-            if #state.crewOrder > 0 then
-                nextTarget = nextTarget + 1
-                local username = state.crew[state.crewOrder[((nextTarget - 1) % #state.crewOrder) + 1]].username
-                enqueue({ type = "gift", username = username, kind = kinds[((nextTarget - 1) % #kinds) + 1], count = 1 })
-                enqueue({ type = "follow", viewer = "demo:" .. string.lower(username) })
+            if demoEnabled and state.phase=="registration" and seededRound~=state.round then
+                local registrationRound=state.round;seededRound=registrationRound
+                for i,name in ipairs(Config.DemoNames) do
+                    if not demoEnabled or state.phase~="registration" or state.round~=registrationRound then break end
+                    enqueue(envelope("register",name,registrationRound,{offline=true,appearanceUserId=Config.DemoAppearanceUserIds[i],demo=true}))
+                    task.wait(.35)
+                end
             end
+            if demoEnabled and (Config.DemoPowerups or Config.AutoSimulateGifts) and state.phase=="storm" and os.clock()>=nextGift then
+                nextGift=os.clock()+math.max(5,Config.DemoGiftSeconds);visualIndex=visualIndex+1
+                local key=state.lockedRoster[(visualIndex-1)%math.max(1,#state.lockedRoster)+1]
+                if key then
+                    local name=state.crew[key].username
+                    if Config.DemoPowerups then enqueue(envelope("powerup",name,state.round,{kind=({"trail","shield","starburst"})[(visualIndex-1)%3+1]})) end
+                    if Config.AutoSimulateGifts then
+                        enqueue({type="gift",username=name,kind="bloom",count=1})
+                        enqueue({type="follow",viewer="demo:"..string.lower(name)})
+                    end
+                end
+            end
+            task.wait(.5)
         end
     end)
 
@@ -331,7 +375,18 @@ local function initialize()
                 local now = os.clock()
                 state:tick(now)
                 state:advanceEntrances(now)
+                local previousPhase=state.phase
                 local changed = state:advance(now)
+                if changed and (state.phase=="countdown" or state.phase=="result" or previousPhase=="result") then
+                    -- Cancel pending old-window tasks as well as presentation queues.
+                    for i=#tasks,1,-1 do
+                        local item=tasks[i]
+                        if item.event.roundId and (item.event.type=="register" or item.event.type=="join" or item.event.roundId~=state.round) then
+                            table.remove(tasks,i)
+                            if item.done then item.done(false,"Registration closed. Submit again in the next registration window.") end
+                        end
+                    end
+                end
                 if changed or now - lastSnapshot >= Config.SnapshotSeconds then
                     publish()
                     lastSnapshot = now

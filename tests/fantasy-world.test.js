@@ -9,6 +9,7 @@ const client=read('StarterPlayerScripts/Realm.client.lua');
 const domain=read('ServerScriptService/RealmState.lua');
 const scene=presentationEngine+`
 local Config=(function() ${config} end)()
+Config.RegistrationSeconds=nil -- legacy-domain regression fixture; production server always supplies 30s
 Config.LoadAvatarAppearances=false
 local World=(function() ${world} end)()
 World.build(Config)

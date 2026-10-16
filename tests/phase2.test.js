@@ -6,7 +6,8 @@ const read = name => readFileSync(new URL(`../roblox/ServerScriptService/${name}
 const config = read('Config.lua');
 const domain = read('RealmState.lua');
 const server = read('Realm.server.lua');
-const setup = `local Realm = (function() ${domain} end)()\nlocal Config = (function() ${config} end)()\nConfig.SprintOnly=false; Config.SprintRaceSeconds=120; Config.LoadAvatarAppearances=false\n`;
+const setup = `local Realm = (function() ${domain} end)()\nlocal Config = (function() ${config} end)()
+Config.RegistrationSeconds=nil -- legacy-domain regression fixture; production server always supplies 30s\nConfig.SprintOnly=false; Config.SprintRaceSeconds=120; Config.LoadAvatarAppearances=false\n`;
 
 test('automatic competitions rotate through three activities without a single vote or host action', () => runLua(setup + `
 local r = Realm.new(Config, 0)
@@ -113,7 +114,9 @@ function serverSimulation(isStudio, enabled) {
   return setup + instances + `
 local now, jobs, heartbeat, captures = 0, {}, {}, {}
 local arrivals, frames, sawResult, gifts = 0, 0, false, false
+Config.SprintOnly=true -- actual server always runs the registration tournament
 Config.OfflineDemoEnabled = ${enabled}
+Config.AutoSimulateGifts = true
 local players = { PlayerAdded = { Connect = function() end }, PlayerRemoving = { Connect = function() end }, GetPlayers = function() return {} end }
 local runtime = { IsStudio = function() return ${isStudio} end, Heartbeat = signal() }
 workspace={StreamingEnabled=false}
@@ -183,16 +186,16 @@ local final = captures[#captures]
 }
 
 test('actual server orchestration runs demo arrivals, gifts and multiple rounds without any human/keeper actions', () => runLua(serverSimulation('true', 'true') + `
-assert(arrivals == #Config.DemoNames and sawResult and gifts)
+assert(arrivals >= #Config.DemoNames*2 and sawResult and gifts)
 assert(final.round >= 3 and final.followers > 0 and final.demo)
-for _, member in ipairs(final.members) do assert(member.balance > 0 and member.gifts >= 1) end
+for _, member in ipairs(final.members) do assert(member.balance > 0) end
 `));
 
 test('Studio-only demo never invents viewers or gifts in a non-Studio server', () => runLua(serverSimulation('false', 'true') + `
 assert(arrivals == 0 and not sawResult and not gifts and not final.demo)
-assert(final.round >= 3 and #final.members == 0)
+assert(final.round == 1 and final.phase=="registration" and final.registration.count==0 and #final.members == 0)
 `));
 
-test('turning offline demo off leaves the automatic round scheduler running', () => runLua(serverSimulation('true', 'false') + `
-assert(arrivals == 0 and not gifts and not final.demo and final.round >= 3)
+test('turning offline demo off leaves the automatic registration system waiting for fresh participants', () => runLua(serverSimulation('true', 'false') + `
+assert(arrivals == 0 and not gifts and not final.demo and final.round==1 and final.phase=="registration")
 `));

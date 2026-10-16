@@ -1,3 +1,5 @@
+> Current v11 registration tournament: use [TOURNAMENT_REGISTRATION_REPLACEMENT.md](TOURNAMENT_REGISTRATION_REPLACEMENT.md) and replace all five sources. The v10 course itself is unchanged.
+
 # Riftbound Live v10 — shared fantasy skyway
 
 This replaces v9's five isolated lanes with **one broad connected road**. Replace

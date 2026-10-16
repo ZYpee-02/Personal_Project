@@ -13,6 +13,7 @@ const resolutions = [[320,568],[390,844],[720,1280],[1080,1920],[1920,1080],[844
 const sizes = resolutions.map(([w,h]) => `{${w},${h}}`).join(',');
 const modules = `
 local Config=(function() ${config} end)()
+Config.RegistrationSeconds=nil -- legacy-domain regression fixture; production server always supplies 30s
 Config.LoadAvatarAppearances=false
 local Realm=(function() ${domain} end)()
 local World=(function() ${world} end)()

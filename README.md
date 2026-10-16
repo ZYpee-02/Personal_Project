@@ -1,48 +1,43 @@
-# Riftbound Live — shared fantasy skyway race show
+# Riftbound Live — automated registration tournament
 
-One broad, banked adventure road with two split-and-rejoin shortcuts, a 20-position
-starting grid, 48 measured gates and a 120-second deadline. The default field is
-16 NPCs; the offline demo seeds 20 viewers and rotates cohorts automatically.
-Racers share the road, steer around traffic and hazards, and choose routes.
-Native Humanoid movement and observed finish crossings determine the results.
+The existing wide, shared v10 fantasy skyway is unchanged. Viewers now register
+freshly for every round, watch their avatars emote in the lobby, launch through a
+fiery READY/3/2/1/GO sequence, race physically for up to 120 seconds, and see measured
+podium results before the next empty registration window opens.
 
-![Shared skyway plan — not a gameplay screenshot](docs/SKYBRIDGE_ROUTE.svg)
+**Normal mode starts empty and waits indefinitely.** A second valid entrant starts
+a 30-second open registration timer, up to 20 competitors. Dropping below two
+cancels it. Closing locks the roster; late entries are rejected rather than queued
+for another race. Everyone must submit again next round. Money and historical
+statistics remain in the separate session ledger.
 
-**v10: replace all five complete raw sources together**, including existing v9
-installations. [Exact replacement instructions](docs/SHARED_SKYWAY_REPLACEMENT.md)
-list every file, Studio parent/type, settings and native playtests.
-MANUAL_STUDIO_SETUP.md includes all five complete source blocks. GitHub source
-updates do not automatically sync into an open Roblox Studio place.
+[Complete five-source replacement instructions](docs/TOURNAMENT_REGISTRATION_REPLACEMENT.md)
+include exact Studio parents/types, offline controls and the future scoped event
+contract. MANUAL_STUDIO_SETUP.md contains all five complete raw Luau source blocks.
+GitHub pushes do not automatically update an open Studio place.
 
-| Section | Gates | Shared road features |
-| --- | --- | --- |
-| Starting Dash | 1–12 | Mossy slate, banked curves, broad grid, partial-width hurdles |
-| Moving Bridges | 13–24 | Timber main bridge, inside jump shortcut, moving slalom gates |
-| Hazard Zone | 25–36 | Stone ruins, sweeping gates, second split/rejoin shortcut |
-| Final Sprint | 37–48 | Marble turns, overtakes and crown finish |
+Use TEST TOOLS → **DEMO TESTING** explicitly for an automated preview: the demo
+submits fresh registration events every round and showcases cosmetic power-ups.
+It is OFF by default. OFFLINE JOIN, verified Roblox account joins, withdrawal,
+stale-round tests and individual visual controls also remain available. Real
+TikTok comments are not connected yet. The normal populated cycle needs no
+manual start button.
 
-Floating meadows, trees, crystals, portals, waterfalls and clouds flank the course.
-The director follows the lead pack, real changes of leader, shortcut battles,
-other competitors and the finish. Close entrance montages queue without pausing
-the race. Stream/Roam controls and reversible camera visibility safeguards remain.
+The director covers waiting avatars, the whole starting grid, overtakes, other
+competitors, shortcuts, queued 1.5-second power-up highlights, finish battles and
+the podium. Roam stays a manual override. Trail/shield/starburst effects are
+cosmetic with equal cooldowns; they grant no speed, immunity, score or gift advantage.
+Native fires, smoke, sparks and fixed presentation pools do not damage racers.
 
-The economy stays fictional and in memory: $2/checkpoint, $40 finish and
-$120/$75/$40 podium prizes, plus existing capped earnings and cosmetic gifts.
-Grounded sequential gates, route corridors, fall recovery, measured finish times
-and DNFs remain authoritative. All racers have equal movement settings; there
-are no predetermined winners. NPC-to-NPC body collisions are disabled to avoid
-crowd pileups; road and hazard collisions remain active with local steering.
+Physical shared-road navigation, two alternate routes, checkpoints, actual finish
+times, DNFs, fictional earnings and session leaderboards are preserved. The course
+builder is fingerprinted against v10. Keep Workspace.StreamingEnabled=false;
+DataStoreService, custom HTTP and real TikTok networking remain disabled.
+Client marker: **race-show-v11**; course marker: **show-v10-shared-road**.
 
-Keep Workspace.StreamingEnabled=false. DataStoreService, custom HTTP and real
-TikTok integration remain disabled. OFFLINE JOIN uses procedural avatars;
-optional verified joins use bounded native Roblox username/appearance APIs.
-To avoid authored account requests set ResolveViewerUsernames=false and
-LoadAvatarAppearances=false. Initial arrival montages may make the first race
-smaller; subsequent cohorts fill once newcomers complete their entrances.
-
-[Available test results and limits](docs/SHARED_SKYWAY_TEST_RESULTS.md) distinguish
-5/10/15/20-racer cloud contact approximations from required native Studio physics,
-rendering and performance checks. Client diagnostics identify **race-show-v10**.
+[Available tests and limitations](docs/TOURNAMENT_TEST_RESULTS.md) distinguish cloud
+state/geometry/contact/projection checks from required native Studio visual,
+Humanoid physics and 15–20-racer performance playtests.
 
 ## Development checks
 

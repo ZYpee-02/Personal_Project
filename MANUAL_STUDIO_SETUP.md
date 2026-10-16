@@ -1,32 +1,31 @@
-# Riftbound Live v10 — shared fantasy skyway
+# Riftbound Live v11 — fresh registration and cinematic tournament
 
-This replaces v9's five isolated lanes with **one broad connected road**. Replace
-all five complete sources together: Config, navigation, route validation, cohort
-limits and the client contract all change. No new game module is added.
+The shared v10 track is unchanged. This update changes race entry, presentation
+and actor lifecycle around it. **Replace all five complete raw sources together.**
 
-## Exact Studio replacements
+## Exact Studio replacement
 
-Stop Play and back up your place. Open each GitHub file and choose **Raw**, then
-replace the entire matching source (do not append code or paste Markdown fences):
+Stop Play, save a backup, then use GitHub **Raw** to replace each entire source:
 
-| Complete source | Studio location and instance type |
-| --- | --- |
-| [Config.lua](roblox/ServerScriptService/Config.lua) | ServerScriptService → Config, ModuleScript |
-| [RealmState.lua](roblox/ServerScriptService/RealmState.lua) | ServerScriptService → RealmState, ModuleScript |
-| [World.lua](roblox/ServerScriptService/World.lua) | ServerScriptService → World, ModuleScript |
-| [Realm.server.lua](roblox/ServerScriptService/Realm.server.lua) | ServerScriptService → Realm, Script; Enabled; RunContext Legacy |
-| [Realm.client.lua](roblox/StarterPlayerScripts/Realm.client.lua) | StarterPlayer → StarterPlayerScripts → Realm, LocalScript; Enabled |
+| Complete file | Studio parent → instance name | Type |
+| --- | --- | --- |
+| [Config.lua](roblox/ServerScriptService/Config.lua) | ServerScriptService → Config | ModuleScript |
+| [RealmState.lua](roblox/ServerScriptService/RealmState.lua) | ServerScriptService → RealmState | ModuleScript |
+| [World.lua](roblox/ServerScriptService/World.lua) | ServerScriptService → World | ModuleScript |
+| [Realm.server.lua](roblox/ServerScriptService/Realm.server.lua) | ServerScriptService → Realm | Script, Enabled, RunContext Legacy |
+| [Realm.client.lua](roblox/StarterPlayerScripts/Realm.client.lua) | StarterPlayer → StarterPlayerScripts → Realm | LocalScript, Enabled |
 
-Keep your existing HostUserIds and any intentional economy settings in Config.
-Keep one instance of each script. Edit the saved StarterPlayerScripts template,
-not the runtime Players/PlayerScripts copy. With Play stopped set
-**Workspace.StreamingEnabled=false**, save, then start a fresh Play session.
-HTTP Requests and Studio API Services access can stay disabled. The server creates
-its own remotes. No Command Bar installer, plugin or bridge is needed.
+Keep your HostUserIds and intentional economy values. Keep AutoActivities=true,
+SprintOnly=true and AutoJoinPlayers=false for this tournament. Keep one instance of each
+script. Edit StarterPlayerScripts, not a runtime Players/PlayerScripts copy. Keep
+**Workspace.StreamingEnabled=false**, save and start a fresh **Play**. HTTP Requests
+and Studio API Services access remain unnecessary. MANUAL_STUDIO_SETUP.md contains
+the same five complete source blocks. No new game module or installer is required.
 
-Expect `[Riftbound] Ready`, `presentation=race-show-v10`, and course revision
-`show-v10-shared-road`. A GitHub push updates source only; it does not modify an
-already open Studio place. MANUAL_STUDIO_SETUP.md also contains all five raw sources.
+Expect server `[Riftbound] Ready` and client `presentation=race-show-v11`.
+The course revision deliberately remains `show-v10-shared-road`: its road builder,
+shared checkpoints, branching geometry and obstacle motion have not changed.
+GitHub updates do not automatically modify an open Studio place.
 
 
 The sections below contain the complete current raw Luau sources.
@@ -45,10 +44,14 @@ return {
     WinMoneyPerSecond = 2,
     MaxMoneyPerSecond = 100,
     MaxBalance = 1000000000,
-    AutoActivities = true,
+    AutoActivities = true, -- Required for the automatic tournament.
     AutoJoinPlayers = false, -- host is a spectator; JOIN tools still enqueue any username.
-    SprintOnly = true, -- false restores Starfall/Sprint/Relay rotation. Sprint is always physical.
-    SprintCompetitors = 16,
+    SprintOnly = true, -- Tournament mode keeps the existing physical Skybridge course.
+    SprintCompetitors = 20,
+    RegistrationSeconds = 30, -- begins only after at least two valid registrations.
+    MinimumRacers = 2,
+    StartCountdownSeconds = 4, -- READY, 3, 2, 1; GO starts physical racing.
+    MaxSessionMembers = 500, -- ledger history; only the current roster has avatars.
     SprintRaceSeconds = 120,
     SprintWalkSpeed = 12.5, -- Shared skyway: physical travel, not a finish timer.
     ResolveViewerUsernames = true, -- Verified JOIN uses native Roblox account lookup.
@@ -67,10 +70,11 @@ return {
     ResultSeconds = 10,
     MaxCrew = 40,
     MaxQueuedArrivals = 30,
-    OfflineDemoEnabled = true,
+    OfflineDemoEnabled = false,
     DemoStudioOnly = true, -- Never imply the seeded crew are real LIVE viewers.
     DemoNames = { "Demo_Astra", "Demo_Lumen", "Demo_Nova", "Demo_Fern", "Demo_Orion", "Demo_Lyra", "Demo_Atlas", "Demo_Iris", "Demo_Rune", "Demo_Vega", "Demo_Echo", "Demo_Sage", "Demo_Kai", "Demo_Ember", "Demo_Jade", "Demo_Sol", "Demo_Cora", "Demo_Zen", "Demo_Milo", "Demo_Skye" },
-    AutoSimulateGifts = true,
+    DemoPowerups = true, -- cosmetic showcases only while explicit demo testing is ON.
+    AutoSimulateGifts = false,
     DemoGiftSeconds = 18,
     SceneUpdatesPerSecond = 12, -- Bound server-side procedural animation replication.
     SnapshotSeconds = 0.5,
@@ -103,7 +107,13 @@ function Realm.new(config, now)
     for _, key in ipairs({ "GatheringSeconds", "VotingSeconds", "StormSeconds", "ResultSeconds" }) do
         assert(type(config[key]) == "number" and config[key] > 0 and config[key] < math.huge, key .. " must be a finite positive duration")
     end
-    return setmetatable({
+    if config.RegistrationSeconds then
+        assert(type(config.RegistrationSeconds)=="number" and config.RegistrationSeconds>0 and config.RegistrationSeconds<math.huge,"RegistrationSeconds must be finite and positive")
+        local minimum,capacity=config.MinimumRacers or 2,config.SprintCompetitors or 20
+        assert(type(minimum)=="number" and minimum>=2 and minimum==math.floor(minimum),"MinimumRacers must be a whole number of at least 2")
+        assert(type(capacity)=="number" and capacity>=minimum and capacity<=20 and capacity==math.floor(capacity),"SprintCompetitors must fit MinimumRacers through 20")
+    end
+    local state = setmetatable({
         config = config,
         phase = "gathering",
         deadline = now + config.GatheringSeconds,
@@ -134,12 +144,24 @@ function Realm.new(config, now)
         giftSequence = 0,
         lastGift = { username = "", kind = "", count = 0, sequence = 0 },
     }, Realm)
+    -- Server configuration always supplies RegistrationSeconds. Older pure-domain
+    -- callers without it retain their legacy activity/economy contract.
+    if config.RegistrationSeconds then
+        state.registrationEnabled = true
+        state.phase, state.round, state.deadline = "registration", 1, 0
+        state.registrationOpenedAt = now
+        state.roster, state.registrations, state.registrationEvents, state.lockedRoster = {}, {}, {}, {}
+        state.powerupEvents, state.highlightQueue, state.raceHistory = {}, {}, {}
+        state.powerupSequence = 0
+        state.message = "WAITING FOR CHALLENGERS / COMMENT YOUR ROBLOX USERNAME TO JOIN!"
+    end
+    return state
 end
 
 function Realm:addCrew(username, userId)
     local key = string.lower(username)
     if self.crew[key] then return false, "That traveler is already on the island." end
-    if #self.crewOrder >= self.config.MaxCrew then return false, "The island is full for this session." end
+    if #self.crewOrder >= (self.registrationEnabled and (self.config.MaxSessionMembers or 500) or self.config.MaxCrew) then return false, "The island is full for this session." end
     self.crew[key] = {
         username = username, userId = userId, slot = #self.crewOrder + 1,
         balance = 0, roundMoney = 0, participated = false,
@@ -154,10 +176,102 @@ function Realm:addCrew(username, userId)
     return true, self.crew[key]
 end
 
+local function finite(value) return type(value)=="number" and value==value and math.abs(value)<math.huge end
+local function eventKey(value)
+    return type(value)=="string" and #value>0 and #value<=96 and string.match(value,"^[%w_:%-%.]+$")~=nil
+end
+function Realm:registrationCheck(username, roundId, submittedAt, now, eventId)
+    if not self.registrationEnabled then return false,"Round registration is unavailable." end
+    if self.phase~="registration" or roundId~=self.round then return false,"Registration is closed or this round ID has expired. Submit again in the next open window." end
+    if not finite(now) or not finite(submittedAt) or submittedAt<self.registrationOpenedAt or submittedAt>now
+        or (self.deadline>0 and (submittedAt>=self.deadline or now>=self.deadline)) then
+        return false,"That entry arrived outside this registration window."
+    end
+    if not eventKey(eventId) or self.registrationEvents[eventId] then return false,"A unique event ID is required; replayed entry rejected." end
+    if type(username)~="string" or #username<3 or #username>20 or not string.match(username,"^[%w_]+$") then return false,"Enter a Roblox username." end
+    if self.registrations[string.lower(username)] then return false,"Already registered for this round." end
+    if #self.roster >= (self.config.SprintCompetitors or 20) then return false,"All competitor slots are filled for this round." end
+    return true
+end
+function Realm:register(username, userId, roundId, submittedAt, now, eventId)
+    local ok,issue=self:registrationCheck(username,roundId,submittedAt,now,eventId)
+    if not ok then return false,issue end
+    local key=string.lower(username)
+    local member=self.crew[key]
+    if not member then
+        local added; added,member=self:addCrew(username,userId)
+        if not added then return false,member end
+    elseif userId and userId>0 then member.userId=userId end
+    self.registrationEvents[eventId]=true
+    self.registrations[key]=true;self.roster[#self.roster+1]=key
+    member.registeredRound,member.registrationSlot=self.round,#self.roster
+    member.activityEntered,member.score,member.distance,member.finishedAt=false,0,0,0
+    member.raceStatus,member.placement,member.recoveries="registered",0,0
+    member.route,member.effect,member.effectUntil="shared","",0
+    member.powerup,member.powerupUntil,member.powerupReadyAt="",0,0
+    member.lastRecoveryGate,member.lastRecoveryReason=nil,nil
+    self:queueEntrance(member.username)
+    if #self.roster>=(self.config.MinimumRacers or 2) and self.deadline==0 then self.deadline=now+self.config.RegistrationSeconds end
+    self.message=member.username.." registered for round "..self.round.."."
+    return true,member
+end
+function Realm:unregister(username, roundId, now, eventId)
+    if self.phase~="registration" or roundId~=self.round or not finite(now) or (self.deadline>0 and now>=self.deadline)
+        or not eventKey(eventId) or self.registrationEvents[eventId] then return false,"Withdrawal is closed or stale." end
+    local key=type(username)=="string" and string.lower(username)
+    if not key or not self.registrations[key] then return false,"That username is not registered." end
+    self.registrationEvents[eventId]=true;self.registrations[key]=nil
+    self.crew[key].registeredRound=nil;self.crew[key].entranceDone=true
+    for i=#self.roster,1,-1 do if self.roster[i]==key then table.remove(self.roster,i) end end
+    for i,name in ipairs(self.roster) do self.crew[name].registrationSlot=i end
+    for i=#self.entranceQueue,1,-1 do if string.lower(self.entranceQueue[i])==key then table.remove(self.entranceQueue,i) end end
+    if self.entrance then
+        for i=#self.entrance.names,1,-1 do if string.lower(self.entrance.names[i])==key then table.remove(self.entrance.names,i) end end
+        if #self.entrance.names==0 then self.entrance=nil end
+    end
+    if #self.roster<(self.config.MinimumRacers or 2) then self.deadline=0 end
+    self.message="Registration updated / everyone must submit again each round."
+    return true,self.message
+end
+function Realm:activatePowerup(username, kind, now, roundId, eventId)
+    local member=type(username)=="string" and self.crew[string.lower(username)]
+    if self.phase~="storm" or self.round~=roundId or not member or not member.activityEntered or member.raceStatus~="racing"
+        or not finite(now) or now>=self.deadline then return false,"Power-up visuals require an active competitor in this race." end
+    if kind~="trail" and kind~="shield" and kind~="starburst" then return false,"Choose trail, shield or starburst." end
+    if not eventKey(eventId) or self.powerupEvents[eventId] then return false,"Replayed power-up rejected." end
+    if now<(member.powerupReadyAt or 0) then return false,"Each competitor has the same 12-second visual cooldown." end
+    -- Explicit fair rules: every power-up is cosmetic. No speed, collision,
+    -- jump, checkpoints, damage immunity, rewards or score are changed.
+    self.powerupEvents[eventId]=true;self.powerupSequence=self.powerupSequence+1
+    member.powerup,member.powerupUntil,member.powerupReadyAt=kind,now+4,now+12
+    member.powerupSequence=self.powerupSequence
+    for i=#self.highlightQueue,1,-1 do if self.highlightQueue[i].username==member.username then table.remove(self.highlightQueue,i) end end
+    if #self.highlightQueue>=12 then table.remove(self.highlightQueue,1) end
+    self.highlightQueue[#self.highlightQueue+1]={username=member.username,kind=kind,sequence=self.powerupSequence,roundId=self.round,expiresAt=now+5}
+    return true,member.username.." / "..string.upper(kind).." VISUAL (cosmetic)"
+end
+function Realm:advanceHighlights(now)
+    if not self.registrationEnabled then return end
+    if self.phase~="storm" then self.highlightQueue,self.highlight={},nil;return end
+    local critical=false
+    for _,row in ipairs(self:activityLeaderboard()) do if row.status=="racing" and row.distance>=45 then critical=true;break end end
+    local subject=self.highlight and self.crew[string.lower(self.highlight.username)]
+    if self.highlight and (now>=self.highlight.endsAt or critical or not subject or subject.raceStatus~="racing") then self.highlight=nil end
+    if self.highlight or critical then return end
+    while #self.highlightQueue>0 do
+        local item=table.remove(self.highlightQueue,1)
+        local member=self.crew[string.lower(item.username)]
+        if item.roundId==self.round and now<item.expiresAt and member and member.raceStatus=="racing" then
+            item.startedAt,item.endsAt=now,now+1.5;self.highlight=item;break
+        end
+    end
+end
+
 -- A bounded presentation queue. It never changes the race clock or standings.
 function Realm:queueEntrance(username)
     local member = self.crew[string.lower(username)]
     if not member or not member.entranceDone then return false end
+    if self.registrationEnabled and (self.phase~="registration" or member.registeredRound~=self.round) then return false end
     if #self.entranceQueue >= (self.config.MaxQueuedArrivals or 30) then return false end
     member.entranceDone = false
     table.insert(self.entranceQueue, member.username)
@@ -165,6 +279,8 @@ function Realm:queueEntrance(username)
 end
 
 function Realm:advanceEntrances(now)
+    self:advanceHighlights(now)
+    if self.registrationEnabled and self.phase~="registration" then self.entranceQueue,self.entrance={},nil;return end
     if self.entrance and now >= self.entrance.endsAt then
         for _, name in ipairs(self.entrance.names) do self.crew[string.lower(name)].entranceDone = true end
         self.entrance = nil
@@ -185,6 +301,12 @@ function Realm:advanceEntrances(now)
 end
 
 function Realm:nextCohort()
+    if self.registrationEnabled then
+        local cohort={}
+        local names=self.phase=="registration" and self.roster or (self.phase=="countdown" or self.phase=="storm") and self.lockedRoster or {}
+        for _,key in ipairs(names) do if self.crew[key] then cohort[#cohort+1]=self.crew[key] end end
+        return cohort
+    end
     local waiting = {}
     for _, key in ipairs(self.crewOrder) do
         local member = self.crew[key]
@@ -200,6 +322,7 @@ function Realm:nextCohort()
 end
 
 function Realm:rate(member)
+    if self.registrationEnabled and (member.registeredRound~=self.round or self.phase~="countdown" and self.phase~="storm") then return 0 end
     return math.min(self.config.MaxMoneyPerSecond or 100,
         (self.config.BaseMoneyPerSecond or 5) + self.wins * (self.config.WinMoneyPerSecond or 2)
         + (member.participated and (self.config.VoteMoneyPerSecond or 3) or 0)
@@ -214,6 +337,7 @@ function Realm:credit(member, amount)
 end
 
 function Realm:enterActivity(member, now, grid)
+    if self.registrationEnabled and not self.registrations[string.lower(member.username)] then return false end
     member.activityEntered, member.enteredAt, member.lastRacedRound = true, now, self.round
     member.gridSlot = grid
     member.pace = self.activity.id == "sprint" and 0 or pace(member.username, self.round, self.activity.id)
@@ -226,12 +350,12 @@ end
 function Realm:tick(now)
     if now <= self.lastTick then return end
     -- Split at the phase boundary so a delayed heartbeat never pays for result time.
-    local earningEnd = math.min(now, self.deadline)
+    local earningEnd = self.deadline>0 and math.min(now, self.deadline) or self.lastTick
     local elapsed = math.max(0, earningEnd - self.lastTick)
-    if self.phase == "voting" or self.phase == "storm" then
+    if self.phase == "voting" or self.phase == "storm" or self.phase=="countdown" then
         for _, key in ipairs(self.crewOrder) do
             local member = self.crew[key]
-            self:credit(member, self:rate(member) * elapsed)
+            if not self.registrationEnabled or member.registeredRound==self.round then self:credit(member, self:rate(member) * elapsed) end
             if self.config.AutoActivities and self.phase == "storm" and member.activityEntered and self.activity.id ~= "sprint" then
                 local distance = math.max(0, earningEnd - member.enteredAt) * member.pace
                 local score = math.floor(distance + 0.000001)
@@ -387,7 +511,7 @@ function Realm:bless(kind, now)
     return true, self.blessing .. " shimmers above the island."
 end
 
-function Realm:advance(now)
+function Realm:advanceLegacy(now)
     if now < self.deadline and not self:raceComplete() then return false end
     self:tick(now)
     if self.phase == "gathering" then
@@ -467,6 +591,74 @@ function Realm:advance(now)
     return true
 end
 
+local function clearPresentation(self)
+    self.entranceQueue,self.entrance,self.highlightQueue,self.highlight={},nil,{},nil
+    for _,member in pairs(self.crew) do member.entranceDone=true;member.powerup="";member.powerupUntil=0 end
+end
+function Realm:advance(now)
+    if not self.registrationEnabled then return self:advanceLegacy(now) end
+    if self.phase=="registration" then
+        if #self.roster<(self.config.MinimumRacers or 2) then self.deadline=0;return false end
+        if self.deadline==0 or now<self.deadline then return false end
+        self:tick(now)
+        self.lockedRoster={};for _,key in ipairs(self.roster) do self.lockedRoster[#self.lockedRoster+1]=key end
+        clearPresentation(self)
+        self.phase,self.deadline="countdown",now+(self.config.StartCountdownSeconds or 4)
+        self.message="READY / ROSTER LOCKED / 3, 2, 1"
+        return true
+    elseif self.phase=="countdown" then
+        if now<self.deadline then return false end
+        self:tick(now)
+        if #self.lockedRoster<(self.config.MinimumRacers or 2) then
+            self.roster,self.registrations,self.lockedRoster={},{},{}
+            self.round,self.phase,self.deadline,self.registrationOpenedAt=self.round+1,"registration",0,now
+            self.registrationEvents={};return true
+        end
+        self.phase,self.activityStarted="storm",now
+        self.activityEntrants,self.teamScore,self.teamTarget=0,0,0
+        for i,key in ipairs(self.lockedRoster) do self:enterActivity(self.crew[key],now,i) end
+        self.deadline=now+(self.config.SprintRaceSeconds or 120)
+        self.message="GO! / 120 SECOND SKYBRIDGE RACE"
+        return true
+    elseif self.phase=="storm" then
+        local changed=self:advanceLegacy(now)
+        if changed then
+            clearPresentation(self)
+            local result={roundId=self.round,finishers={},dnfs={}}
+            for _,row in ipairs(self:activityLeaderboard()) do
+                local member=self.crew[string.lower(row.username)]
+                member.races=(member.races or 0)+1
+                if row.finishedAt>0 then
+                    member.finishes=(member.finishes or 0)+1
+                    member.bestTime=math.min(member.bestTime or math.huge,row.elapsed)
+                    result.finishers[#result.finishers+1]={username=row.username,elapsed=row.elapsed,placement=row.placement}
+                else member.dnfs=(member.dnfs or 0)+1;result.dnfs[#result.dnfs+1]=row.username end
+                member.registeredRound=nil
+            end
+            self.raceHistory[#self.raceHistory+1]=result
+            if #self.raceHistory>50 then table.remove(self.raceHistory,1) end
+            self.roster,self.registrations,self.lockedRoster={},{},{}
+        end
+        return changed
+    elseif self.phase=="result" and now>=self.deadline then
+        self:tick(now)
+        clearPresentation(self)
+        self.round,self.phase,self.deadline,self.registrationOpenedAt=self.round+1,"registration",0,now
+        self.roster,self.registrations,self.lockedRoster,self.registrationEvents,self.powerupEvents={},{},{},{},{}
+        self.winners,self.votes,self.totals={}, {}, {ward=0,sail=0}
+        self.activityEntrants,self.teamScore,self.teamTarget=0,0,0
+        self.success,self.choice=false,"ward"
+        for _,member in pairs(self.crew) do
+            member.registeredRound,member.activityEntered,member.roundMoney=nil,false,0
+            member.score,member.distance,member.finishedAt,member.placement=0,0,0,0
+            member.raceStatus,member.recoveries="waiting",0
+        end
+        self.message="WAITING FOR CHALLENGERS / COMMENT YOUR ROBLOX USERNAME TO JOIN! / REGISTER AGAIN"
+        return true
+    end
+    return false
+end
+
 function Realm:snapshot(now)
     local crew = {}
     local members = {}
@@ -474,6 +666,10 @@ function Realm:snapshot(now)
         local member = self.crew[key]
         table.insert(crew, member.username)
         table.insert(members, {
+            registered = member.registeredRound==self.round, registrationSlot = member.registrationSlot,
+            races = member.races or 0, finishes = member.finishes or 0, dnfs = member.dnfs or 0, bestTime = member.bestTime or 0,
+            powerup = now<(member.powerupUntil or 0) and member.powerup or "", powerupUntil = member.powerupUntil or 0,
+            powerupSequence = member.powerupSequence or 0,
             username = member.username, balance = member.balance, roundMoney = member.roundMoney,
             perSecond = self:rate(member), gifts = member.gifts,
             effect = now < member.effectUntil and member.effect or "",
@@ -500,7 +696,29 @@ function Realm:snapshot(now)
         local names = {}; for _, name in ipairs(self.entrance.names) do names[#names + 1] = name end
         entrance = { sequence = self.entrance.sequence, names = names, startedAt = self.entrance.startedAt, endsAt = self.entrance.endsAt }
     end
+    local registration
+    if self.registrationEnabled then
+        registration={roundId=self.round,open=self.phase=="registration" and (self.deadline==0 or now<self.deadline),
+            locked=self.phase~="registration",count=#self.roster,capacity=self.config.SprintCompetitors or 20,
+            minimum=self.config.MinimumRacers or 2,endsAt=self.phase=="registration" and self.deadline or 0,
+            openedAt=self.registrationOpenedAt,roster={}}
+        for _,key in ipairs(self.roster) do registration.roster[#registration.roster+1]=self.crew[key].username end
+    end
+    local lastRace
+    local history=self.raceHistory and self.raceHistory[#self.raceHistory]
+    if history then
+        lastRace={roundId=history.roundId,finishers={},dnfs={}}
+        for _,row in ipairs(history.finishers) do lastRace.finishers[#lastRace.finishers+1]={username=row.username,elapsed=row.elapsed,placement=row.placement} end
+        for _,name in ipairs(history.dnfs) do lastRace.dnfs[#lastRace.dnfs+1]=name end
+    end
+    local highlight
+    if self.highlight then
+        highlight={username=self.highlight.username,kind=self.highlight.kind,sequence=self.highlight.sequence,
+            roundId=self.highlight.roundId,startedAt=self.highlight.startedAt,endsAt=self.highlight.endsAt}
+    end
     return {
+        registration=registration, highlight=highlight, highlightWaiting=self.highlightQueue and #self.highlightQueue or 0,
+        lastRace=lastRace,
         entrance = entrance, entranceWaiting = #self.entranceQueue, nextCohort = nextCohort,
         phase = self.phase, seconds = math.max(0, math.ceil(self.deadline - now)),
         round = self.round, crew = crew, wins = self.wins, storms = self.storms,
@@ -509,7 +727,7 @@ function Realm:snapshot(now)
         blessing = now < self.blessingUntil and self.blessing or "",
         members = members, leaderboard = self:leaderboard(false), roundLeaders = self:leaderboard(true),
         lastRound = lastRound, followers = self.followerCount,
-        earning = self.phase == "voting" or self.phase == "storm",
+        earning = self.phase == "voting" or self.phase == "storm" or self.phase=="countdown",
         now = now, deadline = self.deadline, activityStarted = self.activityStarted,
         autoActivities = self.config.AutoActivities == true,
         activity = { id = self.activity.id, name = self.activity.name, instruction = self.activity.instruction, goal = self.activity.goal },
@@ -537,6 +755,7 @@ local root, core, gate, rift, shield, constellation, bloom, winds, scoreText
 local monuments = {}
 local avatars = {}
 local scenery = { clouds = {}, runes = {}, ribbons = {}, particles = {}, stars = {}, shrines = {}, sprintObstacles = {}, sprintHurdles = {}, waterfalls = {} }
+local tournament = { braziers = {}, portal = {}, fireworks = {} }
 local fantasyFolder
 local settings = {}
 local sceneState
@@ -828,6 +1047,21 @@ local function prepareRig(model)
                 weld.Part0, weld.Part1, weld.Parent = main, object, object
             end
         end
+    end
+    if not main:FindFirstChild("PowerTrail") then
+        local a,b=Instance.new("Attachment"),Instance.new("Attachment")
+        a.Name,b.Name="TrailLeft","TrailRight"
+        a.Position,b.Position,a.Parent,b.Parent=Vector3.new(-.85,-2,.7),Vector3.new(.85,-2,.7),main,main
+        local trail=Instance.new("Trail")
+        trail.Name,trail.Attachment0,trail.Attachment1="PowerTrail",a,b
+        trail.Lifetime,trail.MinLength,trail.FaceCamera,trail.Enabled=.45,.1,true,false
+        trail.Color,trail.Transparency=ColorSequence.new(colors.mint),NumberSequence.new(.15,1)
+        trail.Parent=main
+        local bubble=ball("PowerShield",main.Position,6,Color3.fromRGB(116,189,255),1,model)
+        bubble.Size,bubble.Massless,bubble.CanCollide,bubble.CanTouch,bubble.CanQuery=Vector3.new(6,7,6),true,false,false,false
+        bubble.Anchored=true
+        local weld=Instance.new("WeldConstraint");weld.Part0,weld.Part1,weld.Parent=main,bubble,bubble
+        local sparks=Instance.new("Sparkles");sparks.Name,sparks.Enabled,sparks.SparkleColor,sparks.Parent="PowerSparks",false,colors.violet,main
     end
     return model
 end
@@ -1152,6 +1386,53 @@ function World.sprintStep(state, now)
     end
 end
 
+-- Presentation is deliberately outside SkybridgeSprint: the road geometry and
+-- every collidable checkpoint/obstacle remain exactly as authored in v10.
+local function buildTournamentPresentation()
+    local folder=Instance.new("Folder");folder.Name,folder.Parent="TournamentPresentation",root
+    local function prop(name,size,position,color)
+        local p=part(name,size,CFrame.new(position),color,Enum.Material.Neon,folder)
+        p.CanCollide,p.CanTouch,p.CanQuery=false,false,false
+        p:SetAttribute("RiftboundPresentation",true)
+        return p
+    end
+    for _,side in ipairs({-1,1}) do
+        local bowl=prop("Starting flame brazier",Vector3.new(2,1,2),Vector3.new(side*36,66,59),colors.gold)
+        local fire=Instance.new("Fire");fire.Name,fire.Enabled,fire.Size,fire.Heat="Tournament flame",false,7,8
+        fire.Color,fire.SecondaryColor,fire.Parent=Color3.fromRGB(255,143,45),colors.violet,bowl
+        local sparks=Instance.new("Sparkles");sparks.Enabled,sparks.SparkleColor,sparks.Parent=false,colors.gold,bowl
+        local smoke=Instance.new("Smoke");smoke.Enabled,smoke.Size,smoke.Opacity,smoke.RiseVelocity=false,4,.12,4
+        smoke.Color,smoke.Parent=Color3.fromRGB(188,166,216),bowl
+        tournament.braziers[#tournament.braziers+1]={fire=fire,sparks=sparks,smoke=smoke}
+        local pedestal=prop("Podium fireworks",Vector3.new(1,1,1),Vector3.new(side*24,82,-1115),colors.violet)
+        local bursts=Instance.new("Sparkles");bursts.Enabled,bursts.SparkleColor,bursts.Parent=false,colors.gold,pedestal
+        tournament.fireworks[#tournament.fireworks+1]=bursts
+    end
+    tournament.bar=prop("Starting gate energy",Vector3.new(64,.4,.4),Vector3.new(0,68,57),colors.gold)
+    for i=1,6 do
+        local angle=i*math.pi/3
+        local point=Vector3.new(-64+math.cos(angle)*8,80+math.sin(angle)*8,65)
+        local rune=prop("Arrival portal rune",Vector3.new(1.2,2.4,.5),point,colors.violet)
+        tournament.portal[#tournament.portal+1]={part=rune,angle=angle}
+    end
+end
+local function animateTournament(state, now)
+    if not tournament.bar then return end
+    local starting=state.phase=="countdown"
+    local launch=state.phase=="storm" and now-state.activityStarted<1.5
+    tournament.bar.Transparency=starting and .15 or 1
+    for _,entry in ipairs(tournament.braziers) do
+        entry.fire.Enabled,entry.sparks.Enabled,entry.smoke.Enabled=starting or launch,launch,starting or launch
+        entry.fire.Size=launch and 11 or (starting and 5+math.sin(now*8) or 5)
+    end
+    for _,entry in ipairs(tournament.portal) do
+        local angle=entry.angle+now*.35
+        entry.part.CFrame=CFrame.new(-64+math.cos(angle)*8,80+math.sin(angle)*8,65)*CFrame.Angles(0,0,-angle)
+        entry.part.Transparency=state.entrance and .05 or .45+math.sin(now*2+angle)*.15
+    end
+    for _,effect in ipairs(tournament.fireworks) do effect.Enabled=state.phase=="result" and #state.winners>0 end
+end
+
 function World.build(config)
     settings = config or {}
     if not PhysicsService:IsCollisionGroupRegistered("RiftboundRacers") then PhysicsService:RegisterCollisionGroup("RiftboundRacers") end
@@ -1179,6 +1460,7 @@ function World.build(config)
     local glow = Instance.new("BloomEffect")
     glow.Intensity, glow.Size, glow.Threshold, glow.Parent = 0.45, 32, 1.3, Lighting
     buildSprint()
+    buildTournamentPresentation()
     island(Vector3.new(0, 32, 0), 50)
     island(Vector3.new(87, 36, 21), 23)
     island(Vector3.new(-85, 28, -20), 21)
@@ -1418,6 +1700,9 @@ function World.arrive(model, slot, username)
         model = model, slot = slot, arrivedAt = os.clock(), frame = model:GetPivot(),
         balance = 0, popText = popText, scale = 1, username = username,
     }
+    -- Staged actors use authored limb poses. Disable joints while anchored so
+    -- native motors cannot snap them back; racing re-enables the whole rig.
+    physical(avatars[string.lower(username)], false)
 end
 
 local function track(distance, radius, count)
@@ -1429,6 +1714,11 @@ local function track(distance, radius, count)
     return from:Lerp(to, fraction)
 end
 
+local function registeredGrid(member,state)
+    local count=state.registration and (state.phase=="storm" and #state.nextCohort or state.registration.count) or #state.nextCohort
+    local index=member.registrationSlot or member.gridSlot or 1
+    return World.sprintPoint(((index-1+(state.round-1)*7)%math.max(1,count))+1,0)
+end
 local function destination(member, state, now, scale)
     local y = 35 + 3 * scale
     if state.entrance then
@@ -1436,6 +1726,7 @@ local function destination(member, state, now, scale)
             if name == member.username then return World.entrancePoint(index, #state.entrance.names), true end
         end
     end
+    if state.registration and member.registered and (state.phase=="registration" or state.phase=="countdown") then return registeredGrid(member,state),false end
     if member.entranceDone == false then return Vector3.new(-64 + ((member.slot - 1) % 5 - 2) * 5, 80, 82), false end
     if state.phase == "result" then
         for rank, row in ipairs(state.winners or {}) do
@@ -1478,6 +1769,16 @@ end
 
 function World.render(state, now)
     sceneState = state
+    if state.registration then
+        local keep={}
+        for _,member in ipairs(state.members) do if member.registered or (state.phase=="result" and member.activityEntered) then keep[string.lower(member.username)]=true end end
+        for key,record in pairs(avatars) do
+            if not keep[key] then
+                if record.pendingAppearance then record.pendingAppearance:Destroy() end
+                record.model:Destroy();avatars[key]=nil
+            end
+        end
+    end
     local showLast = state.phase == "result" or state.phase == "gathering"
     local leaders = showLast and state.lastRound or state.roundLeaders
     local lines = { "ROUND TOP EARNERS", showLast and "LAST ROUND" or "THIS ROUND" }
@@ -1509,6 +1810,11 @@ function World.render(state, now)
         end
         if record then
             local model = record.model
+            if state.registration and state.phase=="countdown" and member.registered and record.readyRound~=state.round then
+                local point=registeredGrid(member,state)
+                record.frame=CFrame.lookAt(point,point+Vector3.new(0,0,-1));model:PivotTo(record.frame)
+                record.readyRound=state.round
+            end
             if record.physical and not (state.phase == "storm" and state.activity.id == "sprint") then
                 record.frame = model.PrimaryPart.CFrame
                 physical(record, false)
@@ -1547,6 +1853,7 @@ function World.animate(now)
     local dt = math.min(0.25, math.max(0, now - lastFrame))
     lastFrame = now
     local storm = state.phase == "storm"
+    animateTournament(state,now)
     rift.Transparency = storm and 0.3 or (state.phase == "voting" and 0.55 or 0.92)
     rift.CFrame = CFrame.new(0, 90 + math.sin(now) * 2, -50) * CFrame.Angles(0, now * 0.2, 0)
     core.CFrame = CFrame.new(0, 42 + math.sin(now * 1.2) * 0.6, 0) * CFrame.Angles(0, now * 0.3, 0.12)
@@ -1595,6 +1902,13 @@ function World.animate(now)
     for _, member in ipairs(state.members) do
         local record = avatars[string.lower(member.username)]
         if record then
+            local power=member.powerup or ""
+            record.model.PrimaryPart.PowerTrail.Enabled=power=="trail"
+            record.model.PowerShield.Transparency=power=="shield" and (.72+math.sin(now*8)*.08) or 1
+            record.model.PowerShield.Size=Vector3.new(6,7,6)*(1+math.sin(now*6)*.04)
+            if not record.physical then record.model.PowerShield.CFrame=record.model.PrimaryPart.CFrame end
+            record.model.PrimaryPart.PowerSparks.Enabled=power=="starburst"
+            if power~="" then record.model.GiftAura.Enabled=true end
             if state.activity.id == "sprint" and state.phase == "storm" and record.race and record.race.round == state.round then
                 -- Physics owns the root. Only pose the massless limbs for walking.
                 local speed = record.model.PrimaryPart and record.model.PrimaryPart.AssemblyLinearVelocity.Magnitude or 0
@@ -1602,7 +1916,9 @@ function World.animate(now)
                 for _, joint in ipairs(record.model:GetDescendants()) do
                     if joint:IsA("Motor6D") and (string.find(joint.Name, "Shoulder") or string.find(joint.Name, "Hip")) then
                         if not joint:GetAttribute("SprintBaseC0") then joint:SetAttribute("SprintBaseC0", joint.C0) end
-                        joint.C0 = joint:GetAttribute("SprintBaseC0") * CFrame.Angles(gait * (string.find(joint.Name, "Left") and 1 or -1), 0, 0)
+                        local shoulder=string.find(joint.Name,"Shoulder")
+                        local flourish=power=="starburst" and shoulder and math.sin(now*12)*.3 or 0
+                        joint.C0 = joint:GetAttribute("SprintBaseC0") * CFrame.Angles(gait * (string.find(joint.Name, "Left") and 1 or -1)+flourish, 0, 0)
                     end
                 end
             else
@@ -1632,6 +1948,23 @@ function World.animate(now)
                 local arm = math.abs(spec[2]) > 1
                 model[spec[1]].CFrame = body * CFrame.new(spec[2] * size, (winner and arm and 1.1 or spec[3]) * size, 0)
                     * CFrame.Angles(spec[4], 0, winner and arm and spec[2] * 0.4 or 0)
+            end
+            -- Anchored waiting/entrance/podium actors can emote freely. Racing
+            -- roots above remain entirely owned by the Humanoid controller.
+            local poseIndex=math.floor(now/3.5+member.slot)%5
+            local poseNames={"wave","stretch","cheer","look around","celebrate"}
+            if (state.registration and member.registered and not moving) or entering or winner then
+                local index=(winner or entering) and 3 or poseIndex+1
+                model:SetAttribute("RiftboundPose",poseNames[index])
+                local left,right=model["Left Arm"],model["Right Arm"]
+                local cheer=index==3 or index==5
+                local leftY=(cheer and 1.1 or index==2 and .4 or 0)*size
+                local rightY=(cheer and 1.1 or index==1 and 1.2 or index==2 and .4 or 0)*size
+                local leftRoll=index==2 and -math.pi/2 or cheer and -.65 or .05
+                local rightRoll=index==2 and math.pi/2 or index==1 and .4+math.sin(now*7)*.3 or cheer and .65 or -.05
+                left.CFrame=body*CFrame.new(-1.5*size,leftY,0)*CFrame.Angles(cheer and math.sin(now*7)*.2 or 0,0,leftRoll)
+                right.CFrame=body*CFrame.new(1.5*size,rightY,0)*CFrame.Angles(index==1 and -.15 or cheer and math.sin(now*7)*.2 or 0,0,rightRoll)
+                if index==4 then model.Head.CFrame=body*CFrame.new(0,1.5*size,0)*CFrame.Angles(0,math.sin(now)*.35,0) end
             end
             model["Winner crown"].Transparency = winner and not entering and 0 or 1
             for i = 1, 3 do model["Crown spike " .. i].Transparency = winner and not entering and 0 or 1 end
@@ -1738,16 +2071,20 @@ local function initialize()
     local defaults = {
         SceneUpdatesPerSecond = 12, SnapshotSeconds = 0.5, AutoActivities = true,
         ActivityMoneyPerSecond = 2, RoundWinMoneyPerSecond = 1, CoinsPerPoint = 2,
-        RoundPrizes = { 120, 75, 40 }, OfflineDemoEnabled = true, DemoStudioOnly = true,
+        RoundPrizes = { 120, 75, 40 }, OfflineDemoEnabled = false, DemoStudioOnly = true,
         DemoNames = { "Demo_Astra", "Demo_Lumen", "Demo_Nova", "Demo_Fern", "Demo_Orion" },
-        AutoSimulateGifts = true, DemoGiftSeconds = 18, StreamCameraDefault = true, HostUserIds = {},
+        AutoSimulateGifts = false, DemoPowerups = true, DemoGiftSeconds = 18, StreamCameraDefault = true, HostUserIds = {},
         BaseMoneyPerSecond = 5, VoteMoneyPerSecond = 3, WinMoneyPerSecond = 2,
         MaxMoneyPerSecond = 100, MaxBalance = 1000000000, MaxCrew = 40, MaxQueuedArrivals = 30,
-        PersistenceEnabled = false, AutoJoinPlayers = true, SprintOnly = true, SprintCompetitors = 16, SprintRaceSeconds = 120, SprintWalkSpeed = 12.5, ResolveViewerUsernames = true, EntranceSeconds = 4,
+        PersistenceEnabled = false, AutoJoinPlayers = false, SprintOnly = true, SprintCompetitors = 20, SprintRaceSeconds = 120, SprintWalkSpeed = 12.5, ResolveViewerUsernames = true, EntranceSeconds = 4,
+        RegistrationSeconds = 30, MinimumRacers = 2, StartCountdownSeconds = 4, MaxSessionMembers = 500,
         SprintFinishBonus = 40, LoadAvatarAppearances = false, AppearanceTimeoutSeconds = 8,
         DemoAppearanceUserIds = { 1, 156, 261, 2, 3 },
     }
     for name, value in pairs(defaults) do if Config[name] == nil then Config[name] = value end end
+    assert(Config.AutoActivities == true, "AutoActivities must stay true for the automatic tournament")
+    assert(Config.SprintOnly == true, "SprintOnly must stay true for the physical Skybridge tournament")
+    assert(Config.AutoJoinPlayers == false, "AutoJoinPlayers must stay false; viewers must register freshly each round")
     assert(Config.PersistenceEnabled == false, "PersistenceEnabled must stay false; this game has no save implementation")
     local function range(name, minimum, maximum)
         local value = Config[name]
@@ -1759,7 +2096,12 @@ local function initialize()
     range("SprintWalkSpeed", 10, 14)
     range("EntranceSeconds", 3, 5)
     assert(workspace.StreamingEnabled ~= true, "For this playtest, Stop Play and set Workspace.StreamingEnabled=false in Properties.")
-    range("SprintCompetitors", 1, 20)
+    range("RegistrationSeconds", 5, 120)
+    range("MinimumRacers", 2, 20)
+    range("StartCountdownSeconds", 4, 8)
+    range("MaxSessionMembers", 40, 1000)
+    range("SprintCompetitors", 2, 20)
+    assert(Config.MinimumRacers<=Config.SprintCompetitors, "MinimumRacers cannot exceed SprintCompetitors")
     assert(Config.SprintCompetitors == math.floor(Config.SprintCompetitors), "SprintCompetitors must be a whole number")
     range("SprintFinishBonus", 0, 1000000)
     range("AppearanceTimeoutSeconds", 1, 30)
@@ -1772,7 +2114,7 @@ local function initialize()
     for _, name in ipairs({ "BaseMoneyPerSecond", "VoteMoneyPerSecond", "WinMoneyPerSecond", "ActivityMoneyPerSecond", "RoundWinMoneyPerSecond", "CoinsPerPoint" }) do range(name, 0, 1000) end
     range("MaxMoneyPerSecond", 1, 1000)
     range("MaxBalance", 1, 1000000000)
-    for _, name in ipairs({ "AutoActivities", "OfflineDemoEnabled", "DemoStudioOnly", "AutoSimulateGifts", "StreamCameraDefault", "SprintOnly", "LoadAvatarAppearances", "AutoJoinPlayers", "ResolveViewerUsernames" }) do
+    for _, name in ipairs({ "AutoActivities", "OfflineDemoEnabled", "DemoStudioOnly", "AutoSimulateGifts", "DemoPowerups", "StreamCameraDefault", "SprintOnly", "LoadAvatarAppearances", "AutoJoinPlayers", "ResolveViewerUsernames" }) do
         assert(type(Config[name]) == "boolean", "Config." .. name .. " must be true or false")
     end
     assert(type(Config.DemoAppearanceUserIds) == "table", "DemoAppearanceUserIds must be a table")
@@ -1782,7 +2124,7 @@ local function initialize()
     for i = 1, 3 do assert(type(Config.RoundPrizes[i]) == "number" and Config.RoundPrizes[i] >= 0 and Config.RoundPrizes[i] <= 1000000, "RoundPrizes needs three finite nonnegative amounts") end
     stage("Creating RealmState")
     local state = Realm.new(Config, os.clock())
-    for _, name in ipairs({ "tick", "advance", "snapshot", "addCrew", "vote", "gift", "follow", "bless", "recordCheckpoint", "raceDistance", "raceComplete", "raceDNF", "queueEntrance", "advanceEntrances", "nextCohort" }) do
+    for _, name in ipairs({ "tick", "advance", "snapshot", "addCrew", "vote", "gift", "follow", "bless", "recordCheckpoint", "raceDistance", "raceComplete", "raceDNF", "queueEntrance", "advanceEntrances", "nextCohort", "registrationCheck", "register", "unregister", "activatePowerup" }) do
         assert(type(state[name]) == "function", "RealmState is missing " .. name .. "(). Replace its complete Phase 2 source.")
     end
     local initial = state:snapshot(os.clock())
@@ -1815,42 +2157,67 @@ local function initialize()
         if player and player.Parent then noticeRemote:FireClient(player, message) end
     end
 
-    local function arrival(username, appearanceUserId, offline)
-        if not World.validUsername(username) then
-            return false, "Enter a Roblox username, not a display name."
+    local inputSequence, seenInputs, seenRound = 0, {}, state.round
+    local inputCount = 0
+    local function envelope(kind, username, roundId, extra)
+        inputSequence=inputSequence+1
+        local event={type=kind,username=username,roundId=roundId,eventId="offline:"..inputSequence,submittedAt=os.clock()}
+        for key,value in pairs(extra or {}) do event[key]=value end
+        return event
+    end
+    local function arrival(event)
+        local username=event.username
+        local ok,issue=state:registrationCheck(username,event.roundId,event.submittedAt,os.clock(),event.eventId)
+        if not ok then return false,issue end
+        if not World.validUsername(username) then return false,"Enter a Roblox username, not a display name." end
+        local userId=type(event.appearanceUserId)=="number" and event.appearanceUserId or 0
+        if userId==0 and event.offline~=true then
+            userId,issue=World.resolveUsername(username)
+            if not userId then return false,issue end
         end
-        if state.crew[string.lower(username)] then return false, "That traveler is already here." end
-        if #state.crewOrder >= Config.MaxCrew then return false, "The island is full for this session." end
-        if #state.entranceQueue >= Config.MaxQueuedArrivals then return false, "The Star Gate entrance queue is full. Try again shortly." end
-        local userId = type(appearanceUserId) == "number" and appearanceUserId or 0
-        if userId == 0 and not offline then
-            local issue
-            userId, issue = World.resolveUsername(username)
-            if not userId then return false, issue end
-        end
-        local model = World.offlineAvatar(username)
+        -- Native lookup yields. Revalidate the original window AFTER it returns.
         state:tick(os.clock())
-        local added, member = state:addCrew(username, userId)
-        if not added then model:Destroy(); return false, member end
-        state:queueEntrance(username)
+        local registered,member=state:register(username,userId,event.roundId,event.submittedAt,os.clock(),event.eventId)
+        if not registered then return false,member end
+        local model=World.offlineAvatar(member.username)
+        World.arrive(model,member.slot,member.username)
+        World.loadAppearance(member.username,userId)
         state:advanceEntrances(os.clock())
-        World.arrive(model, member.slot, username)
-        World.loadAppearance(username, userId)
-        return true, username .. (offline and " queued / OFFLINE stand-in." or " queued / Roblox avatar.")
+        return true,member.username.." registered for round "..event.roundId..(event.offline and " / OFFLINE" or " / ROBLOX")
     end
-
     local function apply(event)
-        if event.type == "join" then return arrival(event.username, event.appearanceUserId, event.offline == true) end
-        if event.type == "vote" then return state:vote("live:" .. event.viewer, event.choice, event.username, os.clock()) end
-        if event.type == "blessing" then return state:bless(event.kind, os.clock()) end
-        if event.type == "gift" then return state:gift(event.username, event.kind, event.count, os.clock()) end
-        if event.type == "follow" then return state:follow(event.viewer) end
-        return false, "Unsupported event."
+        if event.type=="register" or event.type=="join" then return arrival(event) end
+        if event.type=="withdraw" then return state:unregister(event.username,event.roundId,os.clock(),event.eventId) end
+        if event.type=="powerup" then return state:activatePowerup(event.username,event.kind,os.clock(),event.roundId,event.eventId) end
+        if event.type=="vote" then return state:vote("live:"..event.viewer,event.choice,event.username,os.clock()) end
+        if event.type=="blessing" then return state:bless(event.kind,os.clock()) end
+        if event.type=="gift" then return state:gift(event.username,event.kind,event.count,os.clock()) end
+        if event.type=="follow" then return state:follow(event.viewer) end
+        return false,"Unsupported event."
     end
-
     local function enqueue(event, done)
-        if #tasks >= Config.MaxQueuedArrivals then return false end
-        table.insert(tasks, { event = event, done = done })
+        if type(event)~="table" then return false,"An event table is required." end
+        local scoped=event.type=="register" or event.type=="join" or event.type=="withdraw" or event.type=="powerup"
+        if scoped then
+            if event.roundId~=state.round then return false,"Stale round ID. Submit again during the correct registration window." end
+            if type(event.eventId)~="string" or #event.eventId<1 or #event.eventId>96 or not string.match(event.eventId,"^[%w_:%-%.]+$") then return false,"A valid unique eventId is required." end
+            if type(event.submittedAt)~="number" or event.submittedAt~=event.submittedAt or event.submittedAt>os.clock()
+                or event.submittedAt<state.registrationOpenedAt then return false,"An entry timestamp from this server window is required." end
+            if event.type=="register" or event.type=="join" then
+                local ok,issue=state:registrationCheck(event.username,event.roundId,event.submittedAt,os.clock(),event.eventId)
+                if not ok then return false,issue end
+            elseif event.type=="withdraw" and state.phase~="registration" then return false,"The roster is locked."
+            elseif event.type=="powerup" and (state.phase~="storm" or event.submittedAt<state.activityStarted) then return false,"Power-up visuals require a new request during racing." end
+            if seenRound~=state.round then seenInputs,seenRound,inputCount={},state.round,0 end
+            if seenInputs[event.eventId] then return false,"Repeated event rejected." end
+            if inputCount>=1024 then return false,"This window's event budget is full." end
+            seenInputs[event.eventId]=true;inputCount=inputCount+1
+        end
+        if #tasks>=Config.MaxQueuedArrivals then return false,"The event queue is full. Try again shortly." end
+        -- Copy scalar fields: callers cannot mutate a table already queued.
+        local copy={}
+        for _,key in ipairs({"type","username","roundId","eventId","submittedAt","offline","appearanceUserId","kind","count","viewer","choice","demo"}) do copy[key]=event[key] end
+        tasks[#tasks+1]={event=copy,done=done}
         return true
     end
 
@@ -1861,7 +2228,8 @@ local function initialize()
         if not running then return false, "Riftbound is not running. Check StartupError." end
         if type(event) ~= "table" then return false, "An event table is required." end
         local completed, accepted, message = false, false, "Queue full."
-        if not enqueue(event, function(ok, result) accepted, message, completed = ok, result, true end) then return false, message end
+        local queued,issue=enqueue(event, function(ok, result) accepted, message, completed = ok, result, true end)
+        if not queued then return false,issue end
         while running and not completed do task.wait(0.1) end
         if not completed then return false, "Riftbound stopped before processing the event." end
         return accepted, message
@@ -1897,15 +2265,13 @@ local function initialize()
         if World.preparePlayer then World.preparePlayer(player) end
         player:SetAttribute("RiftboundHost", host(player))
         player:SetAttribute("RiftboundStreamCamera", Config.StreamCameraDefault)
-        if Config.AutoJoinPlayers then
-            enqueue({ type = "join", username = player.Name, appearanceUserId = player.UserId }, function(_, message) notify(player, message) end)
-        end
+
     end
     Players.PlayerAdded:Connect(playerAdded)
     for _, player in ipairs(Players:GetPlayers()) do task.spawn(playerAdded, player) end
     Players.PlayerRemoving:Connect(function(player) lastAction[player.UserId] = nil end)
 
-    actionRemote.OnServerEvent:Connect(function(player, action, payload)
+    actionRemote.OnServerEvent:Connect(function(player, action, payload, roundId)
         if not running then return end
         if type(action) ~= "string" or type(payload) ~= "string" or #payload > 100 then return end
         local now = os.clock()
@@ -1915,10 +2281,15 @@ local function initialize()
             local _, message = state:vote("player:" .. player.UserId, payload, player.Name, now)
             notify(player, message)
         elseif host(player) then
-            if action == "join" or action == "offlineJoin" then
-                if not enqueue({ type = "join", username = payload, offline = action == "offlineJoin" }, function(_, message) notify(player, message) end) then
-                    notify(player, "The arrival queue is full. Try again shortly.")
-                end
+            if action=="join" or action=="offlineJoin" or action=="withdraw" or action=="powerupTrail" or action=="powerupShield" or action=="powerupStarburst" then
+                local kind=({powerupTrail="trail",powerupShield="shield",powerupStarburst="starburst"})[action]
+                local event=envelope(kind and "powerup" or action=="withdraw" and "withdraw" or "register",payload,roundId,{offline=action=="offlineJoin",kind=kind})
+                local ok,issue=enqueue(event,function(_,message) notify(player,message) end)
+                if not ok then notify(player,issue) end
+            elseif action=="demoToggle" then
+                if Config.DemoStudioOnly and not RunService:IsStudio() then notify(player,"Demo testing is Studio-only.");return end
+                demoEnabled=not demoEnabled
+                notify(player,demoEnabled and "DEMO TESTING ON / fresh registration events each round" or "DEMO TESTING OFF / waiting for challengers")
             elseif action == "blessing" then
                 local _, message = state:bless(payload, now)
                 notify(player, message)
@@ -1933,32 +2304,38 @@ local function initialize()
             elseif action == "follow" then
                 local _, message = state:follow("demo:" .. string.lower(payload))
                 notify(player, message)
-            elseif action == "rift" then
-                if state.phase == "gathering" then state.deadline = now end
+            elseif action=="rift" then
+                notify(player,"The race starts automatically after 2+ fresh registrations and the countdown.")
             end
         end
         guarded("Publishing player action", publish)
     end)
 
     task.spawn(function()
-        if not demoEnabled then return end
-        task.wait(2)
-        for i, name in ipairs(Config.DemoNames) do
-            if not running then return end
-            enqueue({ type = "join", username = name, appearanceUserId = Config.DemoAppearanceUserIds[i], offline = true })
-            task.wait(0.65)
-        end
-        if not Config.AutoSimulateGifts then return end
-        local nextTarget, kinds = 0, { "bloom", "aurora", "giant" }
+        local seededRound=0
+        local nextGift,visualIndex=0,0
         while running do
-            task.wait(math.max(5, Config.DemoGiftSeconds))
-            if not running then break end
-            if #state.crewOrder > 0 then
-                nextTarget = nextTarget + 1
-                local username = state.crew[state.crewOrder[((nextTarget - 1) % #state.crewOrder) + 1]].username
-                enqueue({ type = "gift", username = username, kind = kinds[((nextTarget - 1) % #kinds) + 1], count = 1 })
-                enqueue({ type = "follow", viewer = "demo:" .. string.lower(username) })
+            if demoEnabled and state.phase=="registration" and seededRound~=state.round then
+                local registrationRound=state.round;seededRound=registrationRound
+                for i,name in ipairs(Config.DemoNames) do
+                    if not demoEnabled or state.phase~="registration" or state.round~=registrationRound then break end
+                    enqueue(envelope("register",name,registrationRound,{offline=true,appearanceUserId=Config.DemoAppearanceUserIds[i],demo=true}))
+                    task.wait(.35)
+                end
             end
+            if demoEnabled and (Config.DemoPowerups or Config.AutoSimulateGifts) and state.phase=="storm" and os.clock()>=nextGift then
+                nextGift=os.clock()+math.max(5,Config.DemoGiftSeconds);visualIndex=visualIndex+1
+                local key=state.lockedRoster[(visualIndex-1)%math.max(1,#state.lockedRoster)+1]
+                if key then
+                    local name=state.crew[key].username
+                    if Config.DemoPowerups then enqueue(envelope("powerup",name,state.round,{kind=({"trail","shield","starburst"})[(visualIndex-1)%3+1]})) end
+                    if Config.AutoSimulateGifts then
+                        enqueue({type="gift",username=name,kind="bloom",count=1})
+                        enqueue({type="follow",viewer="demo:"..string.lower(name)})
+                    end
+                end
+            end
+            task.wait(.5)
         end
     end)
 
@@ -1983,7 +2360,18 @@ local function initialize()
                 local now = os.clock()
                 state:tick(now)
                 state:advanceEntrances(now)
+                local previousPhase=state.phase
                 local changed = state:advance(now)
+                if changed and (state.phase=="countdown" or state.phase=="result" or previousPhase=="result") then
+                    -- Cancel pending old-window tasks as well as presentation queues.
+                    for i=#tasks,1,-1 do
+                        local item=tasks[i]
+                        if item.event.roundId and (item.event.type=="register" or item.event.type=="join" or item.event.roundId~=state.round) then
+                            table.remove(tasks,i)
+                            if item.done then item.done(false,"Registration closed. Submit again in the next registration window.") end
+                        end
+                    end
+                end
                 if changed or now - lastSnapshot >= Config.SnapshotSeconds then
                     publish()
                     lastSnapshot = now
@@ -2241,7 +2629,7 @@ local function containsPartBounds(object, point)
 end
 -- Fit observed avatar positions into the existing clear portrait rectangle.
 -- This is presentation only: no race progress, winner or avatar motion is generated.
-local function cinematicCamera(width, height, positions, yawDegrees, elevationDegrees, entrance)
+local function cinematicCamera(width, height, positions, yawDegrees, elevationDegrees, entrance, wide)
     if not usableViewport(width, height) or #positions == 0 then return nil end
     local lo, hi = positions[1], positions[1]
     for _, p in ipairs(positions) do
@@ -2252,7 +2640,7 @@ local function cinematicCamera(width, height, positions, yawDegrees, elevationDe
     local center = (lo + hi) * 0.5
     local yaw, elevation = math.rad(yawDegrees), math.rad(elevationDegrees)
     local sn, c, up, back = math.sin(yaw), math.cos(yaw), math.sin(elevation), math.cos(elevation)
-    local fov = entrance and 35 or 55
+    local fov = wide and 65 or entrance and 35 or 55
     local tanV = math.tan(math.rad(fov) / 2)
     local scale, ox, oy = viewportLayout(width, height)
     local area = screenRect(Layout.arena, scale, ox, oy)
@@ -2282,7 +2670,7 @@ local function cinematicCamera(width, height, positions, yawDegrees, elevationDe
         end
         return true
     end
-    local near, far = entrance and 60 or 85, entrance and 150 or 150
+    local near, far = entrance and 60 or 85, wide and 190 or 150
     if not fit(far) then return nil end -- Use the independently fitted overview.
     for _ = 1, 18 do
         local middle = (near + far) / 2
@@ -2342,6 +2730,8 @@ canvas.BackgroundTransparency, canvas.Parent = 1, gui
 local canvasScale = Instance.new("UIScale")
 canvasScale.Parent = canvas
 local latestState, receivedAt = nil, 0
+local previousRanks, rankRound, overtakeUntil, overtakeUsername, nextOvertake = {}, 0, 0, nil, 0
+local handoffUntil=0
 local streamCamera = player:GetAttribute("RiftboundStreamCamera") ~= false
 local cameraDefaultFov = 70
 local cameraDefaultFovMode = Enum.FieldOfViewMode.Vertical
@@ -2382,11 +2772,11 @@ end
 
 local header = frame(canvas, "Header", Layout.header)
 text(header, "Brand", "RIFTBOUND / LIVE", { x = 12, y = 5, w = 318, h = 18 }, 16, gold).Font = Enum.Font.GothamBold
-local phase = text(header, "Activity", "THE ISLAND IS AWAKENING", { x = 12, y = 24, w = 318, h = 20 }, 18, mint)
-local stats = text(header, "Stats", "AUTOPLAY / LOCAL DEMO", { x = 12, y = 45, w = 318, h = 14 }, 11, muted)
-local timer = text(header, "Countdown", "12", { x = 338, y = 3, w = 82, h = 36 }, 30, gold)
+local phase = text(header, "Activity", "WAITING FOR CHALLENGERS", { x = 12, y = 24, w = 318, h = 20 }, 18, mint)
+local stats = text(header, "Stats", "REGISTER FRESHLY EACH ROUND", { x = 12, y = 45, w = 318, h = 14 }, 11, muted)
+local timer = text(header, "Countdown", "—", { x = 338, y = 3, w = 82, h = 36 }, 30, gold)
 timer.TextXAlignment, timer.Font = Enum.TextXAlignment.Center, Enum.Font.GothamBlack
-local timingLabel = text(header, "CountdownLabel", "NEXT ROUND", { x = 338, y = 41, w = 82, h = 16 }, 10, muted)
+local timingLabel = text(header, "CountdownLabel", "WAITING", { x = 338, y = 41, w = 82, h = 16 }, 10, muted)
 timingLabel.TextXAlignment = Enum.TextXAlignment.Center
 
 local function board(name, title, rect)
@@ -2408,8 +2798,10 @@ local notice = frame(canvas, "EventStrip", Layout.notice)
 notice.Visible = false
 local noticeText = text(notice, "Message", "", { x = 10, y = 2, w = 412, h = 28 }, 14, gold)
 local noticeVersion = 0
+local noticeUntil = 0
 local entranceAnnouncementActive = false
 local function notify(value)
+    noticeUntil=os.clock()+4
     noticeVersion = noticeVersion + 1
     local version = noticeVersion
     noticeText.Text, notice.Visible = tostring(value), true
@@ -2419,8 +2811,8 @@ noticeRemote.OnClientEvent:Connect(notify)
 
 -- Results reuse this dock. There is no winner banner floating over the arena.
 local dock = frame(canvas, "RoundDock", Layout.round)
-local instruction = text(dock, "Instruction", "Travelers compete automatically.", { x = 10, y = 4, w = 412, h = 21 }, 14)
-local roundStatus = text(dock, "Status", "Next competition starts automatically.", { x = 10, y = 28, w = 412, h = 24 }, 14, mint)
+local instruction = text(dock, "Instruction", "COMMENT YOUR ROBLOX USERNAME TO JOIN!", { x = 10, y = 4, w = 412, h = 21 }, 14)
+local roundStatus = text(dock, "Status", "WAITING FOR CHALLENGERS", { x = 10, y = 28, w = 412, h = 24 }, 14, mint)
 local ward = button(dock, "Ward", "WARD", { x = 10, y = 28, w = 200, h = 26 }, function() actionRemote:FireServer("vote", "ward") end)
 local sail = button(dock, "Sail", "SAIL", { x = 222, y = 28, w = 200, h = 26 }, function() actionRemote:FireServer("vote", "sail") end)
 ward.Visible, sail.Visible = false, false
@@ -2446,8 +2838,8 @@ input.BackgroundColor3, input.TextColor3 = Color3.fromRGB(31, 45, 61), pale
 input.Font, input.TextSize, input.Text = Enum.Font.Gotham, 15, "Demo_Astra"
 input.PlaceholderText, input.ClearTextOnFocus, input.Parent = "Traveler username", false, controls
 round(input, 10)
-button(controls, "Join", "OFFLINE JOIN", { x = 290, y = 52, w = 126, h = 38 }, function() actionRemote:FireServer("offlineJoin", input.Text) end)
-button(controls, "StartEarly", "START EARLY", { x = 16, y = 102, w = 194, h = 38 }, function() actionRemote:FireServer("rift", "") end)
+button(controls, "Join", "OFFLINE JOIN", { x = 290, y = 52, w = 126, h = 38 }, function() actionRemote:FireServer("offlineJoin", input.Text, latestState and latestState.round or 0) end)
+button(controls, "DemoToggle", "DEMO TESTING: OFF", { x = 16, y = 102, w = 194, h = 38 }, function() actionRemote:FireServer("demoToggle", "") end)
 button(controls, "Follow", "TEST FOLLOW", { x = 222, y = 102, w = 194, h = 38 }, function() actionRemote:FireServer("follow", input.Text) end)
 for i, item in ipairs({ { "Bloom sky", "bloom" }, { "Aurora sky", "aurora" }, { "Titan sky", "giant" } }) do
     button(controls, "Sky" .. i, item[1], { x = 16 + (i - 1) * 137, y = 152, w = 126, h = 38 }, function() actionRemote:FireServer("blessing", item[2]) end)
@@ -2455,11 +2847,13 @@ end
 for i, item in ipairs({ { "Gift bloom", "giftBloom" }, { "Gift aurora", "giftAurora" }, { "Gift giant", "giftGiant" } }) do
     button(controls, "Gift" .. i, item[1], { x = 16 + (i - 1) * 137, y = 202, w = 126, h = 38 }, function() actionRemote:FireServer(item[2], input.Text) end)
 end
-button(controls, "VoteWard", "VOTE AS: WARD", { x = 16, y = 252, w = 194, h = 38 }, function() actionRemote:FireServer("demoWard", input.Text) end)
-button(controls, "VoteSail", "VOTE AS: SAIL", { x = 222, y = 252, w = 194, h = 38 }, function() actionRemote:FireServer("demoSail", input.Text) end)
-button(controls, "VerifiedJoin", "ROBLOX JOIN / VERIFY ACCOUNT", { x = 16, y = 300, w = 400, h = 32 }, function() actionRemote:FireServer("join", input.Text) end)
+for i,item in ipairs({{"TRAIL VISUAL","powerupTrail"},{"SHIELD VISUAL","powerupShield"},{"STARBURST","powerupStarburst"}}) do
+    button(controls,"Powerup"..i,item[1],{x=16+(i-1)*137,y=252,w=126,h=38},function() actionRemote:FireServer(item[2],input.Text,latestState and latestState.round or 0) end)
+end
+button(controls, "VerifiedJoin", "ROBLOX JOIN / VERIFY ACCOUNT", { x = 16, y = 300, w = 400, h = 32 }, function() actionRemote:FireServer("join", input.Text, latestState and latestState.round or 0) end)
 text(controls, "Hint2", "Offline join = stand-in. Roblox join = account lookup.", { x = 16, y = 342, w = 400, h = 24 }, 13, muted)
-text(controls, "Hint3", "Close tools to restore the leaderboard dock.", { x = 16, y = 372, w = 400, h = 24 }, 14, mint)
+button(controls,"Withdraw","WITHDRAW ENTRY",{x=16,y=368,w=194,h=32},function() actionRemote:FireServer("withdraw",input.Text,latestState and latestState.round or 0) end)
+button(controls,"TestStale","TEST STALE ROUND",{x=222,y=368,w=194,h=32},function() actionRemote:FireServer("offlineJoin",input.Text,(latestState and latestState.round or 0)-1) end)
 local renderCheckButton
 renderCheckButton = button(controls, "RenderCheck", "RENDER CHECK: OFF", { x = 16, y = 410, w = 194, h = 36 }, function()
     renderCheckEnabled = not renderCheckEnabled
@@ -2660,10 +3054,35 @@ local function updateDirector(now, dt)
         end
     end
     local nearFinish = state and state.phase == "storm" and lead and lead.distance >= (state.activity.goal or 48) - 3
+    local wideShot=false
     local yaw, elevation = -18, 34
-    if entrance and liveTime < entrance.endsAt and not nearFinish then
+    local highlight=state and state.highlight
+    if state and state.registration and (state.phase=="countdown" or state.phase=="storm" and liveTime-state.activityStarted<1.8) then
+        key,shot,yaw,elevation,wideShot="launch/"..state.round,"tournament starting grid",0,42,true
+        for _,name in ipairs(state.nextCohort or {}) do local p=position(name);if p then targets[#targets+1]=p end end
+    elseif not nearFinish and state and state.phase=="storm" and now<overtakeUntil and position(overtakeUsername) then
+        key,shot="overtake/"..overtakeUsername,"overtake close-up"
+        targets={position(overtakeUsername)}
+        for _,row in ipairs(state.activityLeaders) do
+            local p=position(row.username)
+            if row.username~=overtakeUsername and row.status=="racing" and p and (p-targets[1]).Magnitude<12 then targets[#targets+1]=p;break end
+        end
+    elseif not nearFinish and highlight and highlight.roundId==state.round and liveTime<highlight.endsAt and position(highlight.username) then
+        key,shot="powerup/"..highlight.sequence,"power-up / "..highlight.kind
+        targets={position(highlight.username)}
+    elseif entrance and liveTime < entrance.endsAt and not nearFinish then
         key, shot, yaw, elevation = "entrance/" .. entrance.sequence, "Star Gate entrance", 10, 35
         for _, name in ipairs(entrance.names) do local p = position(name, true); if p then targets[#targets + 1] = p end end
+    elseif state and state.registration and state.phase=="registration" then
+        key,shot,yaw,elevation,wideShot="lobby/"..state.round,"waiting lobby",-12+math.sin(now*.09)*9,38,true
+        if #state.registration.roster==0 then
+            targets={Vector3.new(-64,80,66),Vector3.new(0,68,55)}
+        else
+            local names=state.registration.roster
+            local subject=names[(math.floor(now/5)%#names)+1]
+            local p=position(subject)
+            if p then targets={p};wideShot=false end
+        end
     elseif STREAM_CINEMATIC and state and state.physicalSprint then
         if state.phase == "storm" and lead then
             local age = math.max(0, liveTime - state.activityStarted)
@@ -2724,17 +3143,18 @@ local function updateDirector(now, dt)
     if #targets > 0 then
         local w, h = cameraWidth, cameraHeight
         if not usableViewport(w, h) then w, h = 390, 844 end
-        local cf, aim, d, angle = cinematicCamera(w, h, targets, yaw, elevation, shot == "Star Gate entrance")
+        local cf, aim, d, angle = cinematicCamera(w, h, targets, yaw, elevation, shot == "Star Gate entrance" or shot=="overtake close-up" or string.find(shot,"power-up",1,true)~=nil, wideShot)
         if not cf then
             -- A dispersed pack gets a real competitor close-up, never a zoom-out.
             targets = { targets[1] }
-            cf, aim, d, angle = cinematicCamera(w, h, targets, -18, shot == "Star Gate entrance" and 35 or 34, shot == "Star Gate entrance")
+            cf, aim, d, angle = cinematicCamera(w, h, targets, -18, shot == "Star Gate entrance" and 35 or 34, shot == "Star Gate entrance", false)
         end
         if cf then desired, focus, distance, fov = cf, aim, d, angle end
     end
     if not desired or not focus then return end
     local changed = directorKey ~= key or not directorFrame or shot ~= directorShot
     local candidate = desired
+    if directorFrame and (directorFrame.Position-desired.Position).Magnitude>=100 and changed then handoffUntil=now+.18 end
     -- Blend nearby views only. Distant gate/finish returns cut directly rather
     -- than flying across hundreds of studs of empty air. Never blend below decks.
     if directorFrame and (directorFrame.Position - desired.Position).Magnitude < 100 then
@@ -2807,9 +3227,22 @@ player:GetAttributeChangedSignal("RiftboundHost"):Connect(updateHost)
 player:GetAttributeChangedSignal("RiftboundStreamCamera"):Connect(function() setCamera(player:GetAttribute("RiftboundStreamCamera") ~= false) end)
 updateHost()
 
+local handoff=Instance.new("Frame")
+handoff.Name,handoff.Size,handoff.BackgroundColor3,handoff.BackgroundTransparency="ShotHandoff",UDim2.fromScale(1,1),gold,1
+handoff.BorderSizePixel,handoff.Parent=0,gui
 local lastGift, giftFocusUntil, lastWinnerAnnouncement = 0, 0, -1
 snapshotRemote.OnClientEvent:Connect(function(state)
-    if not latestState or latestState.phase ~= state.phase then nextCameraDiagnostic = 0 end
+    if not latestState or latestState.phase ~= state.phase then nextCameraDiagnostic = 0; entranceAnnouncementActive=false end
+    if state.registration and state.phase=="storm" and rankRound==state.round and os.clock()>=nextOvertake then
+        for i,row in ipairs(state.activityLeaders) do
+            if row.status=="racing" and previousRanks[row.username] and i<previousRanks[row.username] then
+                overtakeUsername,overtakeUntil,nextOvertake=row.username,os.clock()+1.5,os.clock()+4
+                break
+            end
+        end
+    end
+    previousRanks,rankRound={},state.round
+    for i,row in ipairs(state.activityLeaders) do if row.status=="racing" then previousRanks[row.username]=i end end
     latestState, receivedAt = state, os.clock()
     -- Validate EVERY snapshot. Corrected/missing bounds can arrive without an
     -- activity change; never leave the camera stuck on the first received box.
@@ -2817,7 +3250,7 @@ snapshotRemote.OnClientEvent:Connect(function(state)
     competitorPanel.Title.Text = state.physicalSprint and "SPRINT / TIME" or "ROUND LEADERS / PT"
     phase.Text = state.activity.name
     stats.Text = string.format("%s / %d TRAVELERS / %d SHARDS", state.demo and "DEMO" or "LOCAL CREW", #state.crew, state.wins)
-    timingLabel.Text = ({ gathering = "NEXT ROUND", voting = "STARTS IN", storm = "TIME LEFT", result = "NEXT UP" })[state.phase]
+    timingLabel.Text = ({ registration="JOIN CLOSES",countdown="GET READY",gathering = "NEXT ROUND", voting = "STARTS IN", storm = "TIME LEFT", result = "NEXT UP" })[state.phase]
     for i = 1, 5 do
         local earner = state.leaderboard[i]
         earners[i].name.Text = earner and (i .. ". " .. earner.username) or (i .. ". Waiting")
@@ -2850,6 +3283,37 @@ snapshotRemote.OnClientEvent:Connect(function(state)
         local section = math.min(4, math.floor(raceLead.distance / 12) + 1)
         phase.Text = state.course and state.course.sections[section] or "SKYBRIDGE / SECTION " .. section
         roundStatus.Text = string.format("%d RACERS / LEAD %d%% / CP %d/%d", #state.activityLeaders, math.floor(raceLead.distance/state.activity.goal*100), raceLead.score, state.activity.goal)
+    end
+    if state.registration then
+        local reg=state.registration
+        stats.Text=reg.open and string.format("ROUND %d / %d/%d RACERS / %d OPEN",state.round,reg.count,reg.capacity,math.max(0,reg.capacity-reg.count))
+            or string.format("ROUND %d / REGISTRATION CLOSED",state.round)
+        controls.DemoToggle.Text=state.demo and "DEMO TESTING: ON" or "DEMO TESTING: OFF"
+        if state.phase=="registration" then
+            phase.Text=not reg.open and "REGISTRATION CLOSED" or reg.endsAt==0 and "WAITING FOR CHALLENGERS" or "REGISTRATION OPEN"
+            timingLabel.Text=reg.endsAt==0 and "NEED "..reg.minimum or "JOIN CLOSES"
+            instruction.Text="COMMENT YOUR ROBLOX USERNAME TO JOIN!"
+            roundStatus.Text=reg.count.."/"..reg.capacity.." REGISTERED / SUBMIT AGAIN EACH ROUND"
+            competitorPanel.Title.Text="REGISTERED / "..reg.count
+            for i=1,5 do
+                competitors[i].name.Text=reg.roster[i] and (i..". "..reg.roster[i]) or (i..". Open slot")
+                competitors[i].score.Text=reg.roster[i] and "READY" or "—"
+            end
+        elseif state.phase=="countdown" then
+            phase.Text="ROSTER LOCKED / GET READY"
+            instruction.Text="REGISTRATION CLOSED / ENTER AGAIN NEXT ROUND"
+            roundStatus.Text=#state.nextCohort.." COMPETITORS / FIRE GATE OPENING"
+        elseif state.phase=="result" then
+            phase.Text=#state.winners>0 and "PODIUM / TOP FINISHERS" or "RACE COMPLETE / DNFs"
+            instruction.Text="ROUND CLOSED / EVERYONE MUST REGISTER AGAIN"
+            earnerPanel.Title.Text="PODIUM / REWARDS"
+            for i=1,5 do
+                local winner=state.winners[i]
+                earners[i].name.Text=winner and (winner.placement..". "..winner.username) or ""
+                earners[i].score.Text=winner and ("+$"..money(winner.prize)) or ""
+            end
+        end
+        if state.phase~="result" then earnerPanel.Title.Text="TOP EARNERS / $" end
     end
     footer.Text = string.format("%s / %d FOLLOWS / SESSION ONLY", state.demo and "SIMULATED LIVE EVENTS" or "OFFLINE", state.followers)
     if state.lastGift.sequence > lastGift then
@@ -3056,9 +3520,9 @@ local function cameraDiagnostics(now)
         end)
     end
     if not CAMERA_DIAGNOSTICS or not camera then return end
-    print(string.format("[Riftbound camera] presentation=race-show-v10 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
+    print(string.format("[Riftbound camera] presentation=race-show-v11 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
         tostring(STREAM_DAYLIGHT and streamCamera and gui.Enabled), Lighting.ClockTime, Lighting.Brightness, Lighting.ExposureCompensation))
-    print(string.format("[Riftbound render] revision=race-show-v10 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
+    print(string.format("[Riftbound render] revision=race-show-v11 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
         directorShot, tostring(STREAM_CLEAR_EFFECTS), tostring(renderCheckEnabled), parts > 0 and minOpacity or 0, parts > 0 and sumOpacity / parts or 0, maxOpacity, maximumPositionDrift, maximumAimDrift))
     local atmosphereCount, effectCount, enclosureCount = 0, 0, 0
     for _, record in pairs(suspendedEffects) do
@@ -3201,7 +3665,11 @@ workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindCamera)
 bindCamera()
 local labelAccumulator = 0
 RunService:BindToRenderStep("RiftboundPortraitCamera", Enum.RenderPriority.Last.Value, function(dt)
-    if latestState then timer.Text = tostring(math.max(0, math.ceil(latestState.seconds - (os.clock() - receivedAt)))) end
+    if latestState then
+        local waiting=latestState.registration and latestState.phase=="registration" and latestState.registration.endsAt==0
+        timer.Text=waiting and "—" or tostring(math.max(0,math.ceil(latestState.seconds-(os.clock()-receivedAt))))
+    end
+    handoff.BackgroundTransparency=streamCamera and math.max(.9,1-math.max(0,handoffUntil-os.clock())/.18*.1) or 1
     updateStreamScenery()
     updateStreamLighting()
     updateStreamEffects(os.clock())
@@ -3214,7 +3682,25 @@ RunService:BindToRenderStep("RiftboundPortraitCamera", Enum.RenderPriority.Last.
         updateDirector(os.clock(), dt)
         local entry = latestState and latestState.entrance
         local entryActive = entry and latestState.now + os.clock() - receivedAt < entry.endsAt and directorShot == "Star Gate entrance"
-        if entryActive then
+        local liveTime=latestState and latestState.now+os.clock()-receivedAt or os.clock()
+        local tournamentActive=false
+        if latestState and latestState.registration then
+            local state=latestState
+            local remaining=math.max(0,math.ceil(state.deadline-liveTime))
+            if state.phase=="countdown" then
+                noticeText.Text,noticeText.TextSize,notice.Visible=remaining>3 and "READY" or tostring(math.max(1,remaining)),28,true
+                tournamentActive=true
+            elseif state.phase=="storm" and liveTime-state.activityStarted<1.8 then
+                noticeText.Text,noticeText.TextSize,notice.Visible="GO!",28,true;tournamentActive=true
+            elseif state.highlight and directorShot=="power-up / "..state.highlight.kind and liveTime<state.highlight.endsAt then
+                noticeText.Text,noticeText.TextSize,notice.Visible=state.highlight.username.." / "..string.upper(state.highlight.kind),22,true;tournamentActive=true
+            elseif state.phase=="registration" and not entryActive and os.clock()>noticeUntil then
+                noticeText.Text,noticeText.TextSize,notice.Visible="COMMENT YOUR ROBLOX USERNAME TO JOIN!",17,true;tournamentActive=true
+            end
+        end
+        if tournamentActive then
+            entranceAnnouncementActive=true
+        elseif entryActive then
             entranceAnnouncementActive = true
             noticeText.Text, noticeText.TextSize, notice.Visible = entry.names[1] .. (#entry.names > 1 and (" +" .. (#entry.names - 1) .. " ARRIVALS") or " / WELCOME"), 22, true
         elseif entranceAnnouncementActive then

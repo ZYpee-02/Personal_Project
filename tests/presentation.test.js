@@ -41,6 +41,7 @@ end
 
 const setup = presentationEngine + `
 local Config=(function() ${config} end)()
+Config.RegistrationSeconds=nil -- legacy variety-mode rendering fixture
 Config.SprintOnly=false -- exercise the preserved original presentation/variety mode
 Config.SprintRaceSeconds=30
 local Realm=(function() ${domain} end)()
@@ -130,7 +131,7 @@ snapshot(0)
 canvas.KeeperToggle.Activated:Fire()
 assert(canvas.TestTools.Visible and not canvas.TopEarners.Visible and not canvas.RoundLeaders.Visible)
 checkHud()
-for _,name in ipairs({"Join","StartEarly","Follow","Sky1","Sky2","Sky3","Gift1","Gift2","Gift3","VoteWard","VoteSail"}) do
+for _,name in ipairs({"Join","DemoToggle","Follow","Sky1","Sky2","Sky3","Gift1","Gift2","Gift3","Powerup1","Powerup2"}) do
     canvas.TestTools[name].Activated:Fire()
 end
 assert(#actions==11 and actions[1][1]=="offlineJoin" and actions[7][1]=="giftBloom")

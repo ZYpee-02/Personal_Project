@@ -1,3 +1,5 @@
+> Current v11 registration tournament: use [TOURNAMENT_REGISTRATION_REPLACEMENT.md](TOURNAMENT_REGISTRATION_REPLACEMENT.md) and replace all five sources. The v10 course itself is unchanged.
+
 > **Current v10 shared skyway:** replace all five sources using
 > [SHARED_SKYWAY_REPLACEMENT.md](SHARED_SKYWAY_REPLACEMENT.md). The older
 > release notes below are historical; do not mix their scripts with v10.

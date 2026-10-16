@@ -7,6 +7,7 @@ local root, core, gate, rift, shield, constellation, bloom, winds, scoreText
 local monuments = {}
 local avatars = {}
 local scenery = { clouds = {}, runes = {}, ribbons = {}, particles = {}, stars = {}, shrines = {}, sprintObstacles = {}, sprintHurdles = {}, waterfalls = {} }
+local tournament = { braziers = {}, portal = {}, fireworks = {} }
 local fantasyFolder
 local settings = {}
 local sceneState
@@ -298,6 +299,21 @@ local function prepareRig(model)
                 weld.Part0, weld.Part1, weld.Parent = main, object, object
             end
         end
+    end
+    if not main:FindFirstChild("PowerTrail") then
+        local a,b=Instance.new("Attachment"),Instance.new("Attachment")
+        a.Name,b.Name="TrailLeft","TrailRight"
+        a.Position,b.Position,a.Parent,b.Parent=Vector3.new(-.85,-2,.7),Vector3.new(.85,-2,.7),main,main
+        local trail=Instance.new("Trail")
+        trail.Name,trail.Attachment0,trail.Attachment1="PowerTrail",a,b
+        trail.Lifetime,trail.MinLength,trail.FaceCamera,trail.Enabled=.45,.1,true,false
+        trail.Color,trail.Transparency=ColorSequence.new(colors.mint),NumberSequence.new(.15,1)
+        trail.Parent=main
+        local bubble=ball("PowerShield",main.Position,6,Color3.fromRGB(116,189,255),1,model)
+        bubble.Size,bubble.Massless,bubble.CanCollide,bubble.CanTouch,bubble.CanQuery=Vector3.new(6,7,6),true,false,false,false
+        bubble.Anchored=true
+        local weld=Instance.new("WeldConstraint");weld.Part0,weld.Part1,weld.Parent=main,bubble,bubble
+        local sparks=Instance.new("Sparkles");sparks.Name,sparks.Enabled,sparks.SparkleColor,sparks.Parent="PowerSparks",false,colors.violet,main
     end
     return model
 end
@@ -622,6 +638,53 @@ function World.sprintStep(state, now)
     end
 end
 
+-- Presentation is deliberately outside SkybridgeSprint: the road geometry and
+-- every collidable checkpoint/obstacle remain exactly as authored in v10.
+local function buildTournamentPresentation()
+    local folder=Instance.new("Folder");folder.Name,folder.Parent="TournamentPresentation",root
+    local function prop(name,size,position,color)
+        local p=part(name,size,CFrame.new(position),color,Enum.Material.Neon,folder)
+        p.CanCollide,p.CanTouch,p.CanQuery=false,false,false
+        p:SetAttribute("RiftboundPresentation",true)
+        return p
+    end
+    for _,side in ipairs({-1,1}) do
+        local bowl=prop("Starting flame brazier",Vector3.new(2,1,2),Vector3.new(side*36,66,59),colors.gold)
+        local fire=Instance.new("Fire");fire.Name,fire.Enabled,fire.Size,fire.Heat="Tournament flame",false,7,8
+        fire.Color,fire.SecondaryColor,fire.Parent=Color3.fromRGB(255,143,45),colors.violet,bowl
+        local sparks=Instance.new("Sparkles");sparks.Enabled,sparks.SparkleColor,sparks.Parent=false,colors.gold,bowl
+        local smoke=Instance.new("Smoke");smoke.Enabled,smoke.Size,smoke.Opacity,smoke.RiseVelocity=false,4,.12,4
+        smoke.Color,smoke.Parent=Color3.fromRGB(188,166,216),bowl
+        tournament.braziers[#tournament.braziers+1]={fire=fire,sparks=sparks,smoke=smoke}
+        local pedestal=prop("Podium fireworks",Vector3.new(1,1,1),Vector3.new(side*24,82,-1115),colors.violet)
+        local bursts=Instance.new("Sparkles");bursts.Enabled,bursts.SparkleColor,bursts.Parent=false,colors.gold,pedestal
+        tournament.fireworks[#tournament.fireworks+1]=bursts
+    end
+    tournament.bar=prop("Starting gate energy",Vector3.new(64,.4,.4),Vector3.new(0,68,57),colors.gold)
+    for i=1,6 do
+        local angle=i*math.pi/3
+        local point=Vector3.new(-64+math.cos(angle)*8,80+math.sin(angle)*8,65)
+        local rune=prop("Arrival portal rune",Vector3.new(1.2,2.4,.5),point,colors.violet)
+        tournament.portal[#tournament.portal+1]={part=rune,angle=angle}
+    end
+end
+local function animateTournament(state, now)
+    if not tournament.bar then return end
+    local starting=state.phase=="countdown"
+    local launch=state.phase=="storm" and now-state.activityStarted<1.5
+    tournament.bar.Transparency=starting and .15 or 1
+    for _,entry in ipairs(tournament.braziers) do
+        entry.fire.Enabled,entry.sparks.Enabled,entry.smoke.Enabled=starting or launch,launch,starting or launch
+        entry.fire.Size=launch and 11 or (starting and 5+math.sin(now*8) or 5)
+    end
+    for _,entry in ipairs(tournament.portal) do
+        local angle=entry.angle+now*.35
+        entry.part.CFrame=CFrame.new(-64+math.cos(angle)*8,80+math.sin(angle)*8,65)*CFrame.Angles(0,0,-angle)
+        entry.part.Transparency=state.entrance and .05 or .45+math.sin(now*2+angle)*.15
+    end
+    for _,effect in ipairs(tournament.fireworks) do effect.Enabled=state.phase=="result" and #state.winners>0 end
+end
+
 function World.build(config)
     settings = config or {}
     if not PhysicsService:IsCollisionGroupRegistered("RiftboundRacers") then PhysicsService:RegisterCollisionGroup("RiftboundRacers") end
@@ -649,6 +712,7 @@ function World.build(config)
     local glow = Instance.new("BloomEffect")
     glow.Intensity, glow.Size, glow.Threshold, glow.Parent = 0.45, 32, 1.3, Lighting
     buildSprint()
+    buildTournamentPresentation()
     island(Vector3.new(0, 32, 0), 50)
     island(Vector3.new(87, 36, 21), 23)
     island(Vector3.new(-85, 28, -20), 21)
@@ -888,6 +952,9 @@ function World.arrive(model, slot, username)
         model = model, slot = slot, arrivedAt = os.clock(), frame = model:GetPivot(),
         balance = 0, popText = popText, scale = 1, username = username,
     }
+    -- Staged actors use authored limb poses. Disable joints while anchored so
+    -- native motors cannot snap them back; racing re-enables the whole rig.
+    physical(avatars[string.lower(username)], false)
 end
 
 local function track(distance, radius, count)
@@ -899,6 +966,11 @@ local function track(distance, radius, count)
     return from:Lerp(to, fraction)
 end
 
+local function registeredGrid(member,state)
+    local count=state.registration and (state.phase=="storm" and #state.nextCohort or state.registration.count) or #state.nextCohort
+    local index=member.registrationSlot or member.gridSlot or 1
+    return World.sprintPoint(((index-1+(state.round-1)*7)%math.max(1,count))+1,0)
+end
 local function destination(member, state, now, scale)
     local y = 35 + 3 * scale
     if state.entrance then
@@ -906,6 +978,7 @@ local function destination(member, state, now, scale)
             if name == member.username then return World.entrancePoint(index, #state.entrance.names), true end
         end
     end
+    if state.registration and member.registered and (state.phase=="registration" or state.phase=="countdown") then return registeredGrid(member,state),false end
     if member.entranceDone == false then return Vector3.new(-64 + ((member.slot - 1) % 5 - 2) * 5, 80, 82), false end
     if state.phase == "result" then
         for rank, row in ipairs(state.winners or {}) do
@@ -948,6 +1021,16 @@ end
 
 function World.render(state, now)
     sceneState = state
+    if state.registration then
+        local keep={}
+        for _,member in ipairs(state.members) do if member.registered or (state.phase=="result" and member.activityEntered) then keep[string.lower(member.username)]=true end end
+        for key,record in pairs(avatars) do
+            if not keep[key] then
+                if record.pendingAppearance then record.pendingAppearance:Destroy() end
+                record.model:Destroy();avatars[key]=nil
+            end
+        end
+    end
     local showLast = state.phase == "result" or state.phase == "gathering"
     local leaders = showLast and state.lastRound or state.roundLeaders
     local lines = { "ROUND TOP EARNERS", showLast and "LAST ROUND" or "THIS ROUND" }
@@ -979,6 +1062,11 @@ function World.render(state, now)
         end
         if record then
             local model = record.model
+            if state.registration and state.phase=="countdown" and member.registered and record.readyRound~=state.round then
+                local point=registeredGrid(member,state)
+                record.frame=CFrame.lookAt(point,point+Vector3.new(0,0,-1));model:PivotTo(record.frame)
+                record.readyRound=state.round
+            end
             if record.physical and not (state.phase == "storm" and state.activity.id == "sprint") then
                 record.frame = model.PrimaryPart.CFrame
                 physical(record, false)
@@ -1017,6 +1105,7 @@ function World.animate(now)
     local dt = math.min(0.25, math.max(0, now - lastFrame))
     lastFrame = now
     local storm = state.phase == "storm"
+    animateTournament(state,now)
     rift.Transparency = storm and 0.3 or (state.phase == "voting" and 0.55 or 0.92)
     rift.CFrame = CFrame.new(0, 90 + math.sin(now) * 2, -50) * CFrame.Angles(0, now * 0.2, 0)
     core.CFrame = CFrame.new(0, 42 + math.sin(now * 1.2) * 0.6, 0) * CFrame.Angles(0, now * 0.3, 0.12)
@@ -1065,6 +1154,13 @@ function World.animate(now)
     for _, member in ipairs(state.members) do
         local record = avatars[string.lower(member.username)]
         if record then
+            local power=member.powerup or ""
+            record.model.PrimaryPart.PowerTrail.Enabled=power=="trail"
+            record.model.PowerShield.Transparency=power=="shield" and (.72+math.sin(now*8)*.08) or 1
+            record.model.PowerShield.Size=Vector3.new(6,7,6)*(1+math.sin(now*6)*.04)
+            if not record.physical then record.model.PowerShield.CFrame=record.model.PrimaryPart.CFrame end
+            record.model.PrimaryPart.PowerSparks.Enabled=power=="starburst"
+            if power~="" then record.model.GiftAura.Enabled=true end
             if state.activity.id == "sprint" and state.phase == "storm" and record.race and record.race.round == state.round then
                 -- Physics owns the root. Only pose the massless limbs for walking.
                 local speed = record.model.PrimaryPart and record.model.PrimaryPart.AssemblyLinearVelocity.Magnitude or 0
@@ -1072,7 +1168,9 @@ function World.animate(now)
                 for _, joint in ipairs(record.model:GetDescendants()) do
                     if joint:IsA("Motor6D") and (string.find(joint.Name, "Shoulder") or string.find(joint.Name, "Hip")) then
                         if not joint:GetAttribute("SprintBaseC0") then joint:SetAttribute("SprintBaseC0", joint.C0) end
-                        joint.C0 = joint:GetAttribute("SprintBaseC0") * CFrame.Angles(gait * (string.find(joint.Name, "Left") and 1 or -1), 0, 0)
+                        local shoulder=string.find(joint.Name,"Shoulder")
+                        local flourish=power=="starburst" and shoulder and math.sin(now*12)*.3 or 0
+                        joint.C0 = joint:GetAttribute("SprintBaseC0") * CFrame.Angles(gait * (string.find(joint.Name, "Left") and 1 or -1)+flourish, 0, 0)
                     end
                 end
             else
@@ -1102,6 +1200,23 @@ function World.animate(now)
                 local arm = math.abs(spec[2]) > 1
                 model[spec[1]].CFrame = body * CFrame.new(spec[2] * size, (winner and arm and 1.1 or spec[3]) * size, 0)
                     * CFrame.Angles(spec[4], 0, winner and arm and spec[2] * 0.4 or 0)
+            end
+            -- Anchored waiting/entrance/podium actors can emote freely. Racing
+            -- roots above remain entirely owned by the Humanoid controller.
+            local poseIndex=math.floor(now/3.5+member.slot)%5
+            local poseNames={"wave","stretch","cheer","look around","celebrate"}
+            if (state.registration and member.registered and not moving) or entering or winner then
+                local index=(winner or entering) and 3 or poseIndex+1
+                model:SetAttribute("RiftboundPose",poseNames[index])
+                local left,right=model["Left Arm"],model["Right Arm"]
+                local cheer=index==3 or index==5
+                local leftY=(cheer and 1.1 or index==2 and .4 or 0)*size
+                local rightY=(cheer and 1.1 or index==1 and 1.2 or index==2 and .4 or 0)*size
+                local leftRoll=index==2 and -math.pi/2 or cheer and -.65 or .05
+                local rightRoll=index==2 and math.pi/2 or index==1 and .4+math.sin(now*7)*.3 or cheer and .65 or -.05
+                left.CFrame=body*CFrame.new(-1.5*size,leftY,0)*CFrame.Angles(cheer and math.sin(now*7)*.2 or 0,0,leftRoll)
+                right.CFrame=body*CFrame.new(1.5*size,rightY,0)*CFrame.Angles(index==1 and -.15 or cheer and math.sin(now*7)*.2 or 0,0,rightRoll)
+                if index==4 then model.Head.CFrame=body*CFrame.new(0,1.5*size,0)*CFrame.Angles(0,math.sin(now)*.35,0) end
             end
             model["Winner crown"].Transparency = winner and not entering and 0 or 1
             for i = 1, 3 do model["Crown spike " .. i].Transparency = winner and not entering and 0 or 1 end

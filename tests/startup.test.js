@@ -111,7 +111,7 @@ expectFailed("Checking ModuleScript Config", "Duplicate ModuleScripts named Conf
 test('Phase 1 Config missing new settings gets safe defaults, while invalid explicit settings fail clearly', () => {
   runLua(environment + `Config.SceneUpdatesPerSecond = nil; Config.SnapshotSeconds = nil; Config.AutoActivities = nil` + boot + `
 assert(storage.Riftbound:GetAttribute("Ready") and Config.SceneUpdatesPerSecond == 12 and Config.AutoActivities)`);
-  for (const [field, value] of [['GatheringSeconds', '0'], ['SceneUpdatesPerSecond', '"12"'], ['PersistenceEnabled', 'true']]) {
+  for (const [field, value] of [['GatheringSeconds', '0'], ['SceneUpdatesPerSecond', '"12"'], ['PersistenceEnabled', 'true'], ['RegistrationSeconds','0'], ['MinimumRacers','1'], ['SprintCompetitors','1'], ['AutoJoinPlayers','true'], ['AutoActivities','false'], ['SprintOnly','false']]) {
     runLua(environment + `Config.${field} = ${value}` + boot + `
 expectFailed("Validating Config", "${field}"); assert(buildCalls == 0 and #jobs == 0)`);
   }

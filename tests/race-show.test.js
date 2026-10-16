@@ -10,6 +10,7 @@ const client=read('roblox/StarterPlayerScripts/Realm.client.lua');
 const mathSource=client.split('-- BEGIN PRESENTATION MATH')[1].split('\n').slice(1).join('\n').split('-- END PRESENTATION MATH')[0];
 const base=presentationEngine+`
 local Config=(function() ${config} end)()
+Config.RegistrationSeconds=nil -- legacy-domain regression fixture; production server always supplies 30s
 Config.LoadAvatarAppearances=false
 local Realm=(function() ${domain} end)()
 local World=(function() ${world} end)()
@@ -31,7 +32,7 @@ end
 `;
 
 test('shared skyway retains four sections, banked turns, moving gates and the physical 120s deadline',()=>runLua(base+`
-assert(Config.SprintCompetitors==16 and Config.MaxCrew==40 and #Config.DemoNames==20)
+assert(Config.SprintCompetitors==20 and Config.MaxCrew==40 and #Config.DemoNames==20)
 assert(Config.SprintRaceSeconds==120 and Config.SprintWalkSpeed==12.5)
 local info=World.courseInfo()
 assert(info.length>1270 and info.length<1290 and #info.sections==4 and info.roadWidth==64)

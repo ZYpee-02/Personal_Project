@@ -38,15 +38,15 @@ local function simulate(count)
     local state=Realm.new(Config,0)
     local bodies={}
     for i=1,count do
-        state:addCrew('Contact_'..i,0)
+        assert(state:register('Contact_'..i,0,state.round,0,0,'entry:'..i))
         World.arrive(World.offlineAvatar('Contact_'..i),i,'Contact_'..i)
         bodies[i]={vy=0,grounded=false}
     end
-    state:advance(12); state:advance(20);now=20;World.sprintStep(state,now)
+    state:advance(30); state:advance(34);now=34;World.sprintStep(state,now)
     local seenRoutes,rankChanges,previousLeader={},0,nil
     local dt=.05
     for step=1,2400 do
-        now=20+step*dt
+        now=34+step*dt
         World.sprintStep(state,now)
         for i=1,count do
             local m=state.crew['contact_'..i]
@@ -94,7 +94,7 @@ local function simulate(count)
         end
         if state:raceComplete() then break end
     end
-    state:advance(140) -- unfinished bodies must become real DNFs at the deadline
+    state:advance(154) -- unfinished bodies must become real DNFs at the deadline
     local minTime,maxTime,recoveries,finished,dnfs=math.huge,0,0,0,0
     for _,m in pairs(state.crew) do
         recoveries=recoveries+m.recoveries

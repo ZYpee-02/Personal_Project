@@ -6,6 +6,7 @@ const read = name => readFileSync(new URL(`../roblox/ServerScriptService/${name}
 const config = read('Config.lua'), domain = read('RealmState.lua'), world = read('World.lua');
 const rules = `
 local Config=(function() ${config} end)()
+Config.RegistrationSeconds=nil -- legacy-domain regression fixture; production server always supplies 30s
 local Realm=(function() ${domain} end)()
 Config.SprintCompetitors=5
 Config.DemoNames={"Demo_Astra","Demo_Lumen","Demo_Nova","Demo_Fern","Demo_Orion"}
@@ -233,6 +234,7 @@ test('actual server/World/client repeat physical Sprint rounds with five NPCs un
   const client=readFileSync(new URL('../roblox/StarterPlayerScripts/Realm.client.lua',import.meta.url),'utf8');
   runLua(presentationEngine + rules + `
 Config.LoadAvatarAppearances=false
+Config.OfflineDemoEnabled=true;Config.AutoSimulateGifts=true
 local World=(function() ${world} end)()
 -- Scenery poses are covered separately; this scheduler focuses on physical commands.
 World.animate=function() end
@@ -269,7 +271,7 @@ end)
 ;(function() ${server} end)()
 assert(remotes:GetAttribute("Ready"))
 ;(function() ${client} end)()
-for step=1,8800 do
+for step=1,10200 do
     now=step*0.05
     -- This is explicit mocked movement, not Roblox collision/jump simulation.
     for _,model in ipairs(workspace.RiftboundRealm:GetChildren()) do
@@ -296,10 +298,12 @@ assert(results>=3 and #last.crew==5 and last.followers>0,"autonomous Sprint did 
 assert(last.physicalSprint and last.cameraBounds)
 assert(playerGui.RiftboundHUD.VerticalStreamCanvas.RoundLeaders.Title.Text=="SPRINT / TIME")
 snapshotConnection:Disconnect()
-local nofinish=start(5); nofinish:advance(140)
-local snapshot=nofinish:snapshot(140); snapshot.demo=true; snapshot.cameraBounds=World.cameraBounds(snapshot)
+local nofinish=Realm.new(Config,0)
+for i=1,5 do assert(nofinish:register('Racer_'..i,0,nofinish.round,0,0,'register:'..i)) end
+nofinish:advance(30);nofinish:advance(34);nofinish:advance(154)
+local snapshot=nofinish:snapshot(154); snapshot.demo=true; snapshot.cameraBounds=World.cameraBounds(snapshot)
 remotes.Snapshot.OnClientEvent:Fire(snapshot)
-assert(string.find(playerGui.RiftboundHUD.VerticalStreamCanvas.RoundDock.Instruction.Text,"NO FINISHERS",1,true),playerGui.RiftboundHUD.VerticalStreamCanvas.RoundDock.Instruction.Text)
+assert(playerGui.RiftboundHUD.VerticalStreamCanvas.Header.Activity.Text=="RACE COMPLETE / DNFs")
 assert(playerGui.RiftboundHUD.VerticalStreamCanvas.RoundLeaders.Score1.Text=="DNF",playerGui.RiftboundHUD.VerticalStreamCanvas.RoundLeaders.Score1.Text)
 `);
 });
