@@ -1,150 +1,66 @@
-# Riftbound Live — Skybridge Sprint v0.4.0
+# Riftbound Live — cinematic two-minute Skybridge show
 
-A fantasy sky-island spectator game with five automatic physical NPC racers,
-verified checkpoints/finish times, fictional earnings, leaderboards, cosmetic gifts
-and a portrait spectator camera. All state stays in memory. DataStoreService,
-custom HTTP and TikTok networking are disabled.
+An automated physical obstacle race for portrait LIVE capture: five NPC racers,
+a 1,152-stud route, 48 measured gates, four sections and a 120-second deadline.
+Section cameras follow actual competitors, with regular spotlights, finish-line
+coverage and winner celebrations. Queued viewer arrivals get a Star Gate montage
+while the competition keeps running.
 
-**Already running cinematic-v5/v5.1? Replace only Realm.client.lua**, the Realm
-LocalScript under StarterPlayer → StarterPlayerScripts, using
-[the camera/round-transition guide](docs/CAMERA_FIX.md). v6 replaces the recurring gray
-distant overview with a close full-course view and retains the v5.1 throttle fix.
-Older physical Sprint installations also need the v5 World/server sources described
-in that guide. The reported gray screen still requires Studio confirmation.
-For a fresh install or an upgrade from before physical Sprint, install all five
-using [the Sprint guide](docs/SPRINT_REPLACEMENT.md). `MANUAL_STUDIO_SETUP.md` contains
-all five complete raw sources. No Command Bar installer is used.
+**Upgrade: replace all FIVE raw scripts together.** Follow
+[exact replacements and Studio checks](docs/RACE_SHOW_REPLACEMENT.md).
+MANUAL_STUDIO_SETUP.md contains every complete source. Keep
+Workspace.StreamingEnabled=false for this playtest; the exported place already does.
+No Command Bar installer, plugin or Node bridge is required.
 
-Five Demo_ competitors seed in Studio. Fallback R6 rigs spawn immediately. Optional
-Roblox appearance loading is enabled by default; set `LoadAvatarAppearances=false`
-for a strictly local fallback-only test. No TikTok viewer/gift is connected.
-The cloud checks do not establish real Roblox physics or Studio rendering success.
+| Section | Gates | Main challenge |
+| --- | --- | --- |
+| Starting Dash | 1–12 | Steps, gaps, opening hurdle |
+| Moving Bridges | 13–24 | Moving floating spans |
+| Hazard Zone | 25–36 | Sliding gates and jump hurdles |
+| Final Sprint | 37–48 | Elevated dash and dramatic finish arch |
 
-## Manual setup in Roblox Studio
+All racers use equal movement settings. The 12-stud/second baseline is about 96
+seconds before waits/recovery. Actual roots, grounded checkpoints and a physical
+finish-plane crossing determine results; no timer or name determines a winner.
+Falls recover only to verified pads and retain the clock. Rewards remain fictional,
+server authoritative and in memory: $2/checkpoint, $40 finish and $120/$75/$40 podium
+prizes, plus existing passive/vote/activity earnings and caps. Gifts stay cosmetic.
 
-The Command Bar installer is retired and no longer generated or bundled. Use the
-five actual source files below. They are complete raw Luau, not serialized strings.
-`MANUAL_STUDIO_SETUP.md` includes step-by-step directions and all five full code
-blocks if you prefer copying from one document.
+The director fits nearby avatars at medium distance rather than zooming out to the
+whole map. It tracks the lead section, periodically shows other competitors, and
+uses dedicated finish/podium shots. Safe fallbacks, daylight, opacity restoration
+and the working ROAM VIEW / STREAM VIEW controls remain. A named Studio Baseplate
+is hidden locally in Stream and restored in Roam for a sky background. Five readable
+live-position rows, progress, countdowns and large entrance/winner names support
+portrait capture and landscape testing. Client diagnostics identify **race-show-v7**.
 
-1. Open a new place in Roblox Studio on Windows/macOS, with Play stopped.
-2. Open Explorer and Properties. Keep HTTP Requests and Studio API Services access
-   disabled. No publication, plugin or Node process is needed.
-3. Create these exact instances, double-click each to open its Script Editor,
-   select all default code, and replace it with the corresponding **entire file**:
+**OFFLINE JOIN** creates a local stand-in. **ROBLOX JOIN / VERIFY ACCOUNT** uses a
+bounded native username lookup, then optional native avatar appearance APIs.
+Normal entrances last four seconds; bursts group three for 2.5 seconds. Entrants
+become eligible for the next cohort after presentation. Unraced viewers get priority;
+returning racers rotate. Studio Demo_ viewers and gifts/follows remain explicitly
+simulated. DataStoreService, custom HTTP and external TikTok integration stay disabled.
+For zero authored account/appearance calls, use OFFLINE JOIN and set
+ResolveViewerUsernames=false and LoadAvatarAppearances=false.
 
-| Raw source file | Instance type | Parent | Exact Explorer name |
-| --- | --- | --- | --- |
-| `roblox/ServerScriptService/Config.lua` | ModuleScript | ServerScriptService | Config |
-| `roblox/ServerScriptService/RealmState.lua` | ModuleScript | ServerScriptService | RealmState |
-| `roblox/ServerScriptService/World.lua` | ModuleScript | ServerScriptService | World |
-| `roblox/ServerScriptService/Realm.server.lua` | Script | ServerScriptService | Realm |
-| `roblox/StarterPlayerScripts/Realm.client.lua` | LocalScript | StarterPlayer → StarterPlayerScripts | Realm |
+Validation includes all authored route sections, geometric jump feasibility,
+speed-limited navigation commands, measured timing/rewards, queues, account lookup
+failures, section/entrance/finish framing, Roam restoration and exact raw/export
+source checks. **Cloud mocks do not reproduce native Roblox physics or rendering.**
+The 90–120-second finish target still needs real Studio timing and jump/contact
+validation. See the [playtest checklist and limits](docs/RACE_SHOW_REPLACEMENT.md).
 
-4. Do not append filename suffixes to the instance names. The server's three
-   `require(script.Parent.NAME)` calls resolve the sibling ModuleScripts. Each
-   ModuleScript returns its table. Leave the server Script's RunContext at its
-   Legacy/default setting. Make sure the Script and LocalScript are enabled.
-5. Finish all five files before starting. Do not leave duplicate Realm scripts from
-   previous attempts active. Do not paste this code into the Command Bar or combine
-   files. The client waits for remotes that the server creates automatically.
-6. Press **Play**, not Run. The islands appear at runtime, and your player gets a HUD.
-7. Watch three automatic Sprint rounds (allow up to six minutes). TEST TOOLS is
-   optional. ROAM VIEW restores the normal camera; STREAM VIEW returns to the
-   fitted course view. See `docs/SPRINT_REPLACEMENT.md` for physics/appearance checks.
-8. Stop and Play again: all gameplay state starts fresh.
+## Development checks
 
-If Studio says Config/RealmState/World is not a valid member, check the parent,
-instance type, spelling and extension-free Explorer name. If no HUD appears, verify
-that the client is a **LocalScript in StarterPlayerScripts**, that you used Play,
-and that the server has no errors in Output. Do not manually create the Riftbound
-remotes or install anything from `integrations/` for this offline test.
+```sh
+npm ci --ignore-scripts
+npm test
+npm run check:luau
+```
 
-## Physical Sprint and appearances
-
-The 12s gathering → 8s optional vote → up to 80s race → 10s results loop repeats
-without host actions. Five crew enter; extra/later joins wait for rotating cohorts.
-The Studio host spectates by default (`AutoJoinPlayers=false`); JOIN tools still
-accept usernames, and that flag can restore automatic player stand-ins.
-
-Unanchored R6 Humanoids walk/jump along five equal lanes through twelve physical
-pads, rises, gaps and moving wind gates. The server owns their assemblies and
-samples actual roots. Gates must be reached in order; the finish requires a
-physical plane crossing, with an interpolated timestamp. Winners are not selected
-by names, money, gifts or theoretical speeds. Falls/stalls reset to verified pads
-without stopping the clock. Timeout/dead/missing rigs DNF. No finisher means no
-invented champion. Top finishers celebrate on the finish-island podium; the next
-round resets automatically. Equal observed times share placements/bonuses.
-
-All movement settings/colliders are identical. Simulated giant scaling waits until
-a break during physical racing, while its aura and sky effects still appear.
-Starfall/Relay remain available as the original kinematic demonstrations when
-`SprintOnly=false`; Sprint always requires observed physical gates.
-
-Appearance loading uses only two native Roblox APIs in a guarded asynchronous
-loader. Configured IDs supply Demo_ cosmetics; actual auto-joined player stand-ins
-can use their known Roblox ID. Typed usernames remain labels and use fallback rigs;
-there is no username lookup. Failures/late responses retain the playable fallback.
-Loaded scripts/tools are removed, size settings/colliders normalized, and appearances
-install only outside races. The eight-second deadline is soft: in-flight engine
-requests cannot be canceled. `LoadAvatarAppearances=false` makes zero authored
-account/appearance requests while preserving all gameplay. HTTP/API access settings
-can stay disabled. See [offline boundaries](docs/OFFLINE_SAFETY.md).
-
-## Fictional money and presentation
-
-Verified checkpoints pay $2; finishing pays $40; placements 1/2/3 add $120/$75/$40.
-Passive income, vote participation, shard/championship bonuses and the existing
-$100/s / $1B caps remain. Rewards pay once and all balances reset on Stop. This
-currency is fictional game money, not Robux.
-
-The portrait edge HUD retains separate Top Earners/round panels and a lower result
-dock. Sprint rows show actual seconds or checkpoints/DNF. Name/earnings labels are
-bounded and culled in screen space. The director alternates the full-course
-overview, actual racing-pack shots and a leader close-up every three seconds. It uses
-observed avatar roots; results cut to arrived podium winners and a winner close-up.
-Close views fit avatar/jump envelopes into the clear HUD rectangle at 65–220 studs;
-missing/invalid targets or an impossible fit use the bounded overview. Shot changes
-cut directly; camera tracking between cuts is smoothed. Set STREAM_CINEMATIC=false
-for the new close full-course overview.
-
-The overview uses a 35-degree elevation and adapts vertical FOV from 85 to 120
-degrees to fit the course while staying nearby. Normal portrait/desktop views sit
-around 175–180 studs from Focus, with every display-volume corner within 260 studs.
-Very narrow layouts permit up to 210/290 studs. The former 321-stud overview is no
-longer used, including gathering, voting, racing overview beats and fallback shots.
-
-Stream View applies a reversible local daylight/fog profile and temporarily removes
-Atmospheres and disables PostEffects, including Bloom, from Lighting/current Camera.
-It scans for late effects and restores exact prior settings in Roam. Ambient gift
-colors, avatar auras, ribbons, crowns and particle geometry remain active. The ward
-and rift shells remain locally masked. Other scenery enclosing the lens is locally
-masked and logged, including geometry outside RiftboundRealm; the racing course
-and Humanoid models are protected. None of these masks changes physics.
-
-Player characters now spawn on a separate raised spectator deck outside the race
-lanes. Server preparation rescues the already-spawned first character and handles
-respawns. Roam restores the Humanoid camera subject and begins above/outside the deck.
-
-TEST TOOLS → HOLD CAMERA freezes the current Stream View position, aim, Focus and
-FOV across round changes while gameplay continues. Toggle it again or enter Roam
-to restore automatic shots. This is an optional diagnostic; it starts disabled.
-
-Diagnostics identify **near-course-v6**, the round, selected shot, effect-isolation counts,
-actual CFrame/Focus/rendered frame, opacity, enclosing objects and anchor sightlines.
-Overview refitting preserves the ten-second diagnostic and quarter-second lens-scan
-limits; phase/shot changes can request an immediate diagnostic.
-A count of 155 opaque parts or six projected anchors is not proof of visibility.
-See [exact replacement and Studio checks](docs/CAMERA_FIX.md).
-The gray-screen cause is not claimed established or resolved by cloud checks.
-
-The realm uses ModelStreamingMode.Persistent, but that policy alone does not prove
-the client has its geometry. When engine streaming is enabled and course parts are
-missing, at most three native geometry requests run per Stream View session. They
-use a five-second timeout argument and a 15-second minimum retry interval; returning
-does not count as geometry loaded. No requests run with streaming disabled or a
-complete course. The optional place starts with StreamingEnabled=false.
-Actual clipping, streaming, fonts, occlusion and performance still require Studio.
+The native compiler is installed by the environment setup. The build regenerates
+the five-block manual guide, XML place and ZIP. Tests use Node 22+, Fengari and
+limited service/geometry mocks; no external integration is started by the game.
 
 ## Node simulator and future TikTok integration are separate
 
@@ -195,8 +111,10 @@ Automated tests exercise the actual pure-Lua rules, economy, voting, leaderboard
 gifts/follows, the optional Node bridge, local module dependencies, remote names,
 source-code identity in the manual guide and ZIP, and offline API exclusions.
 Phase 2 tests also drive the actual server scheduler with mocked services for
-185 simulated seconds, proving that demo arrivals, gifts and several rounds run
-without human/host calls; they do not simulate rendering or engine physics. The
+340 simulated seconds, checking that demo arrivals, gifts and several rounds run
+without human/host calls. A separate 440-second command-following stub repeats the
+actual physical controller/server/client pipeline; it does not simulate native
+collision, jumping, rendering or engine physics. The
 native Luau compiler validates all five actual game files and all five sources in
 the optional XML place. They cannot validate Roblox rendering, physics, or Studio
 UI behavior. Run the manual checklist on Windows/macOS.

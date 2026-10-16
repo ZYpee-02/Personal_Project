@@ -11,9 +11,12 @@ return {
     AutoJoinPlayers = false, -- host is a spectator; JOIN tools still enqueue any username.
     SprintOnly = true, -- false restores Starfall/Sprint/Relay rotation. Sprint is always physical.
     SprintCompetitors = 5,
-    SprintRaceSeconds = 80,
+    SprintRaceSeconds = 120,
+    SprintWalkSpeed = 12, -- 1,152-stud route: about 96 seconds before jumps/recovery.
+    ResolveViewerUsernames = true, -- Verified JOIN uses native Roblox account lookup.
+    EntranceSeconds = 4, -- Normal individual montage; bursts group three for 2.5s.
     SprintFinishBonus = 40,
-    LoadAvatarAppearances = true, -- false = strictly local fallback rigs, no account requests.
+    LoadAvatarAppearances = true, -- false disables outfits; OFFLINE JOIN also skips account lookup.
     AppearanceTimeoutSeconds = 8,
     DemoAppearanceUserIds = { 1, 156, 261, 2, 3 }, -- cosmetic accounts, not LIVE viewers.
     ActivityMoneyPerSecond = 2,

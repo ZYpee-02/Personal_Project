@@ -1,3 +1,7 @@
+> Current v7 race-show upgrade: replace all five sources using
+> [RACE_SHOW_REPLACEMENT.md](RACE_SHOW_REPLACEMENT.md). The older notes below describe
+> previous builds; their short-course dimensions and camera settings are historical.
+
 # Skybridge Sprint — exact five-file replacement
 
 Already running physical Sprint and applying only the camera fix? Use

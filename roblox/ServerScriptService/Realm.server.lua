@@ -78,7 +78,7 @@ local function initialize()
     stage("Requiring World")
     local World = require(script.Parent.World)
     assert(type(World) == "table", "World must return its module table")
-    for _, name in ipairs({ "build", "render", "animate", "offlineAvatar", "arrive", "sprintStep", "loadAppearance", "cameraBounds" }) do
+    for _, name in ipairs({ "build", "render", "animate", "offlineAvatar", "arrive", "sprintStep", "loadAppearance", "cameraBounds", "courseInfo", "resolveUsername", "validUsername" }) do
         assert(type(World[name]) == "function", "World is missing " .. name .. "(). Replace the entire World ModuleScript with the Phase 2 file.")
     end
     stage("Validating Config")
@@ -91,7 +91,7 @@ local function initialize()
         AutoSimulateGifts = true, DemoGiftSeconds = 18, StreamCameraDefault = true, HostUserIds = {},
         BaseMoneyPerSecond = 5, VoteMoneyPerSecond = 3, WinMoneyPerSecond = 2,
         MaxMoneyPerSecond = 100, MaxBalance = 1000000000, MaxCrew = 18, MaxQueuedArrivals = 30,
-        PersistenceEnabled = false, AutoJoinPlayers = true, SprintOnly = true, SprintCompetitors = 5, SprintRaceSeconds = 80,
+        PersistenceEnabled = false, AutoJoinPlayers = true, SprintOnly = true, SprintCompetitors = 5, SprintRaceSeconds = 120, SprintWalkSpeed = 12, ResolveViewerUsernames = true, EntranceSeconds = 4,
         SprintFinishBonus = 40, LoadAvatarAppearances = false, AppearanceTimeoutSeconds = 8,
         DemoAppearanceUserIds = { 1, 156, 261, 2, 3 },
     }
@@ -103,7 +103,10 @@ local function initialize()
             "Config." .. name .. " must be a finite number from " .. minimum .. " to " .. maximum)
     end
     for _, name in ipairs({ "GatheringSeconds", "VotingSeconds", "StormSeconds", "ResultSeconds" }) do range(name, 0.1, 3600) end
-    range("SprintRaceSeconds", 10, 600)
+    range("SprintRaceSeconds", 120, 120)
+    range("SprintWalkSpeed", 10, 14)
+    range("EntranceSeconds", 3, 5)
+    assert(workspace.StreamingEnabled ~= true, "For this playtest, Stop Play and set Workspace.StreamingEnabled=false in Properties.")
     range("SprintCompetitors", 1, 5)
     assert(Config.SprintCompetitors == math.floor(Config.SprintCompetitors), "SprintCompetitors must be a whole number")
     range("SprintFinishBonus", 0, 1000000)
@@ -117,7 +120,7 @@ local function initialize()
     for _, name in ipairs({ "BaseMoneyPerSecond", "VoteMoneyPerSecond", "WinMoneyPerSecond", "ActivityMoneyPerSecond", "RoundWinMoneyPerSecond", "CoinsPerPoint" }) do range(name, 0, 1000) end
     range("MaxMoneyPerSecond", 1, 1000)
     range("MaxBalance", 1, 1000000000)
-    for _, name in ipairs({ "AutoActivities", "OfflineDemoEnabled", "DemoStudioOnly", "AutoSimulateGifts", "StreamCameraDefault", "SprintOnly", "LoadAvatarAppearances", "AutoJoinPlayers" }) do
+    for _, name in ipairs({ "AutoActivities", "OfflineDemoEnabled", "DemoStudioOnly", "AutoSimulateGifts", "StreamCameraDefault", "SprintOnly", "LoadAvatarAppearances", "AutoJoinPlayers", "ResolveViewerUsernames" }) do
         assert(type(Config[name]) == "boolean", "Config." .. name .. " must be true or false")
     end
     assert(type(Config.DemoAppearanceUserIds) == "table", "DemoAppearanceUserIds must be a table")
@@ -127,7 +130,7 @@ local function initialize()
     for i = 1, 3 do assert(type(Config.RoundPrizes[i]) == "number" and Config.RoundPrizes[i] >= 0 and Config.RoundPrizes[i] <= 1000000, "RoundPrizes needs three finite nonnegative amounts") end
     stage("Creating RealmState")
     local state = Realm.new(Config, os.clock())
-    for _, name in ipairs({ "tick", "advance", "snapshot", "addCrew", "vote", "gift", "follow", "bless", "recordCheckpoint", "raceDistance", "raceComplete", "raceDNF" }) do
+    for _, name in ipairs({ "tick", "advance", "snapshot", "addCrew", "vote", "gift", "follow", "bless", "recordCheckpoint", "raceDistance", "raceComplete", "raceDNF", "queueEntrance", "advanceEntrances", "nextCohort" }) do
         assert(type(state[name]) == "function", "RealmState is missing " .. name .. "(). Replace its complete Phase 2 source.")
     end
     local initial = state:snapshot(os.clock())
@@ -151,6 +154,7 @@ local function initialize()
         snapshot.persistence, snapshot.bridge = "memory only", "offline simulator"
         snapshot.demo, snapshot.streamCamera = demoEnabled == true, Config.StreamCameraDefault
         snapshot.cameraBounds = World.cameraBounds(snapshot)
+        snapshot.course = World.courseInfo()
         World.render(snapshot, now)
         snapshotRemote:FireAllClients(snapshot)
     end
@@ -159,24 +163,32 @@ local function initialize()
         if player and player.Parent then noticeRemote:FireClient(player, message) end
     end
 
-    local function arrival(username, appearanceUserId)
-        if type(username) ~= "string" or #username < 3 or #username > 20 or not string.match(username, "^[%w_]+$") then
+    local function arrival(username, appearanceUserId, offline)
+        if not World.validUsername(username) then
             return false, "Enter a Roblox username, not a display name."
         end
         if state.crew[string.lower(username)] then return false, "That traveler is already here." end
         if #state.crewOrder >= Config.MaxCrew then return false, "The island is full for this session." end
-        local userId = type(appearanceUserId) == "number" and appearanceUserId or 0 -- appearance source only, never a LIVE identity.
+        if #state.entranceQueue >= Config.MaxQueuedArrivals then return false, "The Star Gate entrance queue is full. Try again shortly." end
+        local userId = type(appearanceUserId) == "number" and appearanceUserId or 0
+        if userId == 0 and not offline then
+            local issue
+            userId, issue = World.resolveUsername(username)
+            if not userId then return false, issue end
+        end
         local model = World.offlineAvatar(username)
         state:tick(os.clock())
         local added, member = state:addCrew(username, userId)
         if not added then model:Destroy(); return false, member end
+        state:queueEntrance(username)
+        state:advanceEntrances(os.clock())
         World.arrive(model, member.slot, username)
         World.loadAppearance(username, userId)
-        return true, username .. " arrived through the star gate."
+        return true, username .. (offline and " queued / OFFLINE stand-in." or " queued / Roblox avatar.")
     end
 
     local function apply(event)
-        if event.type == "join" then return arrival(event.username, event.appearanceUserId) end
+        if event.type == "join" then return arrival(event.username, event.appearanceUserId, event.offline == true) end
         if event.type == "vote" then return state:vote("live:" .. event.viewer, event.choice, event.username, os.clock()) end
         if event.type == "blessing" then return state:bless(event.kind, os.clock()) end
         if event.type == "gift" then return state:gift(event.username, event.kind, event.count, os.clock()) end
@@ -251,8 +263,8 @@ local function initialize()
             local _, message = state:vote("player:" .. player.UserId, payload, player.Name, now)
             notify(player, message)
         elseif host(player) then
-            if action == "join" then
-                if not enqueue({ type = "join", username = payload }, function(_, message) notify(player, message) end) then
+            if action == "join" or action == "offlineJoin" then
+                if not enqueue({ type = "join", username = payload, offline = action == "offlineJoin" }, function(_, message) notify(player, message) end) then
                     notify(player, "The arrival queue is full. Try again shortly.")
                 end
             elseif action == "blessing" then
@@ -281,7 +293,7 @@ local function initialize()
         task.wait(2)
         for i, name in ipairs(Config.DemoNames) do
             if not running then return end
-            enqueue({ type = "join", username = name, appearanceUserId = Config.DemoAppearanceUserIds[i] })
+            enqueue({ type = "join", username = name, appearanceUserId = Config.DemoAppearanceUserIds[i], offline = true })
             task.wait(0.65)
         end
         if not Config.AutoSimulateGifts then return end
@@ -318,6 +330,7 @@ local function initialize()
             if not guarded("Advancing rounds / rendering snapshot", function()
                 local now = os.clock()
                 state:tick(now)
+                state:advanceEntrances(now)
                 local changed = state:advance(now)
                 if changed or now - lastSnapshot >= Config.SnapshotSeconds then
                     publish()

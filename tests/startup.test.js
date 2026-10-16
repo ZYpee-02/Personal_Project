@@ -12,6 +12,7 @@ const environment = instances + `
 local Config = (function() ${config} end)()
 local Realm = (function() ${domain} end)()
 local now, jobs, warnings, stages = 0, {}, {}, {}
+workspace={StreamingEnabled=false}
 local storage = instance("ReplicatedStorage", "ReplicatedStorage")
 local modules = instance("ServerScriptService", "ServerScriptService")
 for _, name in ipairs({ "Config", "RealmState", "World" }) do instance("ModuleScript", name, modules) end
@@ -26,6 +27,9 @@ local world = {
     sprintStep = function() end,
     loadAppearance = function() end,
     cameraBounds = function() end,
+    courseInfo = function() return {checkpoints=48} end,
+    resolveUsername = function() return 123 end,
+    validUsername = function(name) return type(name)=="string" and #name>=3 end,
 }
 local players = { PlayerAdded = signal(), PlayerRemoving = signal(), GetPlayers = function() return {} end }
 local runtime = { IsStudio = function() return true end, Heartbeat = signal() }

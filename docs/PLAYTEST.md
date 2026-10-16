@@ -1,3 +1,7 @@
+> Current v7 race-show upgrade: replace all five sources using
+> [RACE_SHOW_REPLACEMENT.md](RACE_SHOW_REPLACEMENT.md). The older notes below describe
+> previous builds; their short-course dimensions and camera settings are historical.
+
 # Phase 2 Studio acceptance checklist — NOT executed in the cloud
 
 **Current physical Sprint update:** replace all five files together and first run

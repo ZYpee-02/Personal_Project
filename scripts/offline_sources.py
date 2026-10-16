@@ -18,7 +18,7 @@ FORBIDDEN = re.compile(
     r"\b(?:DataStoreService|MemoryStoreService|HttpService|InsertService|AssetService|"
     r"MessagingService|TeleportService|MarketplaceService|loadstring|LoadAsset|"
     r"RequestAsync|GetAsync|PostAsync|SetAsync|UpdateAsync|RemoveAsync|"
-    r"GetUserIdFromNameAsync|CreateHumanoidModelFromUserIdAsync|GetHumanoidDescriptionFromUserId)\b"
+    r"CreateHumanoidModelFromUserIdAsync|GetHumanoidDescriptionFromUserId)\b"
     r"|https?://|rbxassetid://|rbxasset://",
     re.IGNORECASE,
 )
@@ -35,6 +35,12 @@ def audit(text, label):
     if avatar_calls and (not str(label).endswith("World.lua") or "settings.LoadAvatarAppearances ~= true" not in text):
         raise ValueError("Appearance APIs are allowed only in the guarded World loader")
 
+    lookup_calls = re.findall(r"\w+:GetUserIdFromNameAsync\s*\(", text)
+    if lookup_calls and (not str(label).endswith("World.lua") or len(lookup_calls) != 1
+                         or "settings.ResolveViewerUsernames ~= true" not in text
+                         or "function World.resolveUsername" not in text
+                         or "while not complete and os.clock() < deadline" not in text):
+        raise ValueError("Native username lookup is allowed only in the guarded, bounded World resolver")
     match = FORBIDDEN.search(text)
     if match:
         raise ValueError(f"Offline export refused: {label} contains {match.group(0)!r}")

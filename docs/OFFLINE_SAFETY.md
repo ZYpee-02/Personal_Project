@@ -28,18 +28,25 @@ Disable Workspace.StreamingEnabled in Studio Properties before Play for zero
 authored geometry-streaming requests (the optional generated place already does).
 The request finishing is not treated as proof that geometry replicated.
 
-During Play, World builds its own geometry and lighting and creates avatars from
-local Parts. `LoadAvatarAppearances=true` additionally allows two guarded native
-Roblox calls: GetHumanoidDescriptionFromUserIdAsync and
-CreateHumanoidModelFromDescriptionAsync, with normal Roblox outfit asset loads.
-This is enabled by default to supply the requested Demo_ appearances. Set it false
-for zero authored appearance/account requests and the same physical fallback rigs.
-The loader is asynchronous, attempts once per rig, uses a soft deadline, strips
-scripts/tools, and installs cosmetics only outside a race. Failed/late results keep
-the fallback. No username lookup is used; typed labels are not verified accounts. A
-server-only BindableFunction remains available for a future explicitly installed
-adapter, but it never starts a connection itself. Online helpers are isolated in
-`integrations/` and are not included in the five-file setup or default Rojo project.
+During Play, World builds local geometry and fallback rigs. Optional native Roblox
+account/appearance support uses only GetUserIdFromNameAsync,
+GetHumanoidDescriptionFromUserIdAsync and CreateHumanoidModelFromDescriptionAsync
+inside guarded World functions. Username lookup has a soft eight-second deadline,
+a bounded cache and at most two in-flight calls. Appearance loading is asynchronous,
+normalizes the rig and strips scripts/tools. Failed/late results retain fallback
+rigs; racing models are never swapped. A waiting entrant can receive its outfit
+while an existing race continues.
+
+OFFLINE JOIN makes no account or appearance request. Set ResolveViewerUsernames=false
+and LoadAvatarAppearances=false for entirely local authored account/appearance
+behavior, including the seeded demo. Verified JOIN rejects unverified accounts
+instead of silently claiming a fallback is verified. Native outfit assets are normal
+Roblox networking; they are separate from custom HTTP or real TikTok integration.
+Engine requests cannot be canceled; these are bounded soft timeouts.
+
+A server-only BindableFunction remains for a separately installed future adapter;
+it starts no connection. Online helpers in integrations/ are excluded from the
+five-script setup. See RACE_SHOW_REPLACEMENT.md for queue/cohort behavior.
 
 Host actions are authorized on the server and throttled. All Studio players can
 exercise the offline simulator. In a published place, only its owner or configured
@@ -73,7 +80,8 @@ retain those kinematic demos when SprintOnly=false. All currency is fictional,
 server-authoritative and in memory. Giant scaling is deferred during Sprint to
 keep movement/collider dimensions equal; auras and sky effects remain available.
 
-Scene animation is bounded to 12 updates/s by default (allowed setting 4–30),
+Decorative animation is bounded to 12 updates/s by default (allowed setting 4–30);
+physical moving-course geometry also updates with the 20 Hz race observer.
 crew remains capped at 18, and a 36-Part particle pool and one popup per avatar are
 reused. No custom particle texture/sound URLs are loaded. Optional native Roblox
 outfits are documented above. At most five physical racers enter each Sprint;

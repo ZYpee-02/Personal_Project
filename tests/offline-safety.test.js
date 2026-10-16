@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 
 test('all five game scripts exclude persistence/custom HTTP; optional native avatar loading is guarded', () => {
   execFileSync('python3', ['scripts/build_place.py']);
-  const forbidden = /DataStoreService|MemoryStoreService|HttpService|RequestAsync|GetAsync|SetAsync|UpdateAsync|BindToClose|GetUserIdFromName|CreateHumanoidModelFromUserId|loadstring|https?:\/\/|rbxassetid:\/\//i;
+  const forbidden = /DataStoreService|MemoryStoreService|HttpService|RequestAsync|GetAsync|SetAsync|UpdateAsync|BindToClose|CreateHumanoidModelFromUserId|loadstring|https?:\/\/|rbxassetid:\/\//i;
   const files = ['dist/RiftboundLive.rbxlx'];
   for (const directory of ['ServerScriptService', 'StarterPlayerScripts']) {
     for (const filename of readdirSync(new URL(`../roblox/${directory}/`, import.meta.url))) {
@@ -22,6 +22,8 @@ test('all five game scripts exclude persistence/custom HTTP; optional native ava
   assert.match(readFileSync(new URL('../roblox/ServerScriptService/Config.lua', import.meta.url), 'utf8'), /PersistenceEnabled = false/);
   const world=readFileSync(new URL('../roblox/ServerScriptService/World.lua',import.meta.url),'utf8');
   assert.match(world,/settings.LoadAvatarAppearances ~= true/);
+  assert.match(world,/settings.ResolveViewerUsernames ~= true/);
+  assert.match(world,/Players:GetUserIdFromNameAsync\(username\)/);
   assert.match(world,/Players:GetHumanoidDescriptionFromUserIdAsync\(userId\)/);
   assert.match(world,/Players:CreateHumanoidModelFromDescriptionAsync\(description, Enum.HumanoidRigType.R6\)/);
 });

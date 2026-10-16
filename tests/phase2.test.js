@@ -6,7 +6,7 @@ const read = name => readFileSync(new URL(`../roblox/ServerScriptService/${name}
 const config = read('Config.lua');
 const domain = read('RealmState.lua');
 const server = read('Realm.server.lua');
-const setup = `local Realm = (function() ${domain} end)()\nlocal Config = (function() ${config} end)()\nConfig.SprintOnly=false; Config.SprintRaceSeconds=30; Config.LoadAvatarAppearances=false\n`;
+const setup = `local Realm = (function() ${domain} end)()\nlocal Config = (function() ${config} end)()\nConfig.SprintOnly=false; Config.SprintRaceSeconds=120; Config.LoadAvatarAppearances=false\n`;
 
 test('automatic competitions rotate through three activities without a single vote or host action', () => runLua(setup + `
 local r = Realm.new(Config, 0)
@@ -17,7 +17,7 @@ for now = 0, 185, 0.1 do
     if r.phase=="storm" and r.activity.id=="sprint" then
         for _,key in ipairs(r.crewOrder) do
             local m=r.crew[key]
-            if m.activityEntered and m.score<12 and now-r.activityStarted>m.score+1 then r:recordCheckpoint(m.username,m.score+1,now,r.round) end
+            if m.activityEntered and m.score<48 and now-r.activityStarted>(m.score+1)*0.5 then r:recordCheckpoint(m.username,m.score+1,now,r.round) end
         end
     end
     if r:advance(now) and r.phase == "result" then
@@ -60,17 +60,17 @@ local function simulate(withGift)
     r:advance(20)
     if withGift then r:gift("Bobby", "giant", 20, 21) end
     -- Explicit simulated gate observations, not elapsed-time race progress.
-    for cp=1,12 do
-        assert(r:recordCheckpoint("Alice",cp,20+cp,r.round))
-        assert(r:recordCheckpoint("Bobby",cp,20+cp*0.9,r.round))
-        assert(r:recordCheckpoint("Clara",cp,20+cp*0.8,r.round))
+    for cp=1,48 do
+        assert(r:recordCheckpoint("Alice",cp,20+cp*0.5,r.round))
+        assert(r:recordCheckpoint("Bobby",cp,20+cp*0.45,r.round))
+        assert(r:recordCheckpoint("Clara",cp,20+cp*0.4,r.round))
     end
     r:tick(50); r:advance(50)
     assert(r.crew.alice.finishedAt > 0 and r.crew.bobby.finishedAt > 0)
     return r
 end
 local a, b = simulate(false), simulate(true)
-for i, row in ipairs(a.winners) do assert(row.username == b.winners[i].username and row.score == 12) end
+for i, row in ipairs(a.winners) do assert(row.username == b.winners[i].username and row.score == 48) end
 for _, key in ipairs(a.crewOrder) do assert(a.crew[key].balance == b.crew[key].balance) end
 `));
 
@@ -116,6 +116,7 @@ local arrivals, frames, sawResult, gifts = 0, 0, false, false
 Config.OfflineDemoEnabled = ${enabled}
 local players = { PlayerAdded = { Connect = function() end }, PlayerRemoving = { Connect = function() end }, GetPlayers = function() return {} end }
 local runtime = { IsStudio = function() return ${isStudio} end, Heartbeat = signal() }
+workspace={StreamingEnabled=false}
 local storage = instance("ReplicatedStorage", "ReplicatedStorage")
 local world = {
     build = function(c) assert(c.PersistenceEnabled == false) end,
@@ -129,11 +130,14 @@ local world = {
     animate = function() frames = frames + 1 end,
     loadAppearance = function() end,
     cameraBounds = function() end,
+    courseInfo = function() return {checkpoints=48} end,
+    resolveUsername = function() return 123 end,
+    validUsername = function(name) return type(name)=="string" and #name>=3 end,
     sprintStep = function(state,time)
         if state.phase=="storm" and state.activity.id=="sprint" then
             for _,key in ipairs(state.crewOrder) do
                 local m=state.crew[key]
-                if m.activityEntered and m.score<12 and time-state.activityStarted>m.score+1 then state:recordCheckpoint(m.username,m.score+1,time,state.round) end
+                if m.activityEntered and m.score<48 and time-state.activityStarted>(m.score+1)*0.5 then state:recordCheckpoint(m.username,m.score+1,time,state.round) end
             end
         end
     end,
@@ -160,7 +164,7 @@ task = {
     wait = function(seconds) return coroutine.yield(seconds or 0.03) end,
 }
 (function() ${server} end)()
-for step = 1, 1850 do
+for step = 1, 3400 do
     now = step / 10
     runtime.Heartbeat:Fire(0.1)
     local count = #jobs

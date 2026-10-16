@@ -5,114 +5,79 @@ from offline_sources import sources
 ROOT = Path(__file__).resolve().parents[1]
 order = ["Config", "RealmState", "World", "Realm"]
 scripts = sorted(sources(), key=lambda row: (row[0] == "StarterPlayerScripts", order.index(row[2])))
-intro = '''# Riftbound Live: Skybridge Sprint complete raw scripts and manual replacement
+intro = '''# Riftbound Live v7 — complete raw scripts for the two-minute race show
 
-Use the Script Editor and Explorer. Do not paste this document or any script into
-the Command Bar. There is no generated installer or serialized source wrapper.
+**Replace all FIVE complete sources together.** The long course, state contract,
+entrance queue and section director must match. Follow docs/RACE_SHOW_REPLACEMENT.md
+for exact behavior, offline/verified join modes and the native Studio checklist.
+No Command Bar installer, serialized code wrapper or new game module is used.
 
-**Close overview update v6 (Studio confirmation required):** If cinematic-v5/v5.1
-already runs, replace ONLY **Realm.client.lua**, the Realm LocalScript under
-StarterPlayer → StarterPlayerScripts. It replaces the distant recurring overview
-with a close full-course view and retains the scan/log throttle fix and HOLD CAMERA.
-Follow `docs/CAMERA_FIX.md` for the visual check. Native rendering remains unverified.
+## Install with Play stopped
 
-Older physical Skybridge Sprint installations need the v5 baseline too: **World.lua** in the
-ServerScriptService World ModuleScript, **Realm.server.lua** in the normal
-ServerScriptService Realm Script, and **Realm.client.lua** in the Realm LocalScript
-under StarterPlayer → StarterPlayerScripts. Keep Config and RealmState unchanged.
-Follow `docs/CAMERA_FIX.md` for exact replacement and restart/visual checks.
-Stop Play before editing and save the place before starting the test.
-Edit the saved StarterPlayer → StarterPlayerScripts template, not the temporary
-Players → your name → PlayerScripts copy created during Play.
-
-For a fresh install or an upgrade from BEFORE physical Sprint, install all five
-complete sources below together; follow `docs/SPRINT_REPLACEMENT.md` for the
-gameplay upgrade. Keep names/types/parents and avoid duplicate scripts. The steps
-below describe a fresh install, not a requirement to reset your working server.
-
-## Step-by-step
-
-1. Open a new Roblox Studio place and stop Play mode. Keep HTTP Requests and Studio
-   API Services access disabled. No publication, Node process or plugin is needed.
-2. Open Explorer and Properties from Studio's View/Window menu.
-3. Under **ServerScriptService**, insert three **ModuleScript** instances. Name
-   them exactly **Config**, **RealmState**, and **World** (without `.lua`).
-4. Under **ServerScriptService**, insert one normal **Script** named **Realm**.
-   Its source is the file `Realm.server.lua`. Leave RunContext at Legacy/default.
-5. Expand **StarterPlayer → StarterPlayerScripts**. Insert one **LocalScript**
-   named **Realm** there. Its source is `Realm.client.lua`. This client script
-   belongs in StarterPlayerScripts, not StarterCharacterScripts or the server.
-6. Double-click each instance to open its Script Editor. Select **all** of its
-   default/template text and replace it with its matching complete source below.
-   Copy only the code inside that file's code block, without Markdown fences.
-   In a raw file preview, copy the source itself. Do not combine the five files.
-7. Make sure the server Script and LocalScript are enabled. Finish all five files
-   before pressing Play. Do not keep duplicate Realm server/client scripts active.
-8. Press **Play**, not Run. The server creates the islands, stand-in avatars, event
-   objects and money/round state; the LocalScript builds the player HUD.
-9. Five Demo_ travelers seed in Studio. After 12 seconds gathering and 8 seconds
-   optional voting, up to five race the raised obstacle course using Humanoids.
-   The race lasts at most 80 seconds, or ends when every entrant finishes/DNFs.
-   Ten seconds of results follow, then the next round starts automatically.
-10. Watch at least three Sprint rounds. Gates/times require actual root movement;
-    timeouts do not manufacture winners. Demo gifts/follows remain automatic.
-    Default Roblox appearance loading is optional; LoadAvatarAppearances=false
-    keeps the exact same physical gameplay with local fallback rigs only.
-11. Optional **TEST TOOLS** can add a username, start gathering early, simulate votes,
-    gifts or a follow. **ROAM VIEW** restores normal character camera controls;
-    **STREAM VIEW** returns to the fitted 9:16 arena view. Keep tools closed for capture.
-    Base income is $5/s in voting/competition, plus $2/s for automatic activity,
-    a $3/s voting bonus, checkpoint bounties and podium prizes. Gifts stay cosmetic.
-12. Stop and Play again to confirm all money, crew, gifts, follows and shards reset.
-
-Expected Explorer tree:
+1. Back up the working place. Stop Play. Set Workspace.StreamingEnabled=false in
+   Properties and save. The generated place already has streaming disabled. The
+   server refuses this playtest configuration if streaming is enabled.
+2. Under ServerScriptService, keep one ModuleScript each named Config, RealmState
+   and World. Keep one normal Script named Realm, Enabled, RunContext=Legacy.
+3. Under StarterPlayer → StarterPlayerScripts, keep one LocalScript named Realm,
+   Enabled. This is a different Realm from the server Script.
+4. Replace each entire source with its matching raw Luau block below, without
+   Markdown fences. Do not append/combine sources or create duplicate scripts.
+   Preserve configured HostUserIds in Config. Edit the saved StarterPlayerScripts
+   template, not Players → your name → PlayerScripts (the runtime copy).
+5. Save, then press Play. Expect server [Riftbound] Ready and client diagnostics
+   presentation=race-show-v7. Watch at least three automatic rounds, then Stop/Play
+   again to verify the saved source and fresh-start behavior.
 
 ```text
 ServerScriptService
 ├── Config       (ModuleScript)
 ├── RealmState   (ModuleScript)
 ├── World        (ModuleScript)
-└── Realm        (Script; source: Realm.server.lua)
+└── Realm        (Script; Realm.server.lua)
 StarterPlayer
 └── StarterPlayerScripts
-    └── Realm    (LocalScript; source: Realm.client.lua)
+    └── Realm    (LocalScript; Realm.client.lua)
 ```
 
-The server's three `require(script.Parent.NAME)` calls refer to the three sibling
-ModuleScripts above. Config, RealmState and World each return their module table.
-The client requires no modules; it waits for `ReplicatedStorage.Riftbound` and its
-Snapshot, Action and Notice RemoteEvents, which the server creates automatically.
-Do not create those remotes or install anything from `integrations/` manually.
-The corrected server creates them BEFORE loading modules and publishes Ready only
-after a successful world build and first render. The client shows loading progress
-and a bounded error panel. Success in SERVER Output starts with `[Riftbound] Ready`.
-Check the server Realm is enabled with RunContext Legacy, and has no duplicates.
+The server creates ReplicatedStorage.Riftbound plus Snapshot/Action/Notice remotes.
+Do not create them manually. Missing-module/type/duplicate errors are reported by
+bounded startup checks. Keep HTTP Requests and Studio API Services access disabled;
+no publication, plugin, Node bridge or external TikTok connection is needed.
 
-The presentation update keeps a clear central arena area, puts both leaderboards
-in separate bottom panels, and reuses the bottom round dock for results. Stream
-view hides duplicate world/scenery boards and limits projected avatar labels to
-four names/two earnings rows. Roam view restores nearby world boards. The fixed
-camera validates every bounds snapshot and stays above/outside the course.
-The v6 overview fits the course at 100–210 studs from Focus, with every display-volume
-corner within 290 studs, using a 35-degree elevation and 85–120-degree vertical FOV.
-Normal portrait/desktop views stay around 175–180 studs. It replaces the old distant
-pose on every overview beat and round transition. Optical-axis Focus is explicit;
-there is no post-lookAt local translation. Racing/podium close-ups keep FOV 55.
-Stream View applies local daylight and hides the ward/rift spheres that cover
-the course. Roam restores the previous light properties and local shell opacity;
-server effects and game state are unchanged.
-Temporary `[Riftbound camera]` diagnostics check actual local geometry as well as
-the streaming policy, actual CFrame/Focus, all six anchor sightlines and lens enclosures.
-See docs/CAMERA_FIX.md for current evidence and close-overview verification.
-Missing geometry with engine streaming enabled can trigger
-at most three native Roblox stream requests per Stream View session; none run
-when streaming is disabled or the course is present. No external bridge is used.
+## Expected show
 
-All game data is in memory, with `PersistenceEnabled = false`. There are no
-save-service, custom HTTP or TikTok calls. LoadAvatarAppearances=true permits two
-native Roblox appearance APIs; false makes zero account/appearance requests.
-Fallback rigs spawn immediately, and late/failing appearances never block rounds.
-Roblox physics, asset loading and rendering still need a Windows/macOS playtest.
+The route is 1,152 studs with 48 measured gates across Starting Dash, Moving Bridges,
+Hazard Zone and Final Sprint. Five server-owned Humanoids use the same movement
+settings. The 120-second deadline does not manufacture winners: actual checkpoint
+observations and a finish-plane crossing determine times, DNFs and rewards. The
+12-stud/second baseline is about 96 seconds before waits/jumps/recovery. Fall/stall
+recovery returns only to the last verified pad and retains the clock.
+
+The director follows nearby real competitors and the active section, periodically
+shows another racer, covers the final stretch and celebrates podium winners. It
+uses medium shots and a close starting-grid fallback, never a whole-route zoom-out.
+ROAM VIEW and STREAM VIEW remain available. The named template Baseplate is hidden
+locally in Stream and restored in Roam. Light/effect/shell isolation remains reversible.
+
+TEST TOOLS → OFFLINE JOIN creates a local labeled stand-in with no account request.
+ROBLOX JOIN / VERIFY ACCOUNT uses a bounded native Roblox username lookup and optional
+appearance APIs. A normal entrance lasts four seconds; bursts group three for 2.5
+seconds. New montages defer near a contested finish. Movement, scoring and round
+clocks continue; newcomers enter the next eligible cohort after presentation.
+
+Demo_ viewers, gifts/follows and all money are fictional/offline test data. Set
+ResolveViewerUsernames=false and LoadAvatarAppearances=false for zero authored
+account/appearance requests. Data persistence and real TikTok integration remain
+disabled. Optional native avatar loading can fetch normal Roblox outfit assets;
+it is separate from custom HTTP. Failed/late appearance loads retain fallback rigs.
+
+Automated checks cover authored geometry, jump feasibility, command following,
+measured results, economy, queues, failure handling, camera framing and exports.
+**They do not simulate native Roblox collision, Humanoid jumping, moving-platform
+contact or rendering.** Real Studio playtests must establish native completion times,
+section traversal, avatar loading, portrait readability and absence of blank views.
+See docs/RACE_SHOW_REPLACEMENT.md for the precise playtest and tuning checklist.
 
 ## Complete source files
 

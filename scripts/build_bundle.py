@@ -15,6 +15,7 @@ with ZipFile(target, "w", ZIP_DEFLATED) as archive:
         ("MANUAL_STUDIO_SETUP.md", "MANUAL_STUDIO_SETUP.md"),
         ("README.md", "README.md"),
         ("docs/PLAYTEST.md", "docs/PLAYTEST.md"),
+        ("docs/RACE_SHOW_REPLACEMENT.md", "docs/RACE_SHOW_REPLACEMENT.md"),
         ("docs/PHASE2_REPLACEMENT.md", "docs/PHASE2_REPLACEMENT.md"),
         ("docs/PRESENTATION_REPLACEMENT.md", "docs/PRESENTATION_REPLACEMENT.md"),
         ("docs/SPRINT_REPLACEMENT.md", "docs/SPRINT_REPLACEMENT.md"),

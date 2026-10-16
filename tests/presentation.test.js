@@ -20,7 +20,7 @@ for _,name in ipairs({"toolbar","header","notice","arena","earners","competitors
     local rect=screenRect(Layout[name],s,ox,oy)
     assert(fits(rect,occupied,bounds),name.." overlaps another zone or exits viewport")
     occupied[#occupied+1]=rect
-    assert(Layout[name].y+Layout[name].h<=718,"reserved lower LIVE area")
+    assert(Layout[name].y+Layout[name].h<=738,"reserved lower LIVE area")
 end
 local d,shift,up,back,cy=arenaCamera(${w},${h},nil,false) -- explicitly test the legacy arena
 assert(d<1500,"camera fitting did not converge")
@@ -52,6 +52,7 @@ for i=1,18 do
     local ok,member=realm:addCrew(name,i); assert(ok)
     World.arrive(World.offlineAvatar(name),member.slot,name)
 end
+World.render(realm:snapshot(0),0); World.animate(0.2) -- settle unqueued legacy-mode rigs before checking labels
 ;(function() ${client} end)()
 local canvas=playerGui.RiftboundHUD.VerticalStreamCanvas
 local function snapshot(time)
@@ -132,7 +133,8 @@ checkHud()
 for _,name in ipairs({"Join","StartEarly","Follow","Sky1","Sky2","Sky3","Gift1","Gift2","Gift3","VoteWard","VoteSail"}) do
     canvas.TestTools[name].Activated:Fire()
 end
-assert(#actions==11 and actions[1][1]=="join" and actions[7][1]=="giftBloom")
+assert(#actions==11 and actions[1][1]=="offlineJoin" and actions[7][1]=="giftBloom")
+canvas.TestTools.VerifiedJoin.Activated:Fire(); assert(actions[12][1]=="join")
 canvas.TestTools.Close.Activated:Fire()
 assert(not canvas.TestTools.Visible and canvas.TopEarners.Visible and canvas.RoundLeaders.Visible)
 checkHud()

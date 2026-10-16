@@ -1,3 +1,7 @@
+> Current v7 race-show upgrade: replace all five sources using
+> [RACE_SHOW_REPLACEMENT.md](RACE_SHOW_REPLACEMENT.md). The older notes below describe
+> previous builds; their short-course dimensions and camera settings are historical.
+
 # Close overview update v6 — replace ONE client script
 
 The latest Studio screenshots isolate the recurring wide shot: the course is
