@@ -7,7 +7,7 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "dev": "node bridge/server.js",
-    "build": "python3 scripts/build_manual_guide.py && python3 scripts/build_place.py && python3 scripts/build_bundle.py",
+    "build": "python3 scripts/build_route_preview.py && python3 scripts/build_manual_guide.py && python3 scripts/build_place.py && python3 scripts/build_bundle.py",
     "test": "node --test tests/*.test.js",
     "test:browser": "node scripts/smoke_dashboard.js",
     "check": "npm test && npm run build",

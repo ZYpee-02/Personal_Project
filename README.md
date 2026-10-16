@@ -1,15 +1,16 @@
-# Riftbound Live — cinematic two-minute Skybridge show
+# Riftbound Live — winding Skybridge race show
 
 An automated physical obstacle race for portrait LIVE capture: five NPC racers,
-a 1,152-stud route, 48 measured gates, four sections and a 120-second deadline.
+a 1,281-stud S-shaped route, 48 measured gates, four sections and a 120-second deadline.
 Section cameras follow actual competitors, with regular spotlights, finish-line
 coverage and winner celebrations. Queued viewer arrivals get a Star Gate montage
 while the competition keeps running.
 
-**Starting Dash falling at 0/48?** The v7.1 fix requires replacing only the **World
-ModuleScript** in an existing v7 installation. Follow [the contact fix](docs/SPRINT_CONTACT_FIX.md).
+![Winding trail plan](docs/SKYBRIDGE_ROUTE.svg)
 
-**Upgrade: replace all FIVE raw scripts together.** Follow
+**v8 upgrade from v7/v7.1: replace World and the client Realm together.** Follow
+[the two-file replacement instructions](docs/WINDING_TRAIL_REPLACEMENT.md).
+For older installations, replace all FIVE raw scripts using
 [exact replacements and Studio checks](docs/RACE_SHOW_REPLACEMENT.md).
 MANUAL_STUDIO_SETUP.md contains every complete source. Keep
 Workspace.StreamingEnabled=false for this playtest; the exported place already does.
@@ -17,12 +18,12 @@ No Command Bar installer, plugin or Node bridge is required.
 
 | Section | Gates | Main challenge |
 | --- | --- | --- |
-| Starting Dash | 1–12 | Steps, gaps, opening hurdle |
-| Moving Bridges | 13–24 | Moving floating spans |
-| Hazard Zone | 25–36 | Sliding gates and jump hurdles |
-| Final Sprint | 37–48 | Elevated dash and dramatic finish arch |
+| Starting Dash | 1–12 | Curved stepping blocks, height changes, landing islands |
+| Moving Bridges | 13–24 | Narrow moving spans and lane hurdles |
+| Hazard Zone | 25–36 | Sweeping gates, coral blocks and jumps |
+| Final Sprint | 37–48 | Purple return bends and dramatic finish arch |
 
-All racers use equal movement settings. The 12-stud/second baseline is about 96
+All racers use equal movement settings. The 12-stud/second baseline is about 107
 seconds before waits/recovery. Actual roots, grounded checkpoints and a physical
 finish-plane crossing determine results; no timer or name determines a winner.
 Falls recover only to verified pads and retain the clock. Rewards remain fictional,
@@ -35,7 +36,7 @@ uses dedicated finish/podium shots. Safe fallbacks, daylight, opacity restoratio
 and the working ROAM VIEW / STREAM VIEW controls remain. A named Studio Baseplate
 is hidden locally in Stream and restored in Roam for a sky background. Five readable
 live-position rows, progress, countdowns and large entrance/winner names support
-portrait capture and landscape testing. Client diagnostics identify **race-show-v7**.
+portrait capture and landscape testing. Client diagnostics identify **race-show-v8**.
 
 **OFFLINE JOIN** creates a local stand-in. **ROBLOX JOIN / VERIFY ACCOUNT** uses a
 bounded native username lookup, then optional native avatar appearance APIs.

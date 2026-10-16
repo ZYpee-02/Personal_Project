@@ -5,10 +5,10 @@ from offline_sources import sources
 ROOT = Path(__file__).resolve().parents[1]
 order = ["Config", "RealmState", "World", "Realm"]
 scripts = sorted(sources(), key=lambda row: (row[0] == "StarterPlayerScripts", order.index(row[2])))
-intro = '''# Riftbound Live v7 — complete raw scripts for the two-minute race show
+intro = '''# Riftbound Live v8 — complete raw scripts for the winding race show
 
-**v7.1 contact fix:** an existing v7 installation needs only the complete World
-ModuleScript replaced. See docs/SPRINT_CONTACT_FIX.md for the Starting Dash fix.
+**Existing v7/v7.1 installation:** replace World and the client Realm together.
+See docs/WINDING_TRAIL_REPLACEMENT.md for the two-file winding trail update.
 For older installations, follow the full five-source installation below.
 
 **Replace all FIVE complete sources together.** The long course, state contract,
@@ -30,7 +30,7 @@ No Command Bar installer, serialized code wrapper or new game module is used.
    Preserve configured HostUserIds in Config. Edit the saved StarterPlayerScripts
    template, not Players → your name → PlayerScripts (the runtime copy).
 5. Save, then press Play. Expect server [Riftbound] Ready and client diagnostics
-   presentation=race-show-v7. Watch at least three automatic rounds, then Stop/Play
+   presentation=race-show-v8. Watch at least three automatic rounds, then Stop/Play
    again to verify the saved source and fresh-start behavior.
 
 ```text
@@ -51,11 +51,11 @@ no publication, plugin, Node bridge or external TikTok connection is needed.
 
 ## Expected show
 
-The route is 1,152 studs with 48 measured gates across Starting Dash, Moving Bridges,
+The winding route is 1,280.9 studs with 48 measured gates across Starting Dash, Moving Bridges,
 Hazard Zone and Final Sprint. Five server-owned Humanoids use the same movement
 settings. The 120-second deadline does not manufacture winners: actual checkpoint
 observations and a finish-plane crossing determine times, DNFs and rewards. The
-12-stud/second baseline is about 96 seconds before waits/jumps/recovery. Fall/stall
+12-stud/second baseline is about 107 seconds before waits/jumps/recovery. Fall/stall
 recovery returns only to the last verified pad and retains the clock.
 
 The director follows nearby real competitors and the active section, periodically

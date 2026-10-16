@@ -101,9 +101,9 @@ local function fits(rect, occupied, bounds, gap)
     end
     return true
 end
-local SprintBounds = { minX = -38, maxX = 38, minY = 54, maxY = 110, minZ = -1120, maxZ = 82, yaw = 60 }
+local SprintBounds = { minX = -140, maxX = 140, minY = 54, maxY = 110, minZ = -1120, maxZ = 82, yaw = 60 }
 -- A bounded starting-grid envelope. Competition shots fit observed roots below.
--- Fallback frames the starting grid, NEVER the full 1,152-stud course.
+-- Fallback frames the starting grid, NEVER the full winding course.
 local SprintVolumes = {
     { minX = -23, maxX = 23, minY = 61, maxY = 90, minZ = 24, maxZ = 78 },
 }
@@ -639,7 +639,7 @@ local function updateDirector(now, dt)
         local main = model and (model.PrimaryPart or model:FindFirstChild("HumanoidRootPart"))
         local p = main and main.Position
         if p and finite(p.X) and finite(p.Y) and finite(p.Z) and p.Y >= 54 and p.Y <= 110
-            and p.Z >= -1120 and p.Z <= 100 and math.abs(p.X) <= (entrance and 90 or 38) then return p end
+            and p.Z >= -1120 and p.Z <= 100 and math.abs(p.X) <= 110 then return p end
     end
     local entrance = state and state.entrance
     local liveTime = state and state.now + now - receivedAt or now
@@ -674,6 +674,8 @@ local function updateDirector(now, dt)
             local subject = lead
             for _, row in ipairs(state.activityLeaders) do if row.username == directorSubject and row.status == "racing" and position(row.username) then subject = row end end
             if nearFinish then subject = lead end
+            local heading = state.course and state.course.headings and state.course.headings[math.max(1, math.min(48, math.floor(subject.distance)+1))]
+            if finite(heading) and math.abs(heading)<=90 then yaw=heading-18 end
             local p = position(subject.username)
             if p then targets[1] = p end
             shot = spotlight and "competitor spotlight" or ((state.course and state.course.sections[section] or "section " .. section) .. " / lead pack")
@@ -1034,9 +1036,9 @@ local function cameraDiagnostics(now)
         end)
     end
     if not CAMERA_DIAGNOSTICS or not camera then return end
-    print(string.format("[Riftbound camera] presentation=race-show-v7 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
+    print(string.format("[Riftbound camera] presentation=race-show-v8 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
         tostring(STREAM_DAYLIGHT and streamCamera and gui.Enabled), Lighting.ClockTime, Lighting.Brightness, Lighting.ExposureCompensation))
-    print(string.format("[Riftbound render] revision=race-show-v7 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
+    print(string.format("[Riftbound render] revision=race-show-v8 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
         directorShot, tostring(STREAM_CLEAR_EFFECTS), tostring(renderCheckEnabled), parts > 0 and minOpacity or 0, parts > 0 and sumOpacity / parts or 0, maxOpacity, maximumPositionDrift, maximumAimDrift))
     local atmosphereCount, effectCount, enclosureCount = 0, 0, 0
     for _, record in pairs(suspendedEffects) do

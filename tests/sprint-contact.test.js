@@ -20,14 +20,15 @@ now=20; World.sprintStep(state,now)
 local course=workspace.RiftboundRealm.SkybridgeSprint
 print=function() end
 
--- Simplified axis-aligned contact approximation, NOT Roblox physics. It uses
+-- Simplified yaw-rotated rectangle contact approximation, NOT Roblox physics. It uses
 -- actual pad bounds, horizontal MoveTo speed, gravity, vertical jump velocity,
 -- a 50ms jump response and 20Hz controller samples. FloorMaterial is Air after
 -- leaving support: unlike the older command-only stub it cannot walk on air.
 local bodies={}
 for i=1,5 do bodies[i]={vy=0,grounded=false,position=workspace.RiftboundRealm['Traveler_Contact_'..i].PrimaryPart.Position} end
 local function overlaps(pad,p)
-    return math.abs(p.X-pad.Position.X)<=pad.Size.X/2 and math.abs(p.Z-pad.Position.Z)<=pad.Size.Z/2
+    local q=pad.CFrame:PointToObjectSpace(p)
+    return math.abs(q.X)<=pad.Size.X/2 and math.abs(q.Z)<=pad.Size.Z/2
 end
 local function simulate(seconds)
     local dt=0.025
@@ -59,7 +60,7 @@ local function simulate(seconds)
                         b.pads[#b.pads+1]=course['Lane '..lane..' checkpoint '..cp]
                     end
                     b.obstacles={}
-                    local hurdle=course['Jump hurdle '..(member.score+1)]
+                    local hurdle=course[(lane==3 and 'Jump hurdle ' or 'Lane '..lane..' hurdle ')..(member.score+1)]
                     if hurdle then b.obstacles[#b.obstacles+1]=hurdle end
                     for index,cp in ipairs({26,30,34}) do
                         if cp==member.score+1 then b.obstacles[#b.obstacles+1]=course['Moving wind gate '..index] end

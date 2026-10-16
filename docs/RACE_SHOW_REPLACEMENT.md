@@ -1,4 +1,7 @@
-# Riftbound Live — cinematic two-minute race show (v7)
+# Riftbound Live — cinematic two-minute race show (v8)
+
+Already on v7/v7.1? Use [the winding trail two-file update](WINDING_TRAIL_REPLACEMENT.md).
+The full installation below also supports a fresh place or older course.
 
 This upgrade changes the route, state/cohort contract, avatar entrances and client
 director together. **Replace all FIVE complete raw files, with Play stopped.**
@@ -27,28 +30,27 @@ Studio setting. The server reports a clear startup error if it is enabled. Leave
 HTTP Requests and Studio API Services access disabled. Save, then press **Play**.
 No plugin, Node bridge, persistence or real TikTok connection is required.
 
-Expected markers: server `[Riftbound] Ready`; client `presentation=race-show-v7`.
+Expected markers: server `[Riftbound] Ready`; client `presentation=race-show-v8`.
 The architecture remains exactly three ModuleScripts, one server Script and one
 client LocalScript. No new game modules are required.
 
-**v7.1 contact patch:** if these five v7 scripts are already installed, replace only
-World.lua using [the Starting Dash fix instructions](SPRINT_CONTACT_FIX.md). This
-removes the opening gap and uses actual support edges for jump timing. The client
-marker above stays unchanged; the course attribute becomes `show-v7.1-contact`.
+The v7.1 starting-apron and takeoff fixes are included. The course attribute is now
+`show-v8-winding`; World and the client Realm must match for the wider route.
 
 ## The larger race
 
-The course runs from z=60 to z=-1092: **1,152 studs, 48 measured gates, five lanes**.
+The course runs from z=60 to z=-1092, bending 64 studs left/right:
+**1,280.9 studs of route, 48 measured gates, five lanes**.
 All racers use the same 12-stud/second speed, jump power and collider dimensions.
-The physical baseline is about 96 seconds before jumps, waits and recovery; the
+The physical baseline is about 107 seconds before jumps, waits and recovery; the
 race deadline is exactly **120 seconds**, not a minimum finish timer.
 
 | Section | Gates | Course design |
 | --- | --- | --- |
-| Starting Dash | 1–12 | Broad starting platform, stepped pads, gaps and a hurdle |
-| Moving Bridges | 13–24 | Floating spans with bounded lateral/vertical movement and gaps |
-| Hazard Zone | 25–36 | Sliding wind gates, jump hurdles, rises and recovery pads |
-| Final Sprint | 37–48 | Elevated dash, final jumps, illuminated finish arch and podium |
+| Starting Dash | 1–12 | Winding stepping blocks, height changes, landing islands and hurdles |
+| Moving Bridges | 13–24 | Narrow curved spans with bounded lateral/vertical movement |
+| Hazard Zone | 25–36 | Sweeping wind gates, independent lane hurdles and coral blocks |
+| Final Sprint | 37–48 | Purple return bends, final jumps, illuminated finish arch and podium |
 
 Section beacons, floating side islands, crystal fans, colored lane pads and neon
 checkpoint strips decorate the route. A separate Star Gate stage presents arrivals.
@@ -134,7 +136,7 @@ DemoStudioOnly=true prevents the seeded audience outside Studio.
 
 ## Available validation and required Studio checks
 
-Validation run (2026-10-16): **138 tests passed**, plus **10 native Luau compilation
+Historical v7 validation (2026-10-16): **138 tests passed**, plus **10 native Luau compilation
 targets passed** (five raw scripts and five exported equivalents). The build also
 verified raw/manual/XML/ZIP source identity and StreamingEnabled=false in the place.
 
@@ -153,6 +155,9 @@ collision, Humanoid jump execution, moving-platform contact, accessory mass,
 replication or path obstruction.** The separate ballistic checks establish geometric
 feasibility, not successful native landings. No measured native race-duration result
 is claimed. Recovery frequency can make a difficult native race time out.
+
+Current winding-route validation and native limitations are documented in
+[the v8 replacement guide](WINDING_TRAIL_REPLACEMENT.md).
 
 The v7.1 patch adds a separate gravity/contact approximation that reproduced the
 opening fall loop and checks actual takeoff edges, moving supports and hurdle

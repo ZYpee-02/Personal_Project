@@ -12,7 +12,7 @@ return {
     SprintOnly = true, -- false restores Starfall/Sprint/Relay rotation. Sprint is always physical.
     SprintCompetitors = 5,
     SprintRaceSeconds = 120,
-    SprintWalkSpeed = 12, -- 1,152-stud route: about 96 seconds before jumps/recovery.
+    SprintWalkSpeed = 12, -- Winding route: about 107 seconds before waits/recovery.
     ResolveViewerUsernames = true, -- Verified JOIN uses native Roblox account lookup.
     EntranceSeconds = 4, -- Normal individual montage; bursts group three for 2.5s.
     SprintFinishBonus = 40,

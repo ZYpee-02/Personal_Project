@@ -18,7 +18,7 @@ local Realm=(function() ${domain} end)()
 local World=(function() ${world} end)()
 `;
 const geometryAssertions = `
-local courseBox={minX=-38,maxX=38,minY=54,maxY=110,minZ=-1120,maxZ=82,yaw=60}
+local courseBox={minX=-140,maxX=140,minY=54,maxY=110,minZ=-1120,maxZ=82,yaw=60}
 local function assertFraming(w,h)
     local s,ox,oy=viewportLayout(w,h)
     local area=screenRect(Layout.arena,s,ox,oy)

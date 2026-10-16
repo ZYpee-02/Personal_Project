@@ -1,7 +1,7 @@
-# Riftbound Live v7 — complete raw scripts for the two-minute race show
+# Riftbound Live v8 — complete raw scripts for the winding race show
 
-**v7.1 contact fix:** an existing v7 installation needs only the complete World
-ModuleScript replaced. See docs/SPRINT_CONTACT_FIX.md for the Starting Dash fix.
+**Existing v7/v7.1 installation:** replace World and the client Realm together.
+See docs/WINDING_TRAIL_REPLACEMENT.md for the two-file winding trail update.
 For older installations, follow the full five-source installation below.
 
 **Replace all FIVE complete sources together.** The long course, state contract,
@@ -23,7 +23,7 @@ No Command Bar installer, serialized code wrapper or new game module is used.
    Preserve configured HostUserIds in Config. Edit the saved StarterPlayerScripts
    template, not Players → your name → PlayerScripts (the runtime copy).
 5. Save, then press Play. Expect server [Riftbound] Ready and client diagnostics
-   presentation=race-show-v7. Watch at least three automatic rounds, then Stop/Play
+   presentation=race-show-v8. Watch at least three automatic rounds, then Stop/Play
    again to verify the saved source and fresh-start behavior.
 
 ```text
@@ -44,11 +44,11 @@ no publication, plugin, Node bridge or external TikTok connection is needed.
 
 ## Expected show
 
-The route is 1,152 studs with 48 measured gates across Starting Dash, Moving Bridges,
+The winding route is 1,280.9 studs with 48 measured gates across Starting Dash, Moving Bridges,
 Hazard Zone and Final Sprint. Five server-owned Humanoids use the same movement
 settings. The 120-second deadline does not manufacture winners: actual checkpoint
 observations and a finish-plane crossing determine times, DNFs and rewards. The
-12-stud/second baseline is about 96 seconds before waits/jumps/recovery. Fall/stall
+12-stud/second baseline is about 107 seconds before waits/jumps/recovery. Fall/stall
 recovery returns only to the last verified pad and retains the clock.
 
 The director follows nearby real competitors and the active section, periodically
@@ -97,7 +97,7 @@ return {
     SprintOnly = true, -- false restores Starfall/Sprint/Relay rotation. Sprint is always physical.
     SprintCompetitors = 5,
     SprintRaceSeconds = 120,
-    SprintWalkSpeed = 12, -- 1,152-stud route: about 96 seconds before jumps/recovery.
+    SprintWalkSpeed = 12, -- Winding route: about 107 seconds before waits/recovery.
     ResolveViewerUsernames = true, -- Verified JOIN uses native Roblox account lookup.
     EntranceSeconds = 4, -- Normal individual montage; bursts group three for 2.5s.
     SprintFinishBonus = 40,
@@ -655,21 +655,36 @@ local function tree(position, scale)
     end
 end
 
--- 48 measured gates over 1,152 studs. Race motion belongs to Humanoid physics.
+-- Winding route: 48 sequential gates; only Humanoid physics moves race roots.
 local sectionNames = { "STARTING DASH", "MOVING BRIDGES", "HAZARD ZONE", "FINAL SPRINT" }
+local TRAIL_AMPLITUDE, TRAIL_STRIDE = 64, 24
 function World.cameraBounds(state)
     if state.physicalSprint then
-        return { minX = -38, maxX = 38, minY = 54, maxY = 110, minZ = -1120, maxZ = 82, yaw = 60 }
+        return { minX = -140, maxX = 140, minY = 54, maxY = 110, minZ = -1120, maxZ = 82, yaw = 60 }
     end
 end
 function World.courseInfo()
-    return { revision = "show-v7.1-contact", checkpoints = 48, length = 1152, stride = 24,
-        sections = sectionNames, finishZ = -1092, gate = { x = -64, y = 80, z = 66 } }
+    local length, headings = 0, {}
+    for cp = 1, 48 do
+        local delta = World.sprintPoint(3, cp) - World.sprintPoint(3, cp - 1)
+        length = length + Vector3.new(delta.X, 0, delta.Z).Magnitude
+        headings[cp] = math.deg(math.atan(delta.X/delta.Z)) -- Z is strictly decreasing.
+    end
+    return { revision = "show-v8-winding", checkpoints = 48, length = length, stride = 24,
+        sections = sectionNames, headings = headings, finishZ = -1092, gate = { x = -64, y = 80, z = 66 } }
 end
 function World.sprintPoint(lane, checkpoint)
     local cp = math.max(0, math.min(48, checkpoint))
     local rise = math.floor(cp / 12) * 3 + (cp < 48 and (cp % 4 >= 2 and 1 or 0) or 0)
-    return Vector3.new((lane - 3) * 8 + math.sin(cp * math.pi / 6) * 2, 68 + rise, 60 - cp * 24)
+    return Vector3.new((lane - 3) * 8 + math.sin(cp * math.pi / 12) * TRAIL_AMPLITUDE, 68 + rise, 60 - cp * TRAIL_STRIDE)
+end
+local function routeDirection(cp)
+    local a, b = World.sprintPoint(3, math.max(0, cp - 1)), World.sprintPoint(3, math.min(48, cp + 1))
+    local delta = Vector3.new(b.X - a.X, 0, b.Z - a.Z)
+    return delta * (1 / delta.Magnitude)
+end
+local function routeFrame(point, cp)
+    return CFrame.lookAt(point, point + routeDirection(cp))
 end
 function World.entrancePoint(index, count)
     return Vector3.new(-64 + (index - (count + 1) / 2) * 7, 80, 66)
@@ -816,25 +831,34 @@ end
 local function buildSprint()
     local course = Instance.new("Model")
     course.Name, course.Parent = "SkybridgeSprint", root
-    course:SetAttribute("CourseRevision", "show-v7.1-contact")
-    -- Overlap the first pads by two studs: entrants must establish real ground
+    course:SetAttribute("CourseRevision", "show-v8-winding")
+    -- A wide overlapping apron lets entrants establish real ground
     -- contact before their first obstacle, rather than fall across a launch gap.
-    local start = part("START platform", Vector3.new(46, 2, 32), CFrame.new(0, 64, 62), colors.stone, Enum.Material.Slate, course)
+    local start = part("START platform", Vector3.new(64, 2, 32), CFrame.new(0, 64, 62), colors.stone, Enum.Material.Slate, course)
     for lane = 1, 5 do scenery.sprintPads[lane] = { [0] = start } end
     label(start, "SKYBRIDGE / 120 SECOND CROSSING", Vector3.new(0, 9, 0), colors.gold, 350)
     for cp = 1, 48 do
         local section = math.min(4, math.floor((cp - 1) / 12) + 1)
-        local gap = (section == 2 or cp % 4 == 2) and 4 or 0
+        local gap = (section == 2 or cp % 4 == 2) and 2 or -0.5
+        local a, b = World.sprintPoint(3, cp - 1), World.sprintPoint(3, cp)
+        local c = World.sprintPoint(3, math.min(48, cp + 1))
+        local incoming, outgoing = Vector3.new(b.X-a.X,0,b.Z-a.Z).Magnitude, Vector3.new(c.X-b.X,0,c.Z-b.Z).Magnitude
+        if cp == 48 then outgoing = incoming end
+        local span = (incoming + outgoing) / 2 - gap
+        local width = section == 2 and 5.8 or (cp % 6 == 0 and 9 or 6.8)
+        local palette = { colors.mint, Color3.fromRGB(83, 170, 255), Color3.fromRGB(255, 137, 113), colors.violet }
         for lane = 1, 5 do
             local point = World.sprintPoint(lane, cp)
-            local pad = part("Lane " .. lane .. " checkpoint " .. cp, Vector3.new(7.4, 1, 24 - gap),
-                CFrame.new(point - Vector3.new(0, 3.5, 0)), section % 2 == 0 and colors.violet or colors.mint, Enum.Material.Slate, course)
+            local thickness = section == 2 and 1 or (cp % 6 == 0 and 4 or 2.5)
+            local pad = part("Lane " .. lane .. " checkpoint " .. cp, Vector3.new(width, thickness, span),
+                routeFrame(point - Vector3.new(0, 3+thickness/2, 0), cp), (cp+lane)%2==0 and palette[section] or colors.gold, Enum.Material.SmoothPlastic, course)
             scenery.sprintPads[lane][cp] = pad
             pad:SetAttribute("Checkpoint", cp); pad:SetAttribute("Section", section)
+            pad:SetAttribute("ObstacleKind", section == 2 and "moving span" or (cp % 6 == 0 and "landing island" or "stepping stone"))
             if section == 2 and cp % 2 == 0 then
                 scenery.movingBridges[#scenery.movingBridges + 1] = { part = pad, frame = pad.CFrame, phase = cp * 0.7 }
             end
-            local edge = part("Checkpoint glow", Vector3.new(7.4, 0.12, 0.35), pad.CFrame * CFrame.new(0, 0.55, 0), colors.gold, Enum.Material.Neon, course)
+            local edge = part("Checkpoint glow", Vector3.new(width, 0.12, 0.35), pad.CFrame * CFrame.new(0, thickness/2+0.05, 0), colors.mint, Enum.Material.Neon, course)
             edge.CanCollide = false
             if section == 2 and cp % 2 == 0 then
                 scenery.movingBridges[#scenery.movingBridges + 1] = { part = edge, frame = edge.CFrame, phase = cp * 0.7 }
@@ -842,26 +866,53 @@ local function buildSprint()
         end
         local point = World.sprintPoint(3, cp)
         for _, sign in ipairs({ -1, 1 }) do
-            part("Bridge support", Vector3.new(0.7, 5, 0.7), CFrame.new(sign * 24, point.Y - 6, point.Z), colors.stone, Enum.Material.Metal, course)
+            part("Bridge support", Vector3.new(0.7, 5, 0.7), routeFrame(point, cp) * CFrame.new(sign * 24, -6, 0), colors.stone, Enum.Material.Metal, course)
+        end
+        if cp % 6 == 0 and cp < 48 then
+            local frame = routeFrame(point, cp)
+            -- Tall open arches, low hanging island rock and outward crystal fans
+            -- provide landmarks without a solid enclosure at camera height.
+            for _, sign in ipairs({ -1, 1 }) do
+                part("Trail arch pillar", Vector3.new(1.5, 13, 1.5), frame * CFrame.new(sign*23, 3, 0), palette[section], Enum.Material.Neon, course)
+                crystal(frame:PointToWorldSpace(Vector3.new(sign*28, -5, 0)), 0.8, palette[section])
+            end
+            local beam=part("Trail arch beam",Vector3.new(48,1,1.5),frame*CFrame.new(0,10,0),palette[section],Enum.Material.Neon,course)
+            beam.CanCollide=false
+            label(beam, sectionNames[section] .. " / " .. cp .. " OF 48", Vector3.new(0,3,0), colors.gold, 300)
         end
         if cp % 12 == 1 then
             local index = math.floor((cp - 1) / 12) + 1
-            local beacon = part("Section " .. index .. " beacon", Vector3.new(2, 12, 2), CFrame.new(-29, point.Y + 2, point.Z), colors.gold, Enum.Material.Neon, course)
+            local beacon = part("Section " .. index .. " beacon", Vector3.new(2, 12, 2), CFrame.new(point.X-29, point.Y + 2, point.Z), palette[section], Enum.Material.Neon, course)
             label(beacon, index .. " / " .. sectionNames[index], Vector3.new(0, 9, 0), colors.gold, 330)
             -- Break up the long skyline with floating section islands and crystal fans.
-            island(Vector3.new(52, point.Y - 14, point.Z), 24)
-            for i = -2, 2 do crystal(Vector3.new(52 + i * 5, point.Y - 10, point.Z), 0.9 + math.abs(i) * 0.2, colors.violet) end
+            island(Vector3.new(point.X+52, point.Y - 14, point.Z), 24)
+            for i = -2, 2 do crystal(Vector3.new(point.X+52 + i * 5, point.Y - 10, point.Z), 0.9 + math.abs(i) * 0.2, palette[section]) end
         end
     end
     for i, cp in ipairs({ 26, 30, 34 }) do
         local from, to = World.sprintPoint(3, cp - 1), World.sprintPoint(3, cp)
         local point = (from + to) * 0.5
-        local obstacle = part("Moving wind gate " .. i, Vector3.new(4, 11, 2), CFrame.new(0, point.Y + 2, point.Z), colors.gold, Enum.Material.Neon, course)
-        scenery.sprintObstacles[#scenery.sprintObstacles + 1] = { part = obstacle, point = point, phase = i * 2.1, checkpoint = cp }
+        local frame = CFrame.lookAt(point, point + Vector3.new(to.X-from.X,0,to.Z-from.Z))
+        local obstacle = part("Moving wind gate " .. i, Vector3.new(4, 11, 2), frame * CFrame.new(0,2,0), colors.gold, Enum.Material.Neon, course)
+        scenery.sprintObstacles[#scenery.sprintObstacles + 1] = { part = obstacle, frame = frame, phase = i * 2.1, checkpoint = cp }
     end
-    for _, cp in ipairs({ 8, 28, 36, 42 }) do
-        local point = (World.sprintPoint(3, cp - 1) + World.sprintPoint(3, cp)) * 0.5
-        scenery.sprintHurdles[cp] = part("Jump hurdle " .. cp, Vector3.new(42, 1.6, 1), CFrame.new(0, point.Y - 2.2, point.Z), colors.violet, Enum.Material.Neon, course)
+    for _, cp in ipairs({ 4, 8, 16, 20, 28, 32, 36, 40, 44 }) do
+        local from,to = World.sprintPoint(3, cp-1),World.sprintPoint(3, cp)
+        local point = (from+to)*0.5
+        local frame = CFrame.lookAt(point,point+Vector3.new(to.X-from.X,0,to.Z-from.Z))
+        scenery.sprintHurdles[cp] = {}
+        -- A shared crossbar meets translated lanes at different distances on a
+        -- bend. Give each lane its own physically aligned takeoff hurdle.
+        for lane=1,5 do
+            local lanePoint=(World.sprintPoint(lane,cp-1)+World.sprintPoint(lane,cp))*0.5
+            local laneFrame=CFrame.lookAt(lanePoint,lanePoint+Vector3.new(to.X-from.X,0,to.Z-from.Z))
+            local name=lane==3 and "Jump hurdle "..cp or "Lane "..lane.." hurdle "..cp
+            scenery.sprintHurdles[cp][lane]=part(name,Vector3.new(5.6,1.6,1),laneFrame*CFrame.new(0,-2.2,0),colors.violet,Enum.Material.Neon,course)
+        end
+        for _, sign in ipairs({-1,1}) do
+            local post=part("Hurdle flag",Vector3.new(0.6,5,0.6),frame*CFrame.new(sign*24,-0.5,0),colors.gold,Enum.Material.Neon,course)
+            post.CanCollide=false
+        end
     end
     local finish = World.sprintPoint(3, 48)
     part("FINISH island", Vector3.new(48, 3, 38), CFrame.new(0, finish.Y - 5, finish.Z - 8), colors.grass, Enum.Material.Grass, course)
@@ -878,16 +929,35 @@ end
 
 function World.stepCourse(now)
     for _, obstacle in ipairs(scenery.sprintObstacles) do
-        obstacle.part.CFrame = CFrame.new(math.sin(now * 1.2 + obstacle.phase) * 25, obstacle.point.Y + 2, obstacle.point.Z)
+        obstacle.part.CFrame = obstacle.frame * CFrame.new(math.sin(now * 1.2 + obstacle.phase) * 25, 2, 0)
     end
     for _, bridge in ipairs(scenery.movingBridges) do
         bridge.part.CFrame = bridge.frame * CFrame.new(math.sin(now * 0.65 + bridge.phase) * 1.25, math.sin(now * 0.65 + bridge.phase) * 0.2, 0)
-        bridge.part.AssemblyLinearVelocity = Vector3.new(math.cos(now * 0.65 + bridge.phase) * 0.8125, math.cos(now * 0.65 + bridge.phase) * 0.13, 0)
+        bridge.part.AssemblyLinearVelocity = bridge.frame:VectorToWorldSpace(Vector3.new(math.cos(now * 0.65 + bridge.phase) * 0.8125, math.cos(now * 0.65 + bridge.phase) * 0.13, 0))
     end
 end
 
 local function sprintSupport(lane, checkpoint)
     return scenery.sprintPads[lane] and scenery.sprintPads[lane][checkpoint]
+end
+
+-- Intersect a horizontal route ray with a rotated support rectangle. Distances
+-- are along the actual travel direction, never a world-Z assumption at a bend.
+local function supportInterval(pad, origin, direction)
+    local p = pad.CFrame:PointToObjectSpace(Vector3.new(origin.X, pad.Position.Y, origin.Z))
+    local d = pad.CFrame:VectorToObjectSpace(direction)
+    local near, far = -math.huge, math.huge
+    for _, axis in ipairs({ "X", "Z" }) do
+        local half = pad.Size[axis] / 2
+        if math.abs(d[axis]) < 0.00001 then
+            if math.abs(p[axis]) > half then return nil end
+        else
+            local a, b = (-half-p[axis])/d[axis], (half-p[axis])/d[axis]
+            near, far = math.max(near, math.min(a,b)), math.min(far, math.max(a,b))
+        end
+    end
+    if near > far then return nil end
+    return near, far
 end
 
 local function resetRacer(record, member, lane, now)
@@ -933,7 +1003,7 @@ function World.sprintStep(state, now)
                     else
                         local position = main.Position
                         local dt = math.max(0.001, now - race.sampleAt)
-                        if position.Y < 54 or math.abs(position.X) > 38 or position.Z < -1120 or position.Z > 82
+                        if position.Y < 54 or math.abs(position.X) > 110 or position.Z < -1120 or position.Z > 82
                             or (position - race.position).Magnitude > math.max(8, dt * 90) or now - race.lastMoved > 6 then
                             member.recoveries = (member.recoveries or 0) + 1
                             resetRacer(record, member, race.lane, now)
@@ -945,8 +1015,13 @@ function World.sprintStep(state, now)
                         local horizontal = Vector3.new(delta.X, 0, delta.Z).Magnitude
                         local passed, at = false, now
                         if nextGate == 48 then
-                            if race.position.Z > target.Z and position.Z <= target.Z and math.abs(delta.X) <= 2.8 and math.abs(delta.Y) <= 4 then
-                                local fraction = (race.position.Z - target.Z) / math.max(0.0001, race.position.Z - position.Z)
+                            local previous = World.sprintPoint(race.lane,47)
+                            local direction = Vector3.new(target.X-previous.X,0,target.Z-previous.Z)
+                            direction = direction * (1/direction.Magnitude)
+                            local before, after = (race.position-target):Dot(direction), (position-target):Dot(direction)
+                            local lateral = Vector3.new(delta.X,0,delta.Z) - direction*Vector3.new(delta.X,0,delta.Z):Dot(direction)
+                            if before < 0 and after >= 0 and lateral.Magnitude <= 2.8 and math.abs(delta.Y) <= 4 then
+                                local fraction = -before / math.max(0.0001, after-before)
                                 at = race.sampleAt + (now - race.sampleAt) * math.max(0, math.min(1, fraction))
                                 passed = true
                             end
@@ -957,34 +1032,39 @@ function World.sprintStep(state, now)
                             local from = World.sprintPoint(race.lane, member.score)
                             local to = World.sprintPoint(race.lane, member.score + 1)
                             local segment = Vector3.new(to.X - from.X, 0, to.Z - from.Z)
+                            local direction = segment * (1 / segment.Magnitude)
                             local offset = Vector3.new(position.X - from.X, 0, position.Z - from.Z)
                             state:raceDistance(member.username, member.score + offset:Dot(segment) / segment:Dot(segment), state.round)
                             local blocked = false
                             for _, obstacle in ipairs(scenery.sprintObstacles) do
-                                if obstacle.checkpoint == member.score + 1 and position.Z > obstacle.point.Z + 2
-                                    and position.Z - obstacle.point.Z < 9 and math.abs(position.X - obstacle.part.Position.X) < 4 then blocked = true end
+                                if obstacle.checkpoint == member.score + 1 then
+                                    local relative = obstacle.part.CFrame:PointToObjectSpace(position)
+                                    if relative.Z > 2 and relative.Z < 9 and math.abs(relative.X) < 4 then blocked = true end
+                                end
                             end
                             if blocked then
                                 humanoid:MoveTo(position); race.lastMoved, race.lastCommand = now, 0
                             elseif now - race.lastCommand > 0.4 then
                                 local goal = World.sprintPoint(race.lane, member.score + 1)
-                                if member.score == 47 then goal = goal + Vector3.new(0, 0, -4) end
+                                if member.score == 47 then goal = goal + direction * 4 end
                                 humanoid:MoveTo(goal)
                                 race.lastCommand = now
                             end
                             local cp = member.score + 1
                             local support, landing = sprintSupport(race.lane, member.score), sprintSupport(race.lane, cp)
                             if support and landing and not blocked and race.jumpGate ~= cp then
-                                local edge = support.Position.Z - support.Size.Z / 2
-                                local gap = edge - (landing.Position.Z + landing.Size.Z / 2)
+                                local _, edge = supportInterval(support, from, direction)
+                                local entry = supportInterval(landing, from, direction)
                                 local rise = landing.Position.Y + landing.Size.Y / 2 - support.Position.Y - support.Size.Y / 2
-                                local hurdle = scenery.sprintHurdles[cp]
-                                if hurdle then edge = math.max(edge, hurdle.Position.Z + hurdle.Size.Z / 2) end
+                                local hurdle = scenery.sprintHurdles[cp] and scenery.sprintHurdles[cp][race.lane]
+                                local hurdleEntry = hurdle and supportInterval(hurdle, from, direction)
+                                local gap = edge and entry and entry-edge or 0
+                                if hurdleEntry and edge then edge = math.min(edge,hurdleEntry) end
                                 -- Launch BEFORE the actual support edge. A fixed
                                 -- distance from the next pad was already airborne
                                 -- at short pads and the original starting gap.
-                                local edgeDistance = position.Z - edge
-                                if (gap > 0.25 or rise > 0.5 or hurdle) and edgeDistance <= 2 and edgeDistance >= -0.5
+                                local edgeDistance = edge and edge-(position-from):Dot(direction)
+                                if edgeDistance and (gap > 0.25 or rise > 0.5 or hurdle) and edgeDistance <= 2 and edgeDistance >= -0.5
                                     and now - race.lastJump > 0.4 and humanoid.FloorMaterial ~= Enum.Material.Air then
                                     humanoid.Jump, race.lastJump, race.jumpGate = true, now, cp
                                 end
@@ -1945,9 +2025,9 @@ local function fits(rect, occupied, bounds, gap)
     end
     return true
 end
-local SprintBounds = { minX = -38, maxX = 38, minY = 54, maxY = 110, minZ = -1120, maxZ = 82, yaw = 60 }
+local SprintBounds = { minX = -140, maxX = 140, minY = 54, maxY = 110, minZ = -1120, maxZ = 82, yaw = 60 }
 -- A bounded starting-grid envelope. Competition shots fit observed roots below.
--- Fallback frames the starting grid, NEVER the full 1,152-stud course.
+-- Fallback frames the starting grid, NEVER the full winding course.
 local SprintVolumes = {
     { minX = -23, maxX = 23, minY = 61, maxY = 90, minZ = 24, maxZ = 78 },
 }
@@ -2483,7 +2563,7 @@ local function updateDirector(now, dt)
         local main = model and (model.PrimaryPart or model:FindFirstChild("HumanoidRootPart"))
         local p = main and main.Position
         if p and finite(p.X) and finite(p.Y) and finite(p.Z) and p.Y >= 54 and p.Y <= 110
-            and p.Z >= -1120 and p.Z <= 100 and math.abs(p.X) <= (entrance and 90 or 38) then return p end
+            and p.Z >= -1120 and p.Z <= 100 and math.abs(p.X) <= 110 then return p end
     end
     local entrance = state and state.entrance
     local liveTime = state and state.now + now - receivedAt or now
@@ -2518,6 +2598,8 @@ local function updateDirector(now, dt)
             local subject = lead
             for _, row in ipairs(state.activityLeaders) do if row.username == directorSubject and row.status == "racing" and position(row.username) then subject = row end end
             if nearFinish then subject = lead end
+            local heading = state.course and state.course.headings and state.course.headings[math.max(1, math.min(48, math.floor(subject.distance)+1))]
+            if finite(heading) and math.abs(heading)<=90 then yaw=heading-18 end
             local p = position(subject.username)
             if p then targets[1] = p end
             shot = spotlight and "competitor spotlight" or ((state.course and state.course.sections[section] or "section " .. section) .. " / lead pack")
@@ -2878,9 +2960,9 @@ local function cameraDiagnostics(now)
         end)
     end
     if not CAMERA_DIAGNOSTICS or not camera then return end
-    print(string.format("[Riftbound camera] presentation=race-show-v7 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
+    print(string.format("[Riftbound camera] presentation=race-show-v8 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
         tostring(STREAM_DAYLIGHT and streamCamera and gui.Enabled), Lighting.ClockTime, Lighting.Brightness, Lighting.ExposureCompensation))
-    print(string.format("[Riftbound render] revision=race-show-v7 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
+    print(string.format("[Riftbound render] revision=race-show-v8 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
         directorShot, tostring(STREAM_CLEAR_EFFECTS), tostring(renderCheckEnabled), parts > 0 and minOpacity or 0, parts > 0 and sumOpacity / parts or 0, maxOpacity, maximumPositionDrift, maximumAimDrift))
     local atmosphereCount, effectCount, enclosureCount = 0, 0, 0
     for _, record in pairs(suspendedEffects) do

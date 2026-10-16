@@ -30,9 +30,9 @@ local function publish(time)
 end
 `;
 
-test('four 288-stud sections have all 240 lane pads, traversable gaps/rises and a 120s deadline',()=>runLua(base+`
+test('four winding sections have all 240 rotated lane pads, feasible supports and a 120s deadline',()=>runLua(base+`
 assert(Config.SprintRaceSeconds==120 and Config.SprintWalkSpeed==12)
-assert(World.courseInfo().length==1152 and #World.courseInfo().sections==4)
+assert(World.courseInfo().length>1270 and World.courseInfo().length<1290 and #World.courseInfo().sections==4)
 local course=workspace.RiftboundRealm.SkybridgeSprint
 local moving,seen=0,{}
 for lane=1,5 do
@@ -41,14 +41,30 @@ for lane=1,5 do
         assert(pad and pad.CanCollide and pad:GetAttribute('Section')==math.floor((cp-1)/12)+1)
         local from,to=World.sprintPoint(lane,cp-1),World.sprintPoint(lane,cp)
         local prev=cp>1 and course['Lane '..lane..' checkpoint '..(cp-1)] or course['START platform']
-        local gap=math.max(0,24-(prev.Size.Z+pad.Size.Z)/2)
+        local delta=to-from
+        local direction=Vector3.new(delta.X,0,delta.Z); direction=direction*(1/direction.Magnitude)
+        local function interval(part)
+            local p=part.CFrame:PointToObjectSpace(Vector3.new(from.X,part.Position.Y,from.Z))
+            local d=part.CFrame:VectorToObjectSpace(direction)
+            local lo,hi=-math.huge,math.huge
+            for _,axis in ipairs({'X','Z'}) do
+                if math.abs(d[axis])>0.00001 then
+                    local a,b=(-part.Size[axis]/2-p[axis])/d[axis],(part.Size[axis]/2-p[axis])/d[axis]
+                    lo,hi=math.max(lo,math.min(a,b)),math.min(hi,math.max(a,b))
+                else assert(math.abs(p[axis])<=part.Size[axis]/2,'route misses support width') end
+            end
+            assert(lo<=hi,'route misses rotated support')
+            return lo,hi
+        end
+        local _,exit=interval(prev); local entry=interval(pad)
+        local gap=math.max(0,entry-exit)
         local rise=to.Y-from.Y
         -- Ballistic feasibility only: gravity/jump velocity and measured pad edges,
         -- not a replacement for Roblox collision/contact testing.
         assert(gap<=4.01 and rise<=3 and rise>=-1,'unreachable authored step')
         local flight=(50+math.sqrt(50*50-2*196.2*math.max(0,rise)))/196.2
         assert(flight*12>=gap+1,'jump cannot cover the gap with landing margin')
-        assert(pad.Size.X/2-1.25>=2,'moving bridge loses the static route center')
+        assert(pad.Size.X/2-1.25>=1.5,'moving bridge loses the static route center')
         seen[pad:GetAttribute('Section')]=true
     end
 end
@@ -93,6 +109,28 @@ for _,m in pairs(state.crew) do
     assert(m.score==48 and m.finishedAt-m.enteredAt>=90 and m.finishedAt-m.enteredAt<=120,'duration outside target: '..(m.finishedAt-m.enteredAt))
 end
 for i=1,4 do assert(sections[i]) end
+`));
+
+test('S-shaped trail changes direction and support shape, with hurdles aligned independently to every lane',()=>runLua(base+`
+local course=workspace.RiftboundRealm.SkybridgeSprint
+assert(course:GetAttribute('CourseRevision')=='show-v8-winding')
+assert(math.abs(World.sprintPoint(3,6).X-64)<0.001 and math.abs(World.sprintPoint(3,18).X+64)<0.001)
+assert(math.abs(World.sprintPoint(3,30).X-64)<0.001 and math.abs(World.sprintPoint(3,42).X+64)<0.001)
+assert(course['Lane 3 checkpoint 3'].Size.X~=course['Lane 3 checkpoint 14'].Size.X)
+assert(course['Lane 3 checkpoint 6'].Size.Y>course['Lane 3 checkpoint 14'].Size.Y)
+for _,cp in ipairs({4,8,16,20,28,32,36,40,44}) do
+    for lane=1,5 do
+        local name=lane==3 and 'Jump hurdle '..cp or 'Lane '..lane..' hurdle '..cp
+        local hurdle=course[name]
+        local from,to=World.sprintPoint(lane,cp-1),World.sprintPoint(lane,cp)
+        local midpoint=(from+to)*0.5
+        local localPoint=hurdle.CFrame:PointToObjectSpace(midpoint)
+        assert(math.abs(localPoint.X)<0.001 and math.abs(localPoint.Z)<0.001,'hurdle not on lane takeoff path')
+        assert(hurdle.CanCollide and hurdle.Size.X<7,'lane hurdle became a shared diagonal crossbar')
+    end
+end
+local info=World.courseInfo()
+assert(#info.headings==48 and info.headings[1]<-30 and info.headings[12]>30,'missing turn directions for the camera')
 `));
 
 test('entrances queue/group without changing race clocks or money; newcomers get the next eligible cohort',()=>runLua(base+`
@@ -165,6 +203,23 @@ local function framed(name)
     assert((camera.CFrame.Position-main.Position).Magnitude<240,'distant camera regression')
 end
 `;
+
+test('director keeps all five racers framed on both outside bends in portrait and landscape',()=>runLua(cameras+`
+state:advance(12); state:advance(20); now=20; World.sprintStep(state,20)
+for _,size in ipairs({{390,844},{1080,1920},{1158,536}}) do
+    setViewport(size[1],size[2])
+    for _,cp in ipairs({6,18,30,42}) do
+        for i=1,5 do
+            local member=state.crew['runner_'..i]
+            member.score,member.distance=cp,cp+(5-i)*0.02
+            workspace.RiftboundRealm['Traveler_Runner_'..i]:PivotTo(CFrame.new(World.sprintPoint(i,cp)))
+        end
+        publish(20+cp*1.8)
+        for i=1,5 do framed('Runner_'..i) end
+        assert(camera.FieldOfView==55,'bend fell back to a distant starting-grid shot')
+    end
+end
+`));
 for (const [w,h] of [[390,844],[1080,1920],[1158,536]]) {
  test(`director follows real section roots, spotlights other racers and frames the finish at ${w}x${h}`,()=>runLua(cameras+`
 setViewport(${w},${h})

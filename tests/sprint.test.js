@@ -102,13 +102,13 @@ for i=1,5 do
 end
 move(1,World.sprintPoint(1,0)+Vector3.new(0,0,-10),20.8)
 assert(not rig(1).Humanoid.Jump,"continuous starting apron requested an unnecessary jump")
-move(1,World.sprintPoint(1,1),21)
+move(1,World.sprintPoint(1,1),21.2)
 assert(state.crew.racer_1.score==1)
 local pad=workspace.RiftboundRealm.SkybridgeSprint['Lane 1 checkpoint 1']
-move(1,Vector3.new(pad.Position.X,68,pad.Position.Z-pad.Size.Z/2+1.8),21.2)
+move(1,World.sprintPoint(1,1)+pad.CFrame.LookVector*(pad.Size.Z/2-1.8),21.4)
 assert(rig(1).Humanoid.Jump,"controller did not request a jump before the actual pad edge")
 local position=rig(1).PrimaryPart.Position
-publish(21.2)
+publish(21.4)
 assert((rig(1).PrimaryPart.Position-position).Magnitude<0.0001,"renderer teleported a racing root")
 `));
 
@@ -127,7 +127,7 @@ assert(state.crew.racer_1.score==1 and (rig(1).PrimaryPart.Position-safe).Magnit
 test('takeoff needs ground contact, fires once per gate and recovery uses the moving support pose', () => runLua(scene + `
 move(1,World.sprintPoint(1,1),21)
 local pad=workspace.RiftboundRealm.SkybridgeSprint['Lane 1 checkpoint 1']
-local edge=Vector3.new(pad.Position.X,68,pad.Position.Z-pad.Size.Z/2+1.8)
+local edge=World.sprintPoint(1,1)+pad.CFrame.LookVector*(pad.Size.Z/2-1.8)
 rig(1).Humanoid.FloorMaterial=Enum.Material.Air
 move(1,edge,21.2); assert(not rig(1).Humanoid.Jump,'airborne jump was requested')
 rig(1).Humanoid.FloorMaterial=Enum.Material.Slate

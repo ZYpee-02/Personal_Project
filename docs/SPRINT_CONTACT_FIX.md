@@ -1,5 +1,9 @@
 # v7.1 — Starting Dash fall loop
 
+**Historical v7.1 patch.** The current v8 winding trail requires both World and
+the client Realm replaced: use [the current instructions](WINDING_TRAIL_REPLACEMENT.md).
+The one-file procedure below applies only to the earlier straight v7 course.
+
 For an existing **v7 two-minute course installation**, stop Play and replace only
 **ServerScriptService → World (ModuleScript)** with the complete raw source in
 [World.lua](../roblox/ServerScriptService/World.lua). Save and start a fresh Play
