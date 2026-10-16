@@ -1,5 +1,9 @@
 # Phase 2 startup repair and replacement
 
+The current physical Sprint requires all five updated sources; see
+[SPRINT_REPLACEMENT.md](SPRINT_REPLACEMENT.md). The bootstrap diagnostics described
+here remain, while this document's replacement comparison is historical.
+
 This documents the earlier startup repair. The later presentation update changes
 World.lua and Realm.client.lua again; follow [PRESENTATION_REPLACEMENT.md](PRESENTATION_REPLACEMENT.md)
 and the current complete sources for the working game's display improvements.

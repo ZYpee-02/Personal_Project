@@ -25,6 +25,10 @@ FORBIDDEN = re.compile(
 
 
 def audit(text, label):
+    avatar_calls = re.findall(r"(\w+):((?:GetHumanoidDescriptionFromUserIdAsync|CreateHumanoidModelFromDescriptionAsync))\s*\(", text)
+    if avatar_calls and (not str(label).endswith("World.lua") or "settings.LoadAvatarAppearances ~= true" not in text):
+        raise ValueError("Appearance APIs are allowed only in the guarded World loader")
+
     match = FORBIDDEN.search(text)
     if match:
         raise ValueError(f"Offline export refused: {label} contains {match.group(0)!r}")

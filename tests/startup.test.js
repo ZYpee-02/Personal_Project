@@ -23,6 +23,9 @@ local world = {
     animate = function() animationCalls = animationCalls + 1 end,
     offlineAvatar = function() return instance("Model", "StandIn") end,
     arrive = function() end,
+    sprintStep = function() end,
+    loadAppearance = function() end,
+    cameraBounds = function() end,
 }
 local players = { PlayerAdded = signal(), PlayerRemoving = signal(), GetPlayers = function() return {} end }
 local runtime = { IsStudio = function() return true end, Heartbeat = signal() }

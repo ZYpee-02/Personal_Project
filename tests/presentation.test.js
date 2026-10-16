@@ -41,6 +41,8 @@ end
 
 const setup = presentationEngine + `
 local Config=(function() ${config} end)()
+Config.SprintOnly=false -- exercise the preserved original presentation/variety mode
+Config.SprintRaceSeconds=30
 local Realm=(function() ${domain} end)()
 local World=(function() ${world} end)()
 World.build(Config)

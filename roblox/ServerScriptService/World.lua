@@ -1,10 +1,11 @@
+local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local TweenService = game:GetService("TweenService")
 local World = {}
 local root, core, gate, rift, shield, constellation, bloom, winds, scoreText
 local monuments = {}
 local avatars = {}
-local scenery = { clouds = {}, runes = {}, ribbons = {}, particles = {}, stars = {}, shrines = {} }
+local scenery = { clouds = {}, runes = {}, ribbons = {}, particles = {}, stars = {}, shrines = {}, sprintObstacles = {} }
 local settings = {}
 local sceneState
 local lastFrame = 0
@@ -82,20 +83,274 @@ local function tree(position, scale)
     end
 end
 
+-- Twelve physical gates, five parallel lanes. All NPCs use identical movement
+-- settings; standings come from sampled roots, never usernames or a timed pace.
+function World.cameraBounds(state)
+    if state.physicalSprint then
+        return { minX = -26, maxX = 26, minY = 54, maxY = 88, minZ = -82, maxZ = 76, yaw = 60 }
+    end
+end
+
+function World.sprintPoint(lane, checkpoint)
+    local rise = ({ 0, 0, 2, 2, 0, 0, 3, 3, 0, 2, 2, 0, 0 })[checkpoint + 1]
+    local bend = math.sin(checkpoint * math.pi / 3) * 2
+    return Vector3.new((lane - 3) * 6 + bend, 68 + rise, 60 - checkpoint * 10)
+end
+
+local function prepareRig(model)
+    for i, object in ipairs(model:GetChildren()) do
+        if object:IsA("Accessory") or object:IsA("Hat") then object.Name = "OutfitAccessory_" .. i end
+    end
+    local main = model:FindFirstChild("HumanoidRootPart")
+    local torso, head = model:FindFirstChild("Torso"), model:FindFirstChild("Head")
+    assert(main and main:IsA("BasePart") and torso and torso:IsA("BasePart") and head and head:IsA("BasePart"), "A Sprint avatar needs an R6 root, torso and head")
+    for _, name in ipairs({ "Left Arm", "Right Arm", "Left Leg", "Right Leg" }) do
+        assert(model:FindFirstChild(name), "Missing R6 limb: " .. name)
+    end
+    model.PrimaryPart = main
+    main.Size = Vector3.new(2, 2, 1)
+    local humanoid = model:FindFirstChildOfClass("Humanoid") or Instance.new("Humanoid")
+    humanoid.Name, humanoid.Parent = "Humanoid", model
+    humanoid.WalkSpeed, humanoid.UseJumpPower, humanoid.JumpPower = 16, true, 50
+    humanoid.HipHeight, humanoid.MaxSlopeAngle = 0, 40
+    humanoid.BreakJointsOnDeath, humanoid.RequiresNeck = false, false
+    humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+    if not main:FindFirstChild("RootJoint") then
+        local joints = {
+            { "RootJoint", main, torso, CFrame.new(), CFrame.new() },
+            { "Neck", torso, head, CFrame.new(0, 1, 0), CFrame.new(0, -0.5, 0) },
+            { "Left Shoulder", torso, model["Left Arm"], CFrame.new(-1.5, 0.5, 0), CFrame.new(0, 0.5, 0) },
+            { "Right Shoulder", torso, model["Right Arm"], CFrame.new(1.5, 0.5, 0), CFrame.new(0, 0.5, 0) },
+            { "Left Hip", torso, model["Left Leg"], CFrame.new(-0.5, -1, 0), CFrame.new(0, 1, 0) },
+            { "Right Hip", torso, model["Right Leg"], CFrame.new(0.5, -1, 0), CFrame.new(0, 1, 0) },
+        }
+        for _, spec in ipairs(joints) do
+            local joint = Instance.new("Motor6D")
+            joint.Name, joint.Part0, joint.Part1, joint.C0, joint.C1 = spec[1], spec[2], spec[3], spec[4], spec[5]
+            joint.Parent = spec[2]
+        end
+    end
+    if not model:FindFirstChild("RaceCollider") then
+        local collider = part("RaceCollider", Vector3.new(2, 5, 2), main.CFrame * CFrame.new(0, -0.5, 0), colors.mint, Enum.Material.SmoothPlastic, model)
+        collider.Transparency = 1
+        local weld = Instance.new("WeldConstraint")
+        weld.Part0, weld.Part1, weld.Parent = main, collider, collider
+    end
+    if not model:FindFirstChild("GiftAura") then
+        local glow = Instance.new("Highlight")
+        glow.Name, glow.FillTransparency, glow.OutlineColor, glow.Enabled, glow.Parent = "GiftAura", 0.8, colors.mint, false, model
+        local crown = part("Winner crown", Vector3.new(2.4, 0.3, 1.3), main.CFrame * CFrame.new(0, 2.5, 0), colors.gold, Enum.Material.Neon, model)
+        crown.Transparency = 1
+        for i = 1, 3 do
+            local spike = part("Crown spike " .. i, Vector3.new(0.3, 0.7, 0.3), main.CFrame * CFrame.new((i - 2) * 0.8, 2.9, 0), colors.gold, Enum.Material.Neon, model)
+            spike.Transparency = 1
+        end
+        ball("Relay energy", main.Position + Vector3.new(0, 0, -1.5), 0.9, colors.mint, 1, model)
+    end
+    for _, object in ipairs(model:GetDescendants()) do
+        if object:IsA("Script") or object:IsA("LocalScript") or object:IsA("ModuleScript") or object:IsA("Tool") then object:Destroy()
+        elseif object:IsA("BasePart") then
+            object.Anchored, object.CanCollide, object.Massless = true, false, object ~= main
+            if object.Name == "Winner crown" or string.match(object.Name, "^Crown spike") or object.Name == "Relay energy" then
+                local weld = Instance.new("WeldConstraint")
+                weld.Part0, weld.Part1, weld.Parent = main, object, object
+            end
+        end
+    end
+    return model
+end
+
+local function physical(record, enabled)
+    record.physical = enabled
+    local model = record.model
+    local main, humanoid = model.PrimaryPart, model:FindFirstChildOfClass("Humanoid")
+    if humanoid and humanoid.Health > 0 then humanoid:MoveTo(main.Position) end
+    for _, object in ipairs(model:GetDescendants()) do
+        if object:IsA("BasePart") then
+            object.Anchored, object.CanCollide = not enabled, enabled and object.Name == "RaceCollider"
+        elseif object:IsA("Motor6D") or object:IsA("Weld") or object:IsA("WeldConstraint") then
+            object.Enabled = enabled
+        end
+    end
+    if enabled then
+        -- Server owns every racer. Player inputs/clients cannot move an NPC.
+        main:SetNetworkOwner(nil)
+        main.AssemblyLinearVelocity, main.AssemblyAngularVelocity = Vector3.new(), Vector3.new()
+    end
+end
+
+function World.loadAppearance(username, userId)
+    local record = avatars[string.lower(username)]
+    if not record or record.appearanceAttempted or settings.LoadAvatarAppearances ~= true
+        or type(userId) ~= "number" or userId < 1 or userId ~= math.floor(userId) then return end
+    record.appearanceAttempted = true
+    local deadline = os.clock() + (settings.AppearanceTimeoutSeconds or 8)
+    task.spawn(function()
+        if os.clock() > deadline or not root.Parent then return end
+        local description, model
+        local ok, issue = pcall(function()
+            -- Explicitly optional Roblox appearance APIs; no custom HTTP/TikTok.
+            description = Players:GetHumanoidDescriptionFromUserIdAsync(userId)
+            description.HeightScale, description.WidthScale, description.DepthScale, description.HeadScale = 1, 1, 1, 1
+            description.BodyTypeScale, description.ProportionScale = 0, 0
+            if os.clock() > deadline then return end
+            model = Players:CreateHumanoidModelFromDescriptionAsync(description, Enum.HumanoidRigType.R6)
+            if os.clock() <= deadline and root.Parent and avatars[string.lower(username)] == record then
+                prepareRig(model)
+                record.pendingAppearance = model -- install only between races
+                model = nil
+            end
+        end)
+        if description then description:Destroy() end
+        if model then model:Destroy() end
+        if not ok then warn("[Riftbound appearance] " .. username .. ": fallback kept (" .. tostring(issue) .. ")") end
+    end)
+end
+
+local function buildSprint()
+    local course = Instance.new("Model")
+    course.Name, course.Parent = "SkybridgeSprint", root
+    local start = part("START platform", Vector3.new(38, 2, 16), CFrame.new(0, 64, 63), colors.stone, Enum.Material.Slate, course)
+    label(start, "SKYBRIDGE SPRINT / START", Vector3.new(0, 8, 0), colors.gold, 300)
+    for checkpoint = 1, 12 do
+        for lane = 1, 5 do
+            local point = World.sprintPoint(lane, checkpoint)
+            local p = part("Lane " .. lane .. " checkpoint " .. checkpoint, Vector3.new(5.4, 1, 8),
+                CFrame.new(point - Vector3.new(0, 3.5, 0)), checkpoint % 2 == 0 and colors.violet or colors.mint, Enum.Material.Slate, course)
+            local edge = part("Checkpoint glow", Vector3.new(5.4, 0.12, 0.4), p.CFrame * CFrame.new(0, 0.55, -3.8), colors.gold, Enum.Material.Neon, course)
+            edge.CanCollide = false
+        end
+        for _, sign in ipairs({ -1, 1 }) do
+            local point = World.sprintPoint(3, checkpoint)
+            part("Bridge support", Vector3.new(0.5, 3.8, 0.5), CFrame.new(sign * 18, point.Y - 5, point.Z), colors.stone, Enum.Material.Metal, course)
+        end
+    end
+    for i, checkpoint in ipairs({ 4, 8, 10 }) do
+        local point = World.sprintPoint(3, checkpoint)
+        -- Tall sliding gates must be waited out; an automatic jump cannot clear
+        -- every obstacle. Real contact/timing changes the observed race outcome.
+        local obstacle = part("Moving wind gate " .. i, Vector3.new(3, 10, 2), CFrame.new(0, point.Y + 2, point.Z + 3), colors.gold, Enum.Material.Neon, course)
+        table.insert(scenery.sprintObstacles, { part = obstacle, point = point, phase = i * 2.1 })
+    end
+    part("FINISH island", Vector3.new(42, 3, 24), CFrame.new(0, 63, -68), colors.grass, Enum.Material.Grass, course)
+    for _, x in ipairs({ -19, 19 }) do
+        part("Finish arch column", Vector3.new(1.5, 16, 1.5), CFrame.new(x, 72, -60), colors.gold, Enum.Material.Neon, course)
+    end
+    part("Finish arch", Vector3.new(39, 1.5, 2), CFrame.new(0, 80, -60), colors.mint, Enum.Material.Neon, course)
+    for rank, x in ipairs({ 0, -9, 9 }) do
+        local h = ({ 4, 2.5, 1.5 })[rank]
+        part("Sprint podium " .. rank, Vector3.new(7, h, 7), CFrame.new(x, 64.5 + h / 2, -70), rank == 1 and colors.gold or colors.stone, Enum.Material.Marble, course)
+    end
+    -- Decorative undersides and crystals: no downloaded map assets.
+    for _, z in ipairs({ -66, -30, 20, 63 }) do
+        crystal(Vector3.new(-20, 66, z), 0.8, colors.violet)
+        crystal(Vector3.new(20, 66, z), 0.8, colors.mint)
+    end
+end
+
+local function resetRacer(record, member, lane, now)
+    local point = World.sprintPoint(lane, member.score)
+    local target = World.sprintPoint(lane, math.min(12, member.score + 1))
+    record.model:PivotTo(CFrame.lookAt(point + Vector3.new(0, 1, 0), target))
+    local main = record.model.PrimaryPart
+    main.AssemblyLinearVelocity, main.AssemblyAngularVelocity = Vector3.new(), Vector3.new()
+    record.race.position, record.race.sampleAt, record.race.lastMoved = main.Position, now, now
+    record.race.lastJump, record.race.lastCommand = now - 1, 0
+    record.model.Humanoid.Jump = false
+end
+
+function World.sprintStep(state, now)
+    if state.phase ~= "storm" or state.activity.id ~= "sprint" then return end
+    local lane = 0
+    for _, key in ipairs(state.crewOrder) do
+        local member, record = state.crew[key], avatars[key]
+        if member.activityEntered then
+            lane = lane + 1
+            if not record or not record.model.PrimaryPart or not record.model:FindFirstChild("Head") or not record.model:FindFirstChildOfClass("Humanoid") then
+                state:raceDNF(member.username, state.round)
+            else
+                local model, humanoid = record.model, record.model:FindFirstChildOfClass("Humanoid")
+                if not record.race or record.race.round ~= state.round then
+                    if record.scale ~= 1 then model:ScaleTo(1); record.scale = 1 end
+                    local rotatedLane = ((lane + state.round - 2) % 5) + 1
+                    record.race = { round = state.round, lane = rotatedLane }
+                    physical(record, true)
+                    resetRacer(record, member, rotatedLane, now)
+                end
+                local race, main = record.race, model.PrimaryPart
+                if member.raceStatus == "racing" then
+                    if humanoid.Health <= 0 then state:raceDNF(member.username, state.round)
+                    else
+                        local position = main.Position
+                        local dt = math.max(0.001, now - race.sampleAt)
+                        if position.Y < 54 or math.abs(position.X) > 26 or math.abs(position.Z) > 76
+                            or (position - race.position).Magnitude > math.max(8, dt * 90) or now - race.lastMoved > 6 then
+                            resetRacer(record, member, race.lane, now)
+                            position = main.Position
+                        end
+                        local nextGate = member.score + 1
+                        local target = World.sprintPoint(race.lane, nextGate)
+                        local delta = target - position
+                        local horizontal = Vector3.new(delta.X, 0, delta.Z).Magnitude
+                        local passed, at = false, now
+                        if nextGate == 12 then
+                            if race.position.Z > target.Z and position.Z <= target.Z and math.abs(delta.X) <= 2.8 and math.abs(delta.Y) <= 4 then
+                                local fraction = (race.position.Z - target.Z) / math.max(0.0001, race.position.Z - position.Z)
+                                at = race.sampleAt + (now - race.sampleAt) * math.max(0, math.min(1, fraction))
+                                passed = true
+                            end
+                        else passed = horizontal <= 2.8 and math.abs(delta.Y) <= 3.5 and humanoid.FloorMaterial ~= Enum.Material.Air end
+                        if passed then state:recordCheckpoint(member.username, nextGate, at, state.round) end
+                        if (position - race.position).Magnitude > 0.08 then race.lastMoved = now end
+                        if member.raceStatus == "racing" then
+                            local from = World.sprintPoint(race.lane, member.score)
+                            local to = World.sprintPoint(race.lane, member.score + 1)
+                            local segment = Vector3.new(to.X - from.X, 0, to.Z - from.Z)
+                            local offset = Vector3.new(position.X - from.X, 0, position.Z - from.Z)
+                            state:raceDistance(member.username, member.score + offset:Dot(segment) / segment:Dot(segment), state.round)
+                            if now - race.lastCommand > 0.4 then
+                                local goal = World.sprintPoint(race.lane, member.score + 1)
+                                if member.score == 11 then goal = goal + Vector3.new(0, 0, -4) end
+                                humanoid:MoveTo(goal)
+                                race.lastCommand = now
+                            end
+                            local jumpGoal = World.sprintPoint(race.lane, member.score + 1)
+                            local jumpDelta = jumpGoal - position
+                            local jumpDistance = Vector3.new(jumpDelta.X, 0, jumpDelta.Z).Magnitude
+                            if jumpDistance <= 8 and jumpDistance >= 3 and now - race.lastJump > 0.4 and humanoid.FloorMaterial ~= Enum.Material.Air then
+                                humanoid.Jump, race.lastJump = true, now
+                            end
+                        end
+                        race.position, race.sampleAt = position, now
+                    end
+                end
+                if member.raceStatus ~= "racing" and record.physical then
+                    record.frame = main.CFrame
+                    physical(record, false)
+                end
+            end
+        end
+    end
+end
+
 function World.build(config)
     settings = config or {}
-    root = Instance.new("Folder")
-    root.Name, root.Parent = "RiftboundRealm", workspace
+    root = Instance.new("Model")
+    root.Name = "RiftboundRealm"
+    root.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
+    root.Parent = workspace
+    Lighting.FogStart, Lighting.FogEnd = 1000, 5000
     Lighting.ClockTime, Lighting.Brightness = 18.3, 2
     Lighting.GlobalShadows = true
     Lighting.Ambient = Color3.fromRGB(111, 109, 148)
     Lighting.OutdoorAmbient = Color3.fromRGB(116, 133, 158)
     local atmosphere = Instance.new("Atmosphere")
-    atmosphere.Density, atmosphere.Offset = 0.3, 0.2
+    atmosphere.Density, atmosphere.Offset = 0.15, 0
     atmosphere.Color, atmosphere.Decay = Color3.fromRGB(170, 213, 233), Color3.fromRGB(89, 74, 130)
     atmosphere.Parent = Lighting
     local glow = Instance.new("BloomEffect")
     glow.Intensity, glow.Size, glow.Threshold, glow.Parent = 0.45, 32, 1.3, Lighting
+    buildSprint()
     island(Vector3.new(0, 32, 0), 50)
     island(Vector3.new(87, 36, 21), 23)
     island(Vector3.new(-85, 28, -20), 21)
@@ -266,7 +521,7 @@ function World.offlineAvatar(username)
         spike.Transparency, spike.CanCollide = 1, false
     end
     local orb = ball("Relay energy", Vector3.new(0, 0, -1.5), 0.9, colors.mint, 1, model)
-    return model
+    return prepareRig(model)
 end
 
 local function number(value)
@@ -305,7 +560,7 @@ function World.arrive(model, slot, username)
     popText.TextWrapped, popText.TextTruncate, popText.Parent = false, Enum.TextTruncate.AtEnd, caption
     avatars[string.lower(username)] = {
         model = model, slot = slot, arrivedAt = os.clock(), frame = model:GetPivot(),
-        balance = 0, popText = popText, scale = 1,
+        balance = 0, popText = popText, scale = 1, username = username,
     }
 end
 
@@ -323,9 +578,25 @@ local function destination(member, state, now, scale)
     if state.phase == "result" then
         for rank, row in ipairs(state.winners or {}) do
             if row.username == member.username then
-                return Vector3.new(({ 0, -9, 9 })[rank], y + ({ 4, 2.5, 1.5 })[rank], 14), true
+                return Vector3.new(({ 0, -9, 9 })[rank], (state.activity.id == "sprint" and 65 or 35) + 3 * scale + ({ 4, 2.5, 1.5 })[rank], state.activity.id == "sprint" and -70 or 14), true
             end
         end
+    end
+    if state.activity.id == "sprint" then
+        if state.phase == "voting" or state.phase == "gathering" then
+            local count, selected = #state.members, {}
+            local limit = math.min(count, settings.SprintCompetitors or 5)
+            local nextRound = state.phase == "gathering" and state.round + 1 or state.round
+            for i = 1, limit do selected[((nextRound - 1) * limit + i - 1) % count + 1] = true end
+            local lane = 0
+            for i, row in ipairs(state.members) do
+                if selected[i] then
+                    lane = lane + 1
+                    if row.username == member.username then return World.sprintPoint(((lane + nextRound - 2) % 5) + 1, 0), false end
+                end
+            end
+        end
+        return World.crewPosition(member.slot).Position, false
     end
     if state.autoActivities and (state.phase == "voting" or (state.phase == "storm" and member.activityEntered)) then
         local distance = member.distance
@@ -367,9 +638,25 @@ function World.render(state, now)
     end
     sessionText.Text = table.concat(sessionLines, "\n")
     for _, member in ipairs(state.members) do
-        local record = avatars[string.lower(member.username)]
+        local key = string.lower(member.username)
+        local record = avatars[key]
+        if record and state.phase ~= "storm" and (record.pendingAppearance or not record.model.PrimaryPart
+            or not record.model:FindFirstChild("Head") or not record.model:FindFirstChildOfClass("Humanoid") or record.model.Humanoid.Health <= 0) then
+            local replacement, old = record.pendingAppearance or World.offlineAvatar(member.username), record.model
+            local balance = record.balance
+            local queuedGiant, deferredGiantUntil = record.queuedGiant, record.deferredGiantUntil
+            World.arrive(replacement, record.slot, member.username)
+            old:Destroy()
+            record = avatars[key]
+            record.balance, record.appearanceAttempted = balance, true
+            record.queuedGiant, record.deferredGiantUntil = queuedGiant, deferredGiantUntil
+        end
         if record then
             local model = record.model
+            if record.physical and not (state.phase == "storm" and state.activity.id == "sprint") then
+                record.frame = model.PrimaryPart.CFrame
+                physical(record, false)
+            end
             local delta = member.balance - record.balance
             if delta >= 0.5 and now >= (record.nextPop or 0) then
                 if record.fade then record.fade:Cancel(); record.rise:Cancel() end
@@ -380,9 +667,15 @@ function World.render(state, now)
                 record.fade:Play(); record.rise:Play()
                 record.balance, record.nextPop = member.balance, now + 1.05
             end
-            local targetScale = member.effect == "giant" and 1.85 or 1
+            local racing = state.phase == "storm" and state.activity.id == "sprint"
+            if racing and member.effect == "giant" then record.queuedGiant = true end
+            if not racing and record.queuedGiant then
+                record.deferredGiantUntil, record.queuedGiant = now + 6, false
+            end
+            local giant = member.effect == "giant" or now < (record.deferredGiantUntil or 0)
+            local targetScale = giant and not racing and 1.85 or 1
             if record.scale ~= targetScale then model:ScaleTo(targetScale); record.scale = targetScale end
-            model.GiftAura.Enabled = member.effect ~= ""
+            model.GiftAura.Enabled = member.effect ~= "" or now < (record.deferredGiantUntil or 0)
             model.GiftAura.OutlineColor = member.effect == "aurora" and colors.violet or colors.gold
         end
     end
@@ -403,6 +696,9 @@ function World.animate(now)
     core.CFrame = CFrame.new(0, 42 + math.sin(now * 1.2) * 0.6, 0) * CFrame.Angles(0, now * 0.3, 0.12)
     shield.Transparency = storm and state.choice == "ward" and 0.88 or 1
     gate.Transparency = 0.6 + math.sin(now) * 0.08
+    for _, obstacle in ipairs(scenery.sprintObstacles) do
+        obstacle.part.CFrame = CFrame.new(math.sin(now * 1.2 + obstacle.phase) * 16, obstacle.point.Y + 2, obstacle.point.Z + 3)
+    end
     for i, cloud in ipairs(scenery.clouds) do
         local a = cloud.angle + now * 0.006
         cloud.model:PivotTo(CFrame.new(math.cos(a) * (88 + i * 3), cloud.height + math.sin(now * 0.13 + i), math.sin(a) * (88 + i * 3)))
@@ -432,14 +728,27 @@ function World.animate(now)
         p.Transparency = (celebration or gifted) and 0.15 or 1
         if celebration or gifted then
             local a = i * 2.399 + now * 0.6
-            local radius = celebration and 16 or 25
-            p.CFrame = CFrame.new(math.cos(a) * radius, 37 + ((now * (celebration and 8 or 5) + i * 2) % 30), 10 + math.sin(a) * radius)
+            local radius = celebration and (state.activity.id == "sprint" and 12 or 16) or 25
+            local baseY = state.activity.id == "sprint" and 68 or 37
+            local baseZ = state.activity.id == "sprint" and (celebration and -70 or 0) or 10
+            p.CFrame = CFrame.new(math.cos(a) * radius, baseY + ((now * (celebration and 8 or 5) + i * 2) % (state.activity.id == "sprint" and 18 or 30)), baseZ + math.sin(a) * radius)
             p.Color = Color3.fromHSV((i / 36 + now * 0.03) % 1, 0.5, 1)
         end
     end
     for _, member in ipairs(state.members) do
         local record = avatars[string.lower(member.username)]
         if record then
+            if state.activity.id == "sprint" and state.phase == "storm" and record.race and record.race.round == state.round then
+                -- Physics owns the root. Only pose the massless limbs for walking.
+                local speed = record.model.PrimaryPart and record.model.PrimaryPart.AssemblyLinearVelocity.Magnitude or 0
+                local gait = speed > 1 and math.sin(now * 9) * 0.45 or 0
+                for _, joint in ipairs(record.model:GetDescendants()) do
+                    if joint:IsA("Motor6D") and (string.find(joint.Name, "Shoulder") or string.find(joint.Name, "Hip")) then
+                        if not joint:GetAttribute("SprintBaseC0") then joint:SetAttribute("SprintBaseC0", joint.C0) end
+                        joint.C0 = joint:GetAttribute("SprintBaseC0") * CFrame.Angles(gait * (string.find(joint.Name, "Left") and 1 or -1), 0, 0)
+                    end
+                end
+            else
             local target, winner = destination(member, state, now, record.scale)
             local age = now - record.arrivedAt
             if age < 2 then target = Vector3.new(0, 38, -25):Lerp(target, math.min(1, age / 2)) end
@@ -465,6 +774,7 @@ function World.animate(now)
             for i = 1, 3 do model["Crown spike " .. i].Transparency = winner and 0 or 1 end
             model["Relay energy"].Transparency = storm and state.activity.id == "relay" and member.activityEntered and 0 or 1
             model["Relay energy"].CFrame = body * CFrame.new(0, size, -1.5 * size)
+            end
         end
     end
 end

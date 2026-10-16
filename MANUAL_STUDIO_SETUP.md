@@ -1,19 +1,13 @@
-# Riftbound Live Phase 2: complete raw scripts and manual replacement
+# Riftbound Live: Skybridge Sprint complete raw scripts and manual replacement
 
 Use the Script Editor and Explorer. Do not paste this document or any script into
 the Command Bar. There is no generated installer or serialized source wrapper.
 
-**Updating the working Phase 1 game?** Save a backup of your Studio place, stop
-Play, and replace the ENTIRE source of each of the five existing instances below.
-Keep their names, types and parents. Replace all five together; do not mix versions
-or add duplicates. Restore any custom HostUserIds into the new Config afterward.
-**Updating the working Phase 2 game to the presentation fix?** Replace the ENTIRE
-source of **World.lua and Realm.client.lua** together. Config, RealmState and the
-server Realm are unchanged from the working startup repair. All five complete
-files are provided below in case your copies are mixed. Follow
-`docs/PRESENTATION_REPLACEMENT.md` for exact replacement and resolution checks.
-`docs/STARTUP_FIX.md` documents the earlier startup repair;
-`docs/PHASE2_REPLACEMENT.md` covers the first-three-round checklist.
+**Skybridge Sprint update:** Replace the ENTIRE source of **all five** existing
+instances below together. All five changed. Keep names/types/parents; do not mix
+versions or add duplicates. Restore custom HostUserIds afterward. Follow
+`docs/SPRINT_REPLACEMENT.md` for exact replacement and physics playtesting.
+The older presentation/startup guides document previous updates only.
 
 ## Step-by-step
 
@@ -35,12 +29,14 @@ files are provided below in case your copies are mixed. Follow
    before pressing Play. Do not keep duplicate Realm server/client scripts active.
 8. Press **Play**, not Run. The server creates the islands, stand-in avatars, event
    objects and money/round state; the LocalScript builds the player HUD.
-9. Wait: six clearly named Demo_ travelers arrive automatically in Studio. After
-   12 seconds gathering and 8 seconds optional voting, they compete for 30 seconds.
-   A 10-second result/celebration phase follows, then the next round starts itself.
-10. Watch three rounds: Starfall Scramble, Skybridge Sprint, then Heartseed Relay.
-    No votes, clicks or Keeper Tools are needed. Demo gifts/follows also run in Studio.
-    Usernames label local procedural avatars; no real account/outfit is downloaded.
+9. Five Demo_ travelers seed in Studio. After 12 seconds gathering and 8 seconds
+   optional voting, up to five race the raised obstacle course using Humanoids.
+   The race lasts at most 80 seconds, or ends when every entrant finishes/DNFs.
+   Ten seconds of results follow, then the next round starts automatically.
+10. Watch at least three Sprint rounds. Gates/times require actual root movement;
+    timeouts do not manufacture winners. Demo gifts/follows remain automatic.
+    Default Roblox appearance loading is optional; LoadAvatarAppearances=false
+    keeps the exact same physical gameplay with local fallback rigs only.
 11. Optional **TEST TOOLS** can add a username, start gathering early, simulate votes,
     gifts or a follow. **ROAM VIEW** restores normal character camera controls;
     **STREAM VIEW** returns to the fitted 9:16 arena view. Keep tools closed for capture.
@@ -75,11 +71,13 @@ The presentation update keeps a clear central arena area, puts both leaderboards
 in separate bottom panels, and reuses the bottom round dock for results. Stream
 view hides duplicate world/scenery boards and limits projected avatar labels to
 four names/two earnings rows. Roam view restores nearby world boards. Camera
-distance adapts to the viewport; no result zoom or central winner banner is used.
+distance fits the full Sprint course (or the legacy arena) and stays outside it; no result zoom or central winner banner is used.
 
-All game data is in memory, with `PersistenceEnabled = false`. These sources have
-no save-service access, HTTP calls, external asset fetches, or TikTok connection.
-Roblox Studio/engine behavior still requires a local Windows/macOS playtest.
+All game data is in memory, with `PersistenceEnabled = false`. There are no
+save-service, custom HTTP or TikTok calls. LoadAvatarAppearances=true permits two
+native Roblox appearance APIs; false makes zero account/appearance requests.
+Fallback rigs spawn immediately, and late/failing appearances never block rounds.
+Roblox physics, asset loading and rendering still need a Windows/macOS playtest.
 
 ## Complete source files
 
@@ -88,7 +86,7 @@ Roblox Studio/engine behavior still requires a local Windows/macOS playtest.
 Create a **ModuleScript** named **Config** under **ServerScriptService**.
 
 ```luau
--- Offline playtest settings. No network transport or save implementation is bundled.
+-- Simulated LIVE events; optional Roblox appearance loading only. No TikTok or saves.
 return {
     HostUserIds = {}, -- Your numeric Roblox user ID(s), required for published host controls.
     PersistenceEnabled = false, -- Must stay false: all game state is in memory.
@@ -98,6 +96,14 @@ return {
     MaxMoneyPerSecond = 100,
     MaxBalance = 1000000000,
     AutoActivities = true,
+    AutoJoinPlayers = false, -- host is a spectator; JOIN tools still enqueue any username.
+    SprintOnly = true, -- false restores Starfall/Sprint/Relay rotation. Sprint is always physical.
+    SprintCompetitors = 5,
+    SprintRaceSeconds = 80,
+    SprintFinishBonus = 40,
+    LoadAvatarAppearances = true, -- false = strictly local fallback rigs, no account requests.
+    AppearanceTimeoutSeconds = 8,
+    DemoAppearanceUserIds = { 1, 156, 261, 2, 3 }, -- cosmetic accounts, not LIVE viewers.
     ActivityMoneyPerSecond = 2,
     RoundWinMoneyPerSecond = 1,
     CoinsPerPoint = 2,
@@ -110,7 +116,7 @@ return {
     MaxQueuedArrivals = 30,
     OfflineDemoEnabled = true,
     DemoStudioOnly = true, -- Never imply the seeded crew are real LIVE viewers.
-    DemoNames = { "Demo_Astra", "Demo_Lumen", "Demo_Nova", "Demo_Fern", "Demo_Orion", "Demo_Lyra" },
+    DemoNames = { "Demo_Astra", "Demo_Lumen", "Demo_Nova", "Demo_Fern", "Demo_Orion" },
     AutoSimulateGifts = true,
     DemoGiftSeconds = 18,
     SceneUpdatesPerSecond = 12, -- Bound server-side procedural animation replication.
@@ -130,14 +136,14 @@ Realm.__index = Realm
 
 local activities = {
     { id = "starfall", name = "STARFALL SCRAMBLE", instruction = "Collect falling stars around the crystal ring.", goal = 0, teamPerMember = 20 },
-    { id = "sprint", name = "SKYBRIDGE SPRINT", instruction = "Race twelve checkpoints to the finish arch.", goal = 12, teamPerMember = 10 },
+    { id = "sprint", name = "SKYBRIDGE SPRINT", instruction = "Race 12 physical checkpoints. Falls return to the last safe pad.", goal = 12, teamPerMember = 10 },
     { id = "relay", name = "HEARTSEED RELAY", instruction = "Carry energy between the shrines and heartseed.", goal = 0, teamPerMember = 16 },
 }
 
 local function pace(username, round, activity)
     local hash = round * 193 + #activity * 37
     for i = 1, #username do hash = (hash * 31 + string.byte(username, i)) % 65521 end
-    return (activity == "sprint" and 0.42 or 0.55) + (hash % 401) / 1000
+    return 0.55 + (hash % 401) / 1000
 end
 
 function Realm.new(config, now)
@@ -165,7 +171,7 @@ function Realm.new(config, now)
         message = "The rift is quiet. Welcome a traveler to your sky island.",
         blessing = "",
         blessingUntil = 0,
-        activity = activities[1],
+        activity = config.SprintOnly == true and activities[2] or activities[1],
         activityStarted = now,
         activityEntrants = 0,
         teamScore = 0,
@@ -185,10 +191,11 @@ function Realm:addCrew(username, userId)
         balance = 0, roundMoney = 0, participated = false,
         gifts = 0, effect = "", effectUntil = 0,
         roundWins = 0, score = 0, distance = 0, activityEntered = false,
-        enteredAt = self.lastTick, pace = 0, finishedAt = 0,
+        enteredAt = self.lastTick, pace = 0, finishedAt = 0, checkpointAt = 0,
+        raceStatus = "waiting", placement = 0,
     }
     table.insert(self.crewOrder, key)
-    if self.config.AutoActivities and self.phase == "storm" and self.lastTick < self.deadline then self:enterActivity(self.crew[key], self.lastTick) end
+    if self.config.AutoActivities and self.phase == "storm" and self.activity.id ~= "sprint" and self.lastTick < self.deadline then self:enterActivity(self.crew[key], self.lastTick) end
     self.message = username .. " stepped through the star gate."
     return true, self.crew[key]
 end
@@ -209,7 +216,9 @@ end
 
 function Realm:enterActivity(member, now)
     member.activityEntered, member.enteredAt = true, now
-    member.pace = pace(member.username, self.round, self.activity.id)
+    member.pace = self.activity.id == "sprint" and 0 or pace(member.username, self.round, self.activity.id)
+    member.raceStatus = self.activity.id == "sprint" and "racing" or "waiting"
+    member.checkpointAt = now
     self.activityEntrants = self.activityEntrants + 1
     self.teamTarget = self.activityEntrants * self.activity.teamPerMember
 end
@@ -223,15 +232,11 @@ function Realm:tick(now)
         for _, key in ipairs(self.crewOrder) do
             local member = self.crew[key]
             self:credit(member, self:rate(member) * elapsed)
-            if self.config.AutoActivities and self.phase == "storm" and member.activityEntered then
+            if self.config.AutoActivities and self.phase == "storm" and member.activityEntered and self.activity.id ~= "sprint" then
                 local distance = math.max(0, earningEnd - member.enteredAt) * member.pace
-                if self.activity.goal > 0 then distance = math.min(self.activity.goal, distance) end
                 local score = math.floor(distance + 0.000001)
                 self:credit(member, math.max(0, score - member.score) * (self.config.CoinsPerPoint or 2))
                 member.distance, member.score = distance, score
-                if self.activity.goal > 0 and distance >= self.activity.goal then
-                    member.finishedAt = member.enteredAt + self.activity.goal / member.pace
-                end
             end
         end
     end
@@ -240,20 +245,72 @@ function Realm:tick(now)
     self.lastTick = now
 end
 
+-- Only the server's physical controller calls these methods. Elapsed time alone
+-- NEVER advances Sprint or produces a finisher. Reject stale/skipped/replayed gates.
+function Realm:recordCheckpoint(username, checkpoint, at, round)
+    local member = type(username) == "string" and self.crew[string.lower(username)]
+    if self.phase ~= "storm" or self.activity.id ~= "sprint" or round ~= self.round or not member
+        or member.raceStatus ~= "racing" or not member.activityEntered then return false end
+    if type(at) ~= "number" or at ~= at or at < member.checkpointAt or at > self.deadline
+        or type(checkpoint) ~= "number" or checkpoint ~= member.score + 1 or checkpoint > 12 then return false end
+    member.score, member.distance, member.checkpointAt = checkpoint, checkpoint, at
+    self:credit(member, self.config.CoinsPerPoint or 2)
+    if checkpoint == 12 then
+        member.finishedAt, member.raceStatus = at, "finished"
+        self:credit(member, self.config.SprintFinishBonus or 40)
+        for _, row in ipairs(self:activityLeaderboard()) do self.crew[string.lower(row.username)].placement = row.placement end
+    end
+    self.teamScore = 0
+    for _, key in ipairs(self.crewOrder) do self.teamScore = self.teamScore + self.crew[key].score end
+    return true
+end
+
+function Realm:raceDistance(username, distance, round)
+    local member = self.crew[string.lower(username)]
+    if self.phase ~= "storm" or self.activity.id ~= "sprint" or round ~= self.round or not member or member.raceStatus ~= "racing" then return false end
+    if type(distance) ~= "number" or distance ~= distance then return false end
+    member.distance = math.max(member.score, math.min(member.score + 0.999, distance))
+    return true
+end
+
+function Realm:raceDNF(username, round)
+    local member = self.crew[string.lower(username)]
+    if round ~= self.round or self.phase ~= "storm" or not member or member.raceStatus ~= "racing" then return false end
+    member.raceStatus = "dnf"
+    return true
+end
+
+function Realm:raceComplete()
+    if self.phase ~= "storm" or self.activity.id ~= "sprint" or self.activityEntrants == 0 then return false end
+    for _, key in ipairs(self.crewOrder) do
+        local member = self.crew[key]
+        if member.activityEntered and member.raceStatus == "racing" then return false end
+    end
+    return true
+end
+
 function Realm:activityLeaderboard()
     local rows = {}
     for _, key in ipairs(self.crewOrder) do
         local member = self.crew[key]
         if member.activityEntered then
-            table.insert(rows, { username = member.username, score = member.score, distance = member.distance, finishedAt = member.finishedAt, slot = member.slot })
+            table.insert(rows, { username = member.username, score = member.score, distance = member.distance, finishedAt = member.finishedAt, elapsed = member.finishedAt > 0 and member.finishedAt - member.enteredAt or 0, status = member.raceStatus, slot = member.slot })
         end
     end
     table.sort(rows, function(a, b)
+        if self.activity.id == "sprint" and (a.finishedAt > 0) ~= (b.finishedAt > 0) then return a.finishedAt > 0 end
         if a.score ~= b.score then return a.score > b.score end
         if a.finishedAt > 0 and b.finishedAt > 0 and a.finishedAt ~= b.finishedAt then return a.finishedAt < b.finishedAt end
         if a.distance ~= b.distance then return a.distance > b.distance end
         return a.slot < b.slot
     end)
+    local lastTime, place = nil, 0
+    for i, row in ipairs(rows) do
+        if row.finishedAt > 0 then
+            if row.finishedAt ~= lastTime then place = i end
+            row.placement, lastTime = place, row.finishedAt
+        else row.placement = 0 end
+    end
     return rows
 end
 
@@ -326,12 +383,12 @@ function Realm:bless(kind, now)
 end
 
 function Realm:advance(now)
-    if now < self.deadline then return false end
+    if now < self.deadline and not self:raceComplete() then return false end
     self:tick(now)
     if self.phase == "gathering" then
         self.phase = "voting"
         self.round = self.round + 1
-        self.activity = activities[((self.round - 1) % #activities) + 1]
+        self.activity = self.config.SprintOnly == true and activities[2] or activities[((self.round - 1) % #activities) + 1]
         self.activityEntrants, self.teamScore, self.teamTarget = 0, 0, 0
         self.votes = {}
         self.totals = { ward = 0, sail = 0 }
@@ -340,6 +397,7 @@ function Realm:advance(now)
             self.crew[key].participated = false
             self.crew[key].activityEntered = false
             self.crew[key].score, self.crew[key].distance, self.crew[key].finishedAt = 0, 0, 0
+            self.crew[key].raceStatus, self.crew[key].placement = "waiting", 0
         end
         self.requiredVotes = math.max(1, math.ceil(#self.crewOrder / 3))
         self.deadline = now + self.config.VotingSeconds
@@ -349,11 +407,16 @@ function Realm:advance(now)
         self.phase = "storm"
         self.activityStarted = now
         if self.config.AutoActivities then
-            for _, key in ipairs(self.crewOrder) do self:enterActivity(self.crew[key], now) end
+            local count = #self.crewOrder
+            local limit = self.activity.id == "sprint" and math.min(count, self.config.SprintCompetitors or 5) or count
+            for i = 1, limit do
+                local slot = self.activity.id == "sprint" and (((self.round - 1) * limit + i - 1) % count + 1) or i
+                self:enterActivity(self.crew[self.crewOrder[slot]], now)
+            end
         end
         self.choice = self.totals.sail > self.totals.ward and "sail" or "ward"
         self.success = self.totals.ward + self.totals.sail >= self.requiredVotes
-        self.deadline = now + self.config.StormSeconds
+        self.deadline = now + (self.activity.id == "sprint" and (self.config.SprintRaceSeconds or 80) or self.config.StormSeconds)
         self.message = self.config.AutoActivities and self.activity.instruction
             or (self.choice == "ward" and "The crew raises a starlight ward!" or "The island rides the storm winds!")
     elseif self.phase == "storm" then
@@ -361,13 +424,25 @@ function Realm:advance(now)
         self.winners = {}
         if self.config.AutoActivities then
             local ranking = self:activityLeaderboard()
-            for i = 1, math.min(3, #ranking) do
-                local row = ranking[i]
-                local prize = (self.config.RoundPrizes or { 120, 75, 40 })[i] or 0
-                self:credit(self.crew[string.lower(row.username)], prize)
-                table.insert(self.winners, { username = row.username, score = row.score, prize = prize, slot = row.slot })
+            for i, row in ipairs(ranking) do
+                if self.activity.id ~= "sprint" or row.finishedAt > 0 then
+                    local place = self.activity.id == "sprint" and row.placement or i
+                    local prize = (self.config.RoundPrizes or { 120, 75, 40 })[place] or 0
+                    local member = self.crew[string.lower(row.username)]
+                    member.placement = place
+                    self:credit(member, prize)
+                    if place == 1 then member.roundWins = member.roundWins + 1 end
+                    if #self.winners < 3 then
+                        table.insert(self.winners, { username = row.username, score = row.score, prize = prize, slot = row.slot,
+                            elapsed = row.elapsed, finishedAt = row.finishedAt, placement = place })
+                    end
+                end
             end
-            if ranking[1] then self.crew[string.lower(ranking[1].username)].roundWins = self.crew[string.lower(ranking[1].username)].roundWins + 1 end
+            if self.activity.id == "sprint" then
+                for _, key in ipairs(self.crewOrder) do
+                    if self.crew[key].raceStatus == "racing" then self.crew[key].raceStatus = "dnf" end
+                end
+            end
             self.success = self.success or (self.activityEntrants > 0 and self.teamScore >= self.teamTarget)
         end
         self.lastRound = self:leaderboard(true)
@@ -397,7 +472,9 @@ function Realm:snapshot(now)
             effect = now < member.effectUntil and member.effect or "",
             slot = member.slot, score = member.score, distance = member.distance, pace = member.pace,
             roundWins = member.roundWins, activityEntered = member.activityEntered,
-            finished = member.finishedAt > 0,
+            finished = member.finishedAt > 0, finishedAt = member.finishedAt,
+            elapsed = member.finishedAt > 0 and member.finishedAt - member.enteredAt or 0,
+            raceStatus = member.raceStatus, placement = member.placement,
         })
     end
     local lastRound = {}
@@ -405,7 +482,7 @@ function Realm:snapshot(now)
         table.insert(lastRound, { username = row.username, money = row.money, perSecond = row.perSecond, gifts = row.gifts, slot = row.slot })
     end
     local winners = {}
-    for _, row in ipairs(self.winners) do table.insert(winners, { username = row.username, score = row.score, prize = row.prize, slot = row.slot }) end
+    for _, row in ipairs(self.winners) do table.insert(winners, { username = row.username, score = row.score, prize = row.prize, slot = row.slot, elapsed = row.elapsed, finishedAt = row.finishedAt, placement = row.placement }) end
     return {
         phase = self.phase, seconds = math.max(0, math.ceil(self.deadline - now)),
         round = self.round, crew = crew, wins = self.wins, storms = self.storms,
@@ -419,6 +496,7 @@ function Realm:snapshot(now)
         autoActivities = self.config.AutoActivities == true,
         activity = { id = self.activity.id, name = self.activity.name, instruction = self.activity.instruction, goal = self.activity.goal },
         activityLeaders = self:activityLeaderboard(), winners = winners,
+        physicalSprint = self.config.AutoActivities == true and self.activity.id == "sprint",
         teamScore = self.teamScore, teamTarget = self.teamTarget,
         lastGift = { username = self.lastGift.username, kind = self.lastGift.kind, count = self.lastGift.count, sequence = self.lastGift.sequence },
     }
@@ -432,13 +510,14 @@ return Realm
 Create a **ModuleScript** named **World** under **ServerScriptService**.
 
 ```luau
+local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local TweenService = game:GetService("TweenService")
 local World = {}
 local root, core, gate, rift, shield, constellation, bloom, winds, scoreText
 local monuments = {}
 local avatars = {}
-local scenery = { clouds = {}, runes = {}, ribbons = {}, particles = {}, stars = {}, shrines = {} }
+local scenery = { clouds = {}, runes = {}, ribbons = {}, particles = {}, stars = {}, shrines = {}, sprintObstacles = {} }
 local settings = {}
 local sceneState
 local lastFrame = 0
@@ -516,20 +595,274 @@ local function tree(position, scale)
     end
 end
 
+-- Twelve physical gates, five parallel lanes. All NPCs use identical movement
+-- settings; standings come from sampled roots, never usernames or a timed pace.
+function World.cameraBounds(state)
+    if state.physicalSprint then
+        return { minX = -26, maxX = 26, minY = 54, maxY = 88, minZ = -82, maxZ = 76, yaw = 60 }
+    end
+end
+
+function World.sprintPoint(lane, checkpoint)
+    local rise = ({ 0, 0, 2, 2, 0, 0, 3, 3, 0, 2, 2, 0, 0 })[checkpoint + 1]
+    local bend = math.sin(checkpoint * math.pi / 3) * 2
+    return Vector3.new((lane - 3) * 6 + bend, 68 + rise, 60 - checkpoint * 10)
+end
+
+local function prepareRig(model)
+    for i, object in ipairs(model:GetChildren()) do
+        if object:IsA("Accessory") or object:IsA("Hat") then object.Name = "OutfitAccessory_" .. i end
+    end
+    local main = model:FindFirstChild("HumanoidRootPart")
+    local torso, head = model:FindFirstChild("Torso"), model:FindFirstChild("Head")
+    assert(main and main:IsA("BasePart") and torso and torso:IsA("BasePart") and head and head:IsA("BasePart"), "A Sprint avatar needs an R6 root, torso and head")
+    for _, name in ipairs({ "Left Arm", "Right Arm", "Left Leg", "Right Leg" }) do
+        assert(model:FindFirstChild(name), "Missing R6 limb: " .. name)
+    end
+    model.PrimaryPart = main
+    main.Size = Vector3.new(2, 2, 1)
+    local humanoid = model:FindFirstChildOfClass("Humanoid") or Instance.new("Humanoid")
+    humanoid.Name, humanoid.Parent = "Humanoid", model
+    humanoid.WalkSpeed, humanoid.UseJumpPower, humanoid.JumpPower = 16, true, 50
+    humanoid.HipHeight, humanoid.MaxSlopeAngle = 0, 40
+    humanoid.BreakJointsOnDeath, humanoid.RequiresNeck = false, false
+    humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+    if not main:FindFirstChild("RootJoint") then
+        local joints = {
+            { "RootJoint", main, torso, CFrame.new(), CFrame.new() },
+            { "Neck", torso, head, CFrame.new(0, 1, 0), CFrame.new(0, -0.5, 0) },
+            { "Left Shoulder", torso, model["Left Arm"], CFrame.new(-1.5, 0.5, 0), CFrame.new(0, 0.5, 0) },
+            { "Right Shoulder", torso, model["Right Arm"], CFrame.new(1.5, 0.5, 0), CFrame.new(0, 0.5, 0) },
+            { "Left Hip", torso, model["Left Leg"], CFrame.new(-0.5, -1, 0), CFrame.new(0, 1, 0) },
+            { "Right Hip", torso, model["Right Leg"], CFrame.new(0.5, -1, 0), CFrame.new(0, 1, 0) },
+        }
+        for _, spec in ipairs(joints) do
+            local joint = Instance.new("Motor6D")
+            joint.Name, joint.Part0, joint.Part1, joint.C0, joint.C1 = spec[1], spec[2], spec[3], spec[4], spec[5]
+            joint.Parent = spec[2]
+        end
+    end
+    if not model:FindFirstChild("RaceCollider") then
+        local collider = part("RaceCollider", Vector3.new(2, 5, 2), main.CFrame * CFrame.new(0, -0.5, 0), colors.mint, Enum.Material.SmoothPlastic, model)
+        collider.Transparency = 1
+        local weld = Instance.new("WeldConstraint")
+        weld.Part0, weld.Part1, weld.Parent = main, collider, collider
+    end
+    if not model:FindFirstChild("GiftAura") then
+        local glow = Instance.new("Highlight")
+        glow.Name, glow.FillTransparency, glow.OutlineColor, glow.Enabled, glow.Parent = "GiftAura", 0.8, colors.mint, false, model
+        local crown = part("Winner crown", Vector3.new(2.4, 0.3, 1.3), main.CFrame * CFrame.new(0, 2.5, 0), colors.gold, Enum.Material.Neon, model)
+        crown.Transparency = 1
+        for i = 1, 3 do
+            local spike = part("Crown spike " .. i, Vector3.new(0.3, 0.7, 0.3), main.CFrame * CFrame.new((i - 2) * 0.8, 2.9, 0), colors.gold, Enum.Material.Neon, model)
+            spike.Transparency = 1
+        end
+        ball("Relay energy", main.Position + Vector3.new(0, 0, -1.5), 0.9, colors.mint, 1, model)
+    end
+    for _, object in ipairs(model:GetDescendants()) do
+        if object:IsA("Script") or object:IsA("LocalScript") or object:IsA("ModuleScript") or object:IsA("Tool") then object:Destroy()
+        elseif object:IsA("BasePart") then
+            object.Anchored, object.CanCollide, object.Massless = true, false, object ~= main
+            if object.Name == "Winner crown" or string.match(object.Name, "^Crown spike") or object.Name == "Relay energy" then
+                local weld = Instance.new("WeldConstraint")
+                weld.Part0, weld.Part1, weld.Parent = main, object, object
+            end
+        end
+    end
+    return model
+end
+
+local function physical(record, enabled)
+    record.physical = enabled
+    local model = record.model
+    local main, humanoid = model.PrimaryPart, model:FindFirstChildOfClass("Humanoid")
+    if humanoid and humanoid.Health > 0 then humanoid:MoveTo(main.Position) end
+    for _, object in ipairs(model:GetDescendants()) do
+        if object:IsA("BasePart") then
+            object.Anchored, object.CanCollide = not enabled, enabled and object.Name == "RaceCollider"
+        elseif object:IsA("Motor6D") or object:IsA("Weld") or object:IsA("WeldConstraint") then
+            object.Enabled = enabled
+        end
+    end
+    if enabled then
+        -- Server owns every racer. Player inputs/clients cannot move an NPC.
+        main:SetNetworkOwner(nil)
+        main.AssemblyLinearVelocity, main.AssemblyAngularVelocity = Vector3.new(), Vector3.new()
+    end
+end
+
+function World.loadAppearance(username, userId)
+    local record = avatars[string.lower(username)]
+    if not record or record.appearanceAttempted or settings.LoadAvatarAppearances ~= true
+        or type(userId) ~= "number" or userId < 1 or userId ~= math.floor(userId) then return end
+    record.appearanceAttempted = true
+    local deadline = os.clock() + (settings.AppearanceTimeoutSeconds or 8)
+    task.spawn(function()
+        if os.clock() > deadline or not root.Parent then return end
+        local description, model
+        local ok, issue = pcall(function()
+            -- Explicitly optional Roblox appearance APIs; no custom HTTP/TikTok.
+            description = Players:GetHumanoidDescriptionFromUserIdAsync(userId)
+            description.HeightScale, description.WidthScale, description.DepthScale, description.HeadScale = 1, 1, 1, 1
+            description.BodyTypeScale, description.ProportionScale = 0, 0
+            if os.clock() > deadline then return end
+            model = Players:CreateHumanoidModelFromDescriptionAsync(description, Enum.HumanoidRigType.R6)
+            if os.clock() <= deadline and root.Parent and avatars[string.lower(username)] == record then
+                prepareRig(model)
+                record.pendingAppearance = model -- install only between races
+                model = nil
+            end
+        end)
+        if description then description:Destroy() end
+        if model then model:Destroy() end
+        if not ok then warn("[Riftbound appearance] " .. username .. ": fallback kept (" .. tostring(issue) .. ")") end
+    end)
+end
+
+local function buildSprint()
+    local course = Instance.new("Model")
+    course.Name, course.Parent = "SkybridgeSprint", root
+    local start = part("START platform", Vector3.new(38, 2, 16), CFrame.new(0, 64, 63), colors.stone, Enum.Material.Slate, course)
+    label(start, "SKYBRIDGE SPRINT / START", Vector3.new(0, 8, 0), colors.gold, 300)
+    for checkpoint = 1, 12 do
+        for lane = 1, 5 do
+            local point = World.sprintPoint(lane, checkpoint)
+            local p = part("Lane " .. lane .. " checkpoint " .. checkpoint, Vector3.new(5.4, 1, 8),
+                CFrame.new(point - Vector3.new(0, 3.5, 0)), checkpoint % 2 == 0 and colors.violet or colors.mint, Enum.Material.Slate, course)
+            local edge = part("Checkpoint glow", Vector3.new(5.4, 0.12, 0.4), p.CFrame * CFrame.new(0, 0.55, -3.8), colors.gold, Enum.Material.Neon, course)
+            edge.CanCollide = false
+        end
+        for _, sign in ipairs({ -1, 1 }) do
+            local point = World.sprintPoint(3, checkpoint)
+            part("Bridge support", Vector3.new(0.5, 3.8, 0.5), CFrame.new(sign * 18, point.Y - 5, point.Z), colors.stone, Enum.Material.Metal, course)
+        end
+    end
+    for i, checkpoint in ipairs({ 4, 8, 10 }) do
+        local point = World.sprintPoint(3, checkpoint)
+        -- Tall sliding gates must be waited out; an automatic jump cannot clear
+        -- every obstacle. Real contact/timing changes the observed race outcome.
+        local obstacle = part("Moving wind gate " .. i, Vector3.new(3, 10, 2), CFrame.new(0, point.Y + 2, point.Z + 3), colors.gold, Enum.Material.Neon, course)
+        table.insert(scenery.sprintObstacles, { part = obstacle, point = point, phase = i * 2.1 })
+    end
+    part("FINISH island", Vector3.new(42, 3, 24), CFrame.new(0, 63, -68), colors.grass, Enum.Material.Grass, course)
+    for _, x in ipairs({ -19, 19 }) do
+        part("Finish arch column", Vector3.new(1.5, 16, 1.5), CFrame.new(x, 72, -60), colors.gold, Enum.Material.Neon, course)
+    end
+    part("Finish arch", Vector3.new(39, 1.5, 2), CFrame.new(0, 80, -60), colors.mint, Enum.Material.Neon, course)
+    for rank, x in ipairs({ 0, -9, 9 }) do
+        local h = ({ 4, 2.5, 1.5 })[rank]
+        part("Sprint podium " .. rank, Vector3.new(7, h, 7), CFrame.new(x, 64.5 + h / 2, -70), rank == 1 and colors.gold or colors.stone, Enum.Material.Marble, course)
+    end
+    -- Decorative undersides and crystals: no downloaded map assets.
+    for _, z in ipairs({ -66, -30, 20, 63 }) do
+        crystal(Vector3.new(-20, 66, z), 0.8, colors.violet)
+        crystal(Vector3.new(20, 66, z), 0.8, colors.mint)
+    end
+end
+
+local function resetRacer(record, member, lane, now)
+    local point = World.sprintPoint(lane, member.score)
+    local target = World.sprintPoint(lane, math.min(12, member.score + 1))
+    record.model:PivotTo(CFrame.lookAt(point + Vector3.new(0, 1, 0), target))
+    local main = record.model.PrimaryPart
+    main.AssemblyLinearVelocity, main.AssemblyAngularVelocity = Vector3.new(), Vector3.new()
+    record.race.position, record.race.sampleAt, record.race.lastMoved = main.Position, now, now
+    record.race.lastJump, record.race.lastCommand = now - 1, 0
+    record.model.Humanoid.Jump = false
+end
+
+function World.sprintStep(state, now)
+    if state.phase ~= "storm" or state.activity.id ~= "sprint" then return end
+    local lane = 0
+    for _, key in ipairs(state.crewOrder) do
+        local member, record = state.crew[key], avatars[key]
+        if member.activityEntered then
+            lane = lane + 1
+            if not record or not record.model.PrimaryPart or not record.model:FindFirstChild("Head") or not record.model:FindFirstChildOfClass("Humanoid") then
+                state:raceDNF(member.username, state.round)
+            else
+                local model, humanoid = record.model, record.model:FindFirstChildOfClass("Humanoid")
+                if not record.race or record.race.round ~= state.round then
+                    if record.scale ~= 1 then model:ScaleTo(1); record.scale = 1 end
+                    local rotatedLane = ((lane + state.round - 2) % 5) + 1
+                    record.race = { round = state.round, lane = rotatedLane }
+                    physical(record, true)
+                    resetRacer(record, member, rotatedLane, now)
+                end
+                local race, main = record.race, model.PrimaryPart
+                if member.raceStatus == "racing" then
+                    if humanoid.Health <= 0 then state:raceDNF(member.username, state.round)
+                    else
+                        local position = main.Position
+                        local dt = math.max(0.001, now - race.sampleAt)
+                        if position.Y < 54 or math.abs(position.X) > 26 or math.abs(position.Z) > 76
+                            or (position - race.position).Magnitude > math.max(8, dt * 90) or now - race.lastMoved > 6 then
+                            resetRacer(record, member, race.lane, now)
+                            position = main.Position
+                        end
+                        local nextGate = member.score + 1
+                        local target = World.sprintPoint(race.lane, nextGate)
+                        local delta = target - position
+                        local horizontal = Vector3.new(delta.X, 0, delta.Z).Magnitude
+                        local passed, at = false, now
+                        if nextGate == 12 then
+                            if race.position.Z > target.Z and position.Z <= target.Z and math.abs(delta.X) <= 2.8 and math.abs(delta.Y) <= 4 then
+                                local fraction = (race.position.Z - target.Z) / math.max(0.0001, race.position.Z - position.Z)
+                                at = race.sampleAt + (now - race.sampleAt) * math.max(0, math.min(1, fraction))
+                                passed = true
+                            end
+                        else passed = horizontal <= 2.8 and math.abs(delta.Y) <= 3.5 and humanoid.FloorMaterial ~= Enum.Material.Air end
+                        if passed then state:recordCheckpoint(member.username, nextGate, at, state.round) end
+                        if (position - race.position).Magnitude > 0.08 then race.lastMoved = now end
+                        if member.raceStatus == "racing" then
+                            local from = World.sprintPoint(race.lane, member.score)
+                            local to = World.sprintPoint(race.lane, member.score + 1)
+                            local segment = Vector3.new(to.X - from.X, 0, to.Z - from.Z)
+                            local offset = Vector3.new(position.X - from.X, 0, position.Z - from.Z)
+                            state:raceDistance(member.username, member.score + offset:Dot(segment) / segment:Dot(segment), state.round)
+                            if now - race.lastCommand > 0.4 then
+                                local goal = World.sprintPoint(race.lane, member.score + 1)
+                                if member.score == 11 then goal = goal + Vector3.new(0, 0, -4) end
+                                humanoid:MoveTo(goal)
+                                race.lastCommand = now
+                            end
+                            local jumpGoal = World.sprintPoint(race.lane, member.score + 1)
+                            local jumpDelta = jumpGoal - position
+                            local jumpDistance = Vector3.new(jumpDelta.X, 0, jumpDelta.Z).Magnitude
+                            if jumpDistance <= 8 and jumpDistance >= 3 and now - race.lastJump > 0.4 and humanoid.FloorMaterial ~= Enum.Material.Air then
+                                humanoid.Jump, race.lastJump = true, now
+                            end
+                        end
+                        race.position, race.sampleAt = position, now
+                    end
+                end
+                if member.raceStatus ~= "racing" and record.physical then
+                    record.frame = main.CFrame
+                    physical(record, false)
+                end
+            end
+        end
+    end
+end
+
 function World.build(config)
     settings = config or {}
-    root = Instance.new("Folder")
-    root.Name, root.Parent = "RiftboundRealm", workspace
+    root = Instance.new("Model")
+    root.Name = "RiftboundRealm"
+    root.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
+    root.Parent = workspace
+    Lighting.FogStart, Lighting.FogEnd = 1000, 5000
     Lighting.ClockTime, Lighting.Brightness = 18.3, 2
     Lighting.GlobalShadows = true
     Lighting.Ambient = Color3.fromRGB(111, 109, 148)
     Lighting.OutdoorAmbient = Color3.fromRGB(116, 133, 158)
     local atmosphere = Instance.new("Atmosphere")
-    atmosphere.Density, atmosphere.Offset = 0.3, 0.2
+    atmosphere.Density, atmosphere.Offset = 0.15, 0
     atmosphere.Color, atmosphere.Decay = Color3.fromRGB(170, 213, 233), Color3.fromRGB(89, 74, 130)
     atmosphere.Parent = Lighting
     local glow = Instance.new("BloomEffect")
     glow.Intensity, glow.Size, glow.Threshold, glow.Parent = 0.45, 32, 1.3, Lighting
+    buildSprint()
     island(Vector3.new(0, 32, 0), 50)
     island(Vector3.new(87, 36, 21), 23)
     island(Vector3.new(-85, 28, -20), 21)
@@ -700,7 +1033,7 @@ function World.offlineAvatar(username)
         spike.Transparency, spike.CanCollide = 1, false
     end
     local orb = ball("Relay energy", Vector3.new(0, 0, -1.5), 0.9, colors.mint, 1, model)
-    return model
+    return prepareRig(model)
 end
 
 local function number(value)
@@ -739,7 +1072,7 @@ function World.arrive(model, slot, username)
     popText.TextWrapped, popText.TextTruncate, popText.Parent = false, Enum.TextTruncate.AtEnd, caption
     avatars[string.lower(username)] = {
         model = model, slot = slot, arrivedAt = os.clock(), frame = model:GetPivot(),
-        balance = 0, popText = popText, scale = 1,
+        balance = 0, popText = popText, scale = 1, username = username,
     }
 end
 
@@ -757,9 +1090,25 @@ local function destination(member, state, now, scale)
     if state.phase == "result" then
         for rank, row in ipairs(state.winners or {}) do
             if row.username == member.username then
-                return Vector3.new(({ 0, -9, 9 })[rank], y + ({ 4, 2.5, 1.5 })[rank], 14), true
+                return Vector3.new(({ 0, -9, 9 })[rank], (state.activity.id == "sprint" and 65 or 35) + 3 * scale + ({ 4, 2.5, 1.5 })[rank], state.activity.id == "sprint" and -70 or 14), true
             end
         end
+    end
+    if state.activity.id == "sprint" then
+        if state.phase == "voting" or state.phase == "gathering" then
+            local count, selected = #state.members, {}
+            local limit = math.min(count, settings.SprintCompetitors or 5)
+            local nextRound = state.phase == "gathering" and state.round + 1 or state.round
+            for i = 1, limit do selected[((nextRound - 1) * limit + i - 1) % count + 1] = true end
+            local lane = 0
+            for i, row in ipairs(state.members) do
+                if selected[i] then
+                    lane = lane + 1
+                    if row.username == member.username then return World.sprintPoint(((lane + nextRound - 2) % 5) + 1, 0), false end
+                end
+            end
+        end
+        return World.crewPosition(member.slot).Position, false
     end
     if state.autoActivities and (state.phase == "voting" or (state.phase == "storm" and member.activityEntered)) then
         local distance = member.distance
@@ -801,9 +1150,25 @@ function World.render(state, now)
     end
     sessionText.Text = table.concat(sessionLines, "\n")
     for _, member in ipairs(state.members) do
-        local record = avatars[string.lower(member.username)]
+        local key = string.lower(member.username)
+        local record = avatars[key]
+        if record and state.phase ~= "storm" and (record.pendingAppearance or not record.model.PrimaryPart
+            or not record.model:FindFirstChild("Head") or not record.model:FindFirstChildOfClass("Humanoid") or record.model.Humanoid.Health <= 0) then
+            local replacement, old = record.pendingAppearance or World.offlineAvatar(member.username), record.model
+            local balance = record.balance
+            local queuedGiant, deferredGiantUntil = record.queuedGiant, record.deferredGiantUntil
+            World.arrive(replacement, record.slot, member.username)
+            old:Destroy()
+            record = avatars[key]
+            record.balance, record.appearanceAttempted = balance, true
+            record.queuedGiant, record.deferredGiantUntil = queuedGiant, deferredGiantUntil
+        end
         if record then
             local model = record.model
+            if record.physical and not (state.phase == "storm" and state.activity.id == "sprint") then
+                record.frame = model.PrimaryPart.CFrame
+                physical(record, false)
+            end
             local delta = member.balance - record.balance
             if delta >= 0.5 and now >= (record.nextPop or 0) then
                 if record.fade then record.fade:Cancel(); record.rise:Cancel() end
@@ -814,9 +1179,15 @@ function World.render(state, now)
                 record.fade:Play(); record.rise:Play()
                 record.balance, record.nextPop = member.balance, now + 1.05
             end
-            local targetScale = member.effect == "giant" and 1.85 or 1
+            local racing = state.phase == "storm" and state.activity.id == "sprint"
+            if racing and member.effect == "giant" then record.queuedGiant = true end
+            if not racing and record.queuedGiant then
+                record.deferredGiantUntil, record.queuedGiant = now + 6, false
+            end
+            local giant = member.effect == "giant" or now < (record.deferredGiantUntil or 0)
+            local targetScale = giant and not racing and 1.85 or 1
             if record.scale ~= targetScale then model:ScaleTo(targetScale); record.scale = targetScale end
-            model.GiftAura.Enabled = member.effect ~= ""
+            model.GiftAura.Enabled = member.effect ~= "" or now < (record.deferredGiantUntil or 0)
             model.GiftAura.OutlineColor = member.effect == "aurora" and colors.violet or colors.gold
         end
     end
@@ -837,6 +1208,9 @@ function World.animate(now)
     core.CFrame = CFrame.new(0, 42 + math.sin(now * 1.2) * 0.6, 0) * CFrame.Angles(0, now * 0.3, 0.12)
     shield.Transparency = storm and state.choice == "ward" and 0.88 or 1
     gate.Transparency = 0.6 + math.sin(now) * 0.08
+    for _, obstacle in ipairs(scenery.sprintObstacles) do
+        obstacle.part.CFrame = CFrame.new(math.sin(now * 1.2 + obstacle.phase) * 16, obstacle.point.Y + 2, obstacle.point.Z + 3)
+    end
     for i, cloud in ipairs(scenery.clouds) do
         local a = cloud.angle + now * 0.006
         cloud.model:PivotTo(CFrame.new(math.cos(a) * (88 + i * 3), cloud.height + math.sin(now * 0.13 + i), math.sin(a) * (88 + i * 3)))
@@ -866,14 +1240,27 @@ function World.animate(now)
         p.Transparency = (celebration or gifted) and 0.15 or 1
         if celebration or gifted then
             local a = i * 2.399 + now * 0.6
-            local radius = celebration and 16 or 25
-            p.CFrame = CFrame.new(math.cos(a) * radius, 37 + ((now * (celebration and 8 or 5) + i * 2) % 30), 10 + math.sin(a) * radius)
+            local radius = celebration and (state.activity.id == "sprint" and 12 or 16) or 25
+            local baseY = state.activity.id == "sprint" and 68 or 37
+            local baseZ = state.activity.id == "sprint" and (celebration and -70 or 0) or 10
+            p.CFrame = CFrame.new(math.cos(a) * radius, baseY + ((now * (celebration and 8 or 5) + i * 2) % (state.activity.id == "sprint" and 18 or 30)), baseZ + math.sin(a) * radius)
             p.Color = Color3.fromHSV((i / 36 + now * 0.03) % 1, 0.5, 1)
         end
     end
     for _, member in ipairs(state.members) do
         local record = avatars[string.lower(member.username)]
         if record then
+            if state.activity.id == "sprint" and state.phase == "storm" and record.race and record.race.round == state.round then
+                -- Physics owns the root. Only pose the massless limbs for walking.
+                local speed = record.model.PrimaryPart and record.model.PrimaryPart.AssemblyLinearVelocity.Magnitude or 0
+                local gait = speed > 1 and math.sin(now * 9) * 0.45 or 0
+                for _, joint in ipairs(record.model:GetDescendants()) do
+                    if joint:IsA("Motor6D") and (string.find(joint.Name, "Shoulder") or string.find(joint.Name, "Hip")) then
+                        if not joint:GetAttribute("SprintBaseC0") then joint:SetAttribute("SprintBaseC0", joint.C0) end
+                        joint.C0 = joint:GetAttribute("SprintBaseC0") * CFrame.Angles(gait * (string.find(joint.Name, "Left") and 1 or -1), 0, 0)
+                    end
+                end
+            else
             local target, winner = destination(member, state, now, record.scale)
             local age = now - record.arrivedAt
             if age < 2 then target = Vector3.new(0, 38, -25):Lerp(target, math.min(1, age / 2)) end
@@ -899,6 +1286,7 @@ function World.animate(now)
             for i = 1, 3 do model["Crown spike " .. i].Transparency = winner and 0 or 1 end
             model["Relay energy"].Transparency = storm and state.activity.id == "relay" and member.activityEntered and 0 or 1
             model["Relay energy"].CFrame = body * CFrame.new(0, size, -1.5 * size)
+            end
         end
     end
 end
@@ -991,7 +1379,7 @@ local function initialize()
     stage("Requiring World")
     local World = require(script.Parent.World)
     assert(type(World) == "table", "World must return its module table")
-    for _, name in ipairs({ "build", "render", "animate", "offlineAvatar", "arrive" }) do
+    for _, name in ipairs({ "build", "render", "animate", "offlineAvatar", "arrive", "sprintStep", "loadAppearance", "cameraBounds" }) do
         assert(type(World[name]) == "function", "World is missing " .. name .. "(). Replace the entire World ModuleScript with the Phase 2 file.")
     end
     stage("Validating Config")
@@ -1000,11 +1388,13 @@ local function initialize()
         SceneUpdatesPerSecond = 12, SnapshotSeconds = 0.5, AutoActivities = true,
         ActivityMoneyPerSecond = 2, RoundWinMoneyPerSecond = 1, CoinsPerPoint = 2,
         RoundPrizes = { 120, 75, 40 }, OfflineDemoEnabled = true, DemoStudioOnly = true,
-        DemoNames = { "Demo_Astra", "Demo_Lumen", "Demo_Nova", "Demo_Fern", "Demo_Orion", "Demo_Lyra" },
+        DemoNames = { "Demo_Astra", "Demo_Lumen", "Demo_Nova", "Demo_Fern", "Demo_Orion" },
         AutoSimulateGifts = true, DemoGiftSeconds = 18, StreamCameraDefault = true, HostUserIds = {},
         BaseMoneyPerSecond = 5, VoteMoneyPerSecond = 3, WinMoneyPerSecond = 2,
         MaxMoneyPerSecond = 100, MaxBalance = 1000000000, MaxCrew = 18, MaxQueuedArrivals = 30,
-        PersistenceEnabled = false,
+        PersistenceEnabled = false, AutoJoinPlayers = true, SprintOnly = true, SprintCompetitors = 5, SprintRaceSeconds = 80,
+        SprintFinishBonus = 40, LoadAvatarAppearances = false, AppearanceTimeoutSeconds = 8,
+        DemoAppearanceUserIds = { 1, 156, 261, 2, 3 },
     }
     for name, value in pairs(defaults) do if Config[name] == nil then Config[name] = value end end
     assert(Config.PersistenceEnabled == false, "PersistenceEnabled must stay false; this game has no save implementation")
@@ -1014,6 +1404,11 @@ local function initialize()
             "Config." .. name .. " must be a finite number from " .. minimum .. " to " .. maximum)
     end
     for _, name in ipairs({ "GatheringSeconds", "VotingSeconds", "StormSeconds", "ResultSeconds" }) do range(name, 0.1, 3600) end
+    range("SprintRaceSeconds", 10, 600)
+    range("SprintCompetitors", 1, 5)
+    assert(Config.SprintCompetitors == math.floor(Config.SprintCompetitors), "SprintCompetitors must be a whole number")
+    range("SprintFinishBonus", 0, 1000000)
+    range("AppearanceTimeoutSeconds", 1, 30)
     range("SceneUpdatesPerSecond", 4, 30)
     range("SnapshotSeconds", 0.25, 5)
     range("DemoGiftSeconds", 5, 3600)
@@ -1023,15 +1418,17 @@ local function initialize()
     for _, name in ipairs({ "BaseMoneyPerSecond", "VoteMoneyPerSecond", "WinMoneyPerSecond", "ActivityMoneyPerSecond", "RoundWinMoneyPerSecond", "CoinsPerPoint" }) do range(name, 0, 1000) end
     range("MaxMoneyPerSecond", 1, 1000)
     range("MaxBalance", 1, 1000000000)
-    for _, name in ipairs({ "AutoActivities", "OfflineDemoEnabled", "DemoStudioOnly", "AutoSimulateGifts", "StreamCameraDefault" }) do
+    for _, name in ipairs({ "AutoActivities", "OfflineDemoEnabled", "DemoStudioOnly", "AutoSimulateGifts", "StreamCameraDefault", "SprintOnly", "LoadAvatarAppearances", "AutoJoinPlayers" }) do
         assert(type(Config[name]) == "boolean", "Config." .. name .. " must be true or false")
     end
+    assert(type(Config.DemoAppearanceUserIds) == "table", "DemoAppearanceUserIds must be a table")
+    for _, id in ipairs(Config.DemoAppearanceUserIds) do assert(type(id) == "number" and id > 0 and id < 9007199254740991 and id == math.floor(id), "Appearance IDs must be positive whole numbers") end
     assert(type(Config.HostUserIds) == "table" and type(Config.DemoNames) == "table" and type(Config.RoundPrizes) == "table", "HostUserIds, DemoNames and RoundPrizes must be tables")
-    for _, name in ipairs(Config.DemoNames) do assert(type(name) == "string" and #name >= 3 and #name <= 20 and string.match(name, "^[%w_]+$"), "DemoNames contains an invalid username label") end
+    for i, name in ipairs(Config.DemoNames) do assert(type(name) == "string" and #name >= 3 and #name <= 20 and string.match(name, "^[%w_]+$"), "DemoNames contains an invalid username label") end
     for i = 1, 3 do assert(type(Config.RoundPrizes[i]) == "number" and Config.RoundPrizes[i] >= 0 and Config.RoundPrizes[i] <= 1000000, "RoundPrizes needs three finite nonnegative amounts") end
     stage("Creating RealmState")
     local state = Realm.new(Config, os.clock())
-    for _, name in ipairs({ "tick", "advance", "snapshot", "addCrew", "vote", "gift", "follow", "bless" }) do
+    for _, name in ipairs({ "tick", "advance", "snapshot", "addCrew", "vote", "gift", "follow", "bless", "recordCheckpoint", "raceDistance", "raceComplete", "raceDNF" }) do
         assert(type(state[name]) == "function", "RealmState is missing " .. name .. "(). Replace its complete Phase 2 source.")
     end
     local initial = state:snapshot(os.clock())
@@ -1054,6 +1451,7 @@ local function initialize()
         local snapshot = state:snapshot(now)
         snapshot.persistence, snapshot.bridge = "memory only", "offline simulator"
         snapshot.demo, snapshot.streamCamera = demoEnabled == true, Config.StreamCameraDefault
+        snapshot.cameraBounds = World.cameraBounds(snapshot)
         World.render(snapshot, now)
         snapshotRemote:FireAllClients(snapshot)
     end
@@ -1062,23 +1460,24 @@ local function initialize()
         if player and player.Parent then noticeRemote:FireClient(player, message) end
     end
 
-    local function arrival(username)
+    local function arrival(username, appearanceUserId)
         if type(username) ~= "string" or #username < 3 or #username > 20 or not string.match(username, "^[%w_]+$") then
             return false, "Enter a Roblox username, not a display name."
         end
         if state.crew[string.lower(username)] then return false, "That traveler is already here." end
         if #state.crewOrder >= Config.MaxCrew then return false, "The island is full for this session." end
-        local userId = 0 -- Offline labels are not verified Roblox accounts.
+        local userId = type(appearanceUserId) == "number" and appearanceUserId or 0 -- appearance source only, never a LIVE identity.
         local model = World.offlineAvatar(username)
         state:tick(os.clock())
         local added, member = state:addCrew(username, userId)
         if not added then model:Destroy(); return false, member end
         World.arrive(model, member.slot, username)
+        World.loadAppearance(username, userId)
         return true, username .. " arrived through the star gate."
     end
 
     local function apply(event)
-        if event.type == "join" then return arrival(event.username) end
+        if event.type == "join" then return arrival(event.username, event.appearanceUserId) end
         if event.type == "vote" then return state:vote("live:" .. event.viewer, event.choice, event.username, os.clock()) end
         if event.type == "blessing" then return state:bless(event.kind, os.clock()) end
         if event.type == "gift" then return state:gift(event.username, event.kind, event.count, os.clock()) end
@@ -1134,7 +1533,9 @@ local function initialize()
         if not running then return end
         player:SetAttribute("RiftboundHost", host(player))
         player:SetAttribute("RiftboundStreamCamera", Config.StreamCameraDefault)
-        enqueue({ type = "join", username = player.Name }, function(_, message) notify(player, message) end)
+        if Config.AutoJoinPlayers then
+            enqueue({ type = "join", username = player.Name, appearanceUserId = player.UserId }, function(_, message) notify(player, message) end)
+        end
     end
     Players.PlayerAdded:Connect(playerAdded)
     for _, player in ipairs(Players:GetPlayers()) do task.spawn(playerAdded, player) end
@@ -1178,9 +1579,9 @@ local function initialize()
     task.spawn(function()
         if not demoEnabled then return end
         task.wait(2)
-        for _, name in ipairs(Config.DemoNames) do
+        for i, name in ipairs(Config.DemoNames) do
             if not running then return end
-            enqueue({ type = "join", username = name })
+            enqueue({ type = "join", username = name, appearanceUserId = Config.DemoAppearanceUserIds[i] })
             task.wait(0.65)
         end
         if not Config.AutoSimulateGifts then return end
@@ -1197,9 +1598,14 @@ local function initialize()
         end
     end)
 
-    local sceneAccumulator = 0
+    local sceneAccumulator, raceAccumulator = 0, 0
     table.insert(connections, RunService.Heartbeat:Connect(function(dt)
         sceneAccumulator = sceneAccumulator + dt
+        raceAccumulator = raceAccumulator + dt
+        if running and raceAccumulator >= 0.05 then
+            raceAccumulator = 0
+            if not guarded("Observing physical Sprint", function() World.sprintStep(state, os.clock()) end) then return end
+        end
         if running and sceneAccumulator >= 1 / Config.SceneUpdatesPerSecond then
             sceneAccumulator = 0
             guarded("Animating World", function() World.animate(os.clock()) end)
@@ -1331,37 +1737,42 @@ local function fits(rect, occupied, bounds, gap)
 end
 -- Fit the main island (including bedrock), avatar routes and giant rigs into the
 -- clear arena rectangle. Side islands remain scenery, not a reason to shrink racers.
-local function arenaCamera(width, height)
+local function arenaCamera(width, height, bounds)
     local scale, ox, oy = viewportLayout(width, height)
     local area = screenRect(Layout.arena, scale, ox, oy)
     local tanV = math.tan(math.rad(50) / 2)
     local tanH = tanV * width / height
     local elevation = math.rad(52)
     local up, back = math.sin(elevation), math.cos(elevation)
-    local centerY, distance = 26, 100
+    local centerY, distance = bounds and (bounds.minY + bounds.maxY) / 2 or 26, 100
+    local centerX, centerZ = bounds and (bounds.minX + bounds.maxX) / 2 or 0, bounds and (bounds.minZ + bounds.maxZ) / 2 or 0
+    local yaw = math.rad(bounds and bounds.yaw or 0)
+    local c, sn = math.cos(yaw), math.sin(yaw)
     local function project(x, y, z, d, shift)
-        local localY = back * (y - centerY) - up * z
-        local localZ = up * (y - centerY) + back * z
+        local across = c * (x - centerX) - sn * (z - centerZ)
+        local along = sn * (x - centerX) + c * (z - centerZ)
+        local localY = back * (y - centerY) - up * along
+        local localZ = up * (y - centerY) + back * along
         local depth = d - localZ
-        return width / 2 + x * width / (2 * tanH * depth),
+        return width / 2 + across * width / (2 * tanH * depth),
             height / 2 - (localY + shift) * height / (2 * tanV * depth), depth
     end
     for _ = 1, 100 do
         local shift = (0.5 - (area.y + area.h / 2) / height) * 2 * distance * tanV
         local safe = true
-        for _, x in ipairs({ -54, 54 }) do
-            for _, y in ipairs({ -10, 60 }) do
-                for _, z in ipairs({ -54, 54 }) do
+        for _, x in ipairs({ bounds and bounds.minX or -54, bounds and bounds.maxX or 54 }) do
+            for _, y in ipairs({ bounds and bounds.minY or -10, bounds and bounds.maxY or 60 }) do
+                for _, z in ipairs({ bounds and bounds.minZ or -54, bounds and bounds.maxZ or 54 }) do
                     local px, py, depth = project(x, y, z, distance, shift)
                     if depth <= 1 or px < area.x + 10 * scale or px > area.x + area.w - 10 * scale
                         or py < area.y + 10 * scale or py > area.y + area.h - 10 * scale then safe = false end
                 end
             end
         end
-        if safe then return distance, shift, up, back, centerY end
+        if safe then return distance, shift, up, back, centerY, centerX, centerZ, yaw end
         distance = distance * 1.05
     end
-    return distance, 0, up, back, centerY
+    return distance, 0, up, back, centerY, centerX, centerZ, yaw
 end
 -- END PRESENTATION MATH
 
@@ -1417,6 +1828,7 @@ local streamCamera = player:GetAttribute("RiftboundStreamCamera") ~= false
 local cameraDefaultFov = 70
 local cameraDefaultFovMode = Enum.FieldOfViewMode.Vertical
 local cameraTarget
+local resize
 local function money(value)
     if value >= 1000000000 then return string.format("%.1fB", value / 1000000000) end
     if value >= 1000000 then return string.format("%.1fM", value / 1000000) end
@@ -1447,7 +1859,7 @@ local function board(name, title, rect)
     return container, rows
 end
 local earnerPanel, earners = board("TopEarners", "TOP EARNERS / $", Layout.earners)
-local competitorPanel, competitors = board("RoundLeaders", "ROUND LEADERS / PT", Layout.competitors)
+local competitorPanel, competitors = board("RoundLeaders", "ROUND LEADERS", Layout.competitors)
 local notice = frame(canvas, "EventStrip", Layout.notice)
 notice.Visible = false
 local noticeText = text(notice, "Message", "", { x = 10, y = 2, w = 412, h = 24 }, 14, gold)
@@ -1533,7 +1945,10 @@ updateHost()
 
 local lastGift, giftFocusUntil = 0, 0
 snapshotRemote.OnClientEvent:Connect(function(state)
+    local changedCamera = not latestState or latestState.physicalSprint ~= state.physicalSprint
     latestState, receivedAt = state, os.clock()
+    if changedCamera and resize then resize() end
+    competitorPanel.Title.Text = state.physicalSprint and "SPRINT / TIME" or "ROUND LEADERS / PT"
     phase.Text = state.activity.name
     stats.Text = string.format("%s / %d TRAVELERS / %d SHARDS", state.demo and "DEMO" or "LOCAL CREW", #state.crew, state.wins)
     timingLabel.Text = ({ gathering = "NEXT ROUND", voting = "STARTS IN", storm = "TIME LEFT", result = "NEXT UP" })[state.phase]
@@ -1541,20 +1956,22 @@ snapshotRemote.OnClientEvent:Connect(function(state)
         local earner = state.leaderboard[i]
         earners[i].name.Text = earner and (i .. ". " .. earner.username) or (i .. ". Waiting")
         earners[i].score.Text = earner and ("$" .. money(earner.money)) or "—"
-        local row = state.phase == "result" and state.winners[i] or state.activityLeaders[i]
-        competitors[i].name.Text = row and (i .. ". " .. row.username) or (i .. ". Ready")
-        competitors[i].score.Text = row and (row.score .. " pt") or "—"
+        local row = state.phase == "result" and (state.winners[i] or state.activityLeaders[i]) or state.activityLeaders[i]
+        competitors[i].name.Text = row and ((row.placement and row.placement > 0 and row.placement or i) .. ". " .. row.username) or (i .. ". Ready")
+        competitors[i].score.Text = row and (state.physicalSprint and (row.finishedAt > 0 and string.format("%.2fs", row.elapsed) or (row.status == "dnf" and "DNF" or row.score .. "/12")) or row.score .. " pt") or "—"
     end
     local champion = state.phase == "result" and state.winners[1]
     instruction.Text = champion and ("WINNER: " .. champion.username .. " / +$" .. money(champion.prize))
-        or (state.phase == "voting" and "Choose the sky effect; all travelers compete." or state.activity.instruction)
+        or (state.physicalSprint and state.phase == "result" and "NO FINISHERS / NEXT RACE LOADING"
+            or (state.phase == "voting" and "Choose the sky effect; all travelers compete." or state.activity.instruction))
     ward.Visible, sail.Visible = state.phase == "voting", state.phase == "voting"
     roundStatus.Visible = state.phase ~= "voting"
     ward.Text, sail.Text = "WARD / " .. state.ward, "SAIL / " .. state.sail
     local lead = state.leaderboard[1]
     local income = lead and (lead.username .. " $" .. (state.earning and lead.perSecond or 0) .. "/s") or "Waiting for travelers"
-    roundStatus.Text = champion and (champion.score .. " pt / " .. (state.success and "SHARD SAVED" or "ROUND COMPLETE"))
-        or (state.phase == "storm" and string.format("TEAM %d/%d / %s", state.teamScore, state.teamTarget, income) or income)
+    roundStatus.Text = champion and ((state.physicalSprint and string.format("%.2fs", champion.elapsed) or champion.score .. " pt") .. " / FICTIONAL PRIZE")
+        or (state.physicalSprint and state.phase == "result" and "DNF: no finisher bonuses awarded."
+            or (state.phase == "storm" and string.format("TEAM %d/%d / %s", state.teamScore, state.teamTarget, income) or income))
     progressFill.Size = UDim2.fromScale(state.teamTarget > 0 and math.min(1, state.teamScore / state.teamTarget) or 0, 1)
     footer.Text = string.format("%s / %d FOLLOWS / SESSION ONLY", state.demo and "SIMULATED LIVE EVENTS" or "OFFLINE", state.followers)
     if state.lastGift.sequence > lastGift then
@@ -1671,14 +2088,14 @@ local function updateLabels(now)
 end
 
 local cameraConnection
-local function resize()
+resize = function()
     local camera = workspace.CurrentCamera
     if not camera or camera.ViewportSize.X <= 0 or camera.ViewportSize.Y <= 0 then return end
     local width, height = camera.ViewportSize.X, camera.ViewportSize.Y
     canvasScale.Scale = viewportLayout(width, height)
-    local distance, shift, up, back, centerY = arenaCamera(width, height)
-    local focus = Vector3.new(0, centerY, 0)
-    cameraTarget = CFrame.lookAt(focus + Vector3.new(0, up * distance, back * distance), focus) * CFrame.new(0, -shift, 0)
+    local distance, shift, up, back, centerY, cx, cz, yaw = arenaCamera(width, height, latestState and latestState.cameraBounds)
+    local focus = Vector3.new(cx, centerY, cz)
+    cameraTarget = CFrame.lookAt(focus + Vector3.new(math.sin(yaw) * back * distance, up * distance, math.cos(yaw) * back * distance), focus) * CFrame.new(0, -shift, 0)
     if streamCamera and gui.Enabled then setCamera(true) end
 end
 local function bindCamera()
