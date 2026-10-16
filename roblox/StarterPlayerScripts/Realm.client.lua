@@ -1,11 +1,64 @@
+-- Show startup progress BEFORE looking for the server's remotes.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
-local remotes = ReplicatedStorage:WaitForChild("Riftbound")
-local snapshotRemote = remotes:WaitForChild("Snapshot")
-local actionRemote = remotes:WaitForChild("Action")
-local noticeRemote = remotes:WaitForChild("Notice")
+local playerGui = player:WaitForChild("PlayerGui", 10)
+if not playerGui then warn("[Riftbound client] PlayerGui did not appear. Use Play, not Run."); return end
+local mainGui
+local startupGui = Instance.new("ScreenGui")
+startupGui.Name, startupGui.ResetOnSpawn, startupGui.DisplayOrder = "RiftboundStartup", false, 100
+startupGui.Parent = playerGui
+local startupText = Instance.new("TextLabel")
+startupText.AnchorPoint, startupText.Position, startupText.Size = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5), UDim2.fromScale(0.85, 0.42)
+startupText.BackgroundColor3, startupText.TextColor3 = Color3.fromRGB(17, 27, 43), Color3.fromRGB(232, 240, 236)
+startupText.Font, startupText.TextSize, startupText.TextWrapped = Enum.Font.Gotham, 18, true
+startupText.Text, startupText.Parent = "RIFTBOUND / starting server...", startupGui
+local function startupError(message)
+    startupGui.Enabled = true
+    startupText.TextColor3 = Color3.fromRGB(255, 174, 150)
+    startupText.Text = "RIFTBOUND STARTUP FAILED\n\n" .. message .. "\n\nStop Play and check the SERVER Output. Keep one enabled Script named Realm in ServerScriptService, with RunContext Legacy/default."
+    if mainGui then mainGui.Enabled = false end
+    local camera = workspace.CurrentCamera
+    if camera then
+        camera.CameraType, camera.FieldOfView = Enum.CameraType.Custom, 70
+        local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then camera.CameraSubject = humanoid end
+    end
+    warn("[Riftbound client] " .. message)
+end
+local remotes = ReplicatedStorage:WaitForChild("Riftbound", 10)
+if not remotes then
+    startupError("The server did not publish ReplicatedStorage.Riftbound within 10 seconds. Check that Realm.server.lua is a normal enabled server Script in ServerScriptService, not a ModuleScript or LocalScript.")
+    return
+end
+if not remotes:IsA("Folder") then startupError("ReplicatedStorage.Riftbound is not a Folder. Check for a conflicting saved object."); return end
+local function watchStartup()
+    if remotes:GetAttribute("StartupState") == "failed" then
+        local detail = tostring(remotes:GetAttribute("StartupError"))
+        startupError(tostring(remotes:GetAttribute("StartupStage")) .. ":\n" .. (string.match(detail, "^[^\n]*") or detail))
+    end
+end
+remotes:GetAttributeChangedSignal("StartupError"):Connect(watchStartup)
+remotes:GetAttributeChangedSignal("StartupState"):Connect(watchStartup)
+local timeout = os.clock() + 25
+while not remotes:GetAttribute("Ready") and os.clock() < timeout do
+    if remotes:GetAttribute("StartupState") == "failed" then watchStartup(); return end
+    startupText.Text = "RIFTBOUND / " .. tostring(remotes:GetAttribute("StartupStage") or "waiting for corrected server bootstrap")
+    task.wait(0.1)
+end
+if not remotes:GetAttribute("Ready") then
+    startupError("Server startup did not complete. Last stage: " .. tostring(remotes:GetAttribute("StartupStage")) .. ". Replace the server and client together; older servers do not publish readiness.")
+    return
+end
+local snapshotRemote = remotes:WaitForChild("Snapshot", 5)
+local actionRemote = remotes:WaitForChild("Action", 5)
+local noticeRemote = remotes:WaitForChild("Notice", 5)
+for _, pair in ipairs({ { "Snapshot", snapshotRemote }, { "Action", actionRemote }, { "Notice", noticeRemote } }) do
+    if not pair[2] or not pair[2]:IsA("RemoteEvent") then startupError("Riftbound." .. pair[1] .. " is missing or is not a RemoteEvent."); return end
+end
+if remotes:GetAttribute("StartupState") == "failed" then watchStartup(); return end
+
 local ink = Color3.fromRGB(17, 27, 43)
 local pale = Color3.fromRGB(232, 240, 236)
 local muted = Color3.fromRGB(160, 181, 190)
@@ -15,7 +68,9 @@ local gold = Color3.fromRGB(245, 211, 155)
 local gui = Instance.new("ScreenGui")
 gui.Name, gui.ResetOnSpawn, gui.ZIndexBehavior = "RiftboundHUD", false, Enum.ZIndexBehavior.Sibling
 gui.IgnoreGuiInset = true
-gui.Parent = player:WaitForChild("PlayerGui")
+gui.Parent = playerGui
+mainGui = gui
+startupGui.Enabled = false
 
 local function round(object, radius)
     local corner = Instance.new("UICorner")
@@ -225,7 +280,7 @@ workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindCamera)
 bindCamera()
 RunService:BindToRenderStep("RiftboundPortraitCamera", Enum.RenderPriority.Camera.Value + 1, function(dt)
     if latestState then timer.Text = tostring(math.max(0, math.ceil(latestState.seconds - (os.clock() - receivedAt)))) end
-    if streamCamera and workspace.CurrentCamera then
+    if streamCamera and gui.Enabled and workspace.CurrentCamera then
         local camera = workspace.CurrentCamera
         local result = latestState and latestState.phase == "result"
         local position = result and Vector3.new(0, 99, 157) or Vector3.new(0, 113, 180)

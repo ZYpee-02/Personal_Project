@@ -1,6 +1,7 @@
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { runLua } from './helpers/lua.js';
+import { instances } from './helpers/instances.js';
 const read = name => readFileSync(new URL(`../roblox/ServerScriptService/${name}`, import.meta.url), 'utf8');
 const config = read('Config.lua');
 const domain = read('RealmState.lua');
@@ -97,14 +98,13 @@ assert(not pcall(function() Realm.new(Config, 0) end))
 `));
 
 function serverSimulation(isStudio, enabled) {
-  return setup + `
+  return setup + instances + `
 local now, jobs, heartbeat, captures = 0, {}, {}, {}
 local arrivals, frames, sawResult, gifts = 0, 0, false, false
 Config.OfflineDemoEnabled = ${enabled}
-local function signal() return { Connect = function(_, fn) table.insert(heartbeat, fn) end } end
 local players = { PlayerAdded = { Connect = function() end }, PlayerRemoving = { Connect = function() end }, GetPlayers = function() return {} end }
 local runtime = { IsStudio = function() return ${isStudio} end, Heartbeat = signal() }
-local storage = {}
+local storage = instance("ReplicatedStorage", "ReplicatedStorage")
 local world = {
     build = function(c) assert(c.PersistenceEnabled == false) end,
     offlineAvatar = function() return { Destroy = function() end } end,
@@ -116,7 +116,8 @@ local world = {
     end,
     animate = function() frames = frames + 1 end,
 }
-local modules = { Config = {}, RealmState = {}, World = {} }
+local modules = instance("ServerScriptService", "ServerScriptService")
+for _, name in ipairs({ "Config", "RealmState", "World" }) do instance("ModuleScript", name, modules) end
 script = { Parent = modules }
 require = function(token)
     if token == modules.Config then return Config end
@@ -131,9 +132,6 @@ game = { GetService = function(_, name)
     if name == "RunService" then return runtime end
     error("Unexpected service: " .. name)
 end }
-Instance = { new = function(class)
-    return { OnServerEvent = { Connect = function() end }, FireAllClients = function() end, FireClient = function() end }
-end }
 warn = function(message) error(message) end
 task = {
     spawn = function(fn, ...) local args = {...}; table.insert(jobs, { co = coroutine.create(function() fn(table.unpack(args)) end), wake = now }) end,
@@ -142,7 +140,7 @@ task = {
 (function() ${server} end)()
 for step = 1, 1850 do
     now = step / 10
-    for _, fn in ipairs(heartbeat) do fn(0.1) end
+    runtime.Heartbeat:Fire(0.1)
     local count = #jobs
     for i = 1, count do
         local job = jobs[i]

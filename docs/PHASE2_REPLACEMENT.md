@@ -4,6 +4,11 @@ Use this with your already-working Riftbound Live place. These are complete raw
 Luau files, not patches, JSON, escaped source strings, or a Command Bar installer.
 The five-script architecture and all three require paths stay unchanged.
 
+**Startup repair:** See [STARTUP_FIX.md](STARTUP_FIX.md) for the comparison and
+diagnosis of the missing Riftbound folder. Only Realm.server.lua/Realm.client.lua
+changed in that repair; replace both together. The three modules supplied here
+are unchanged Phase 2 sources. Restore all five if your Studio copies are uncertain.
+
 ## Replace all five files
 
 1. Save a backup of your working Studio place with **File → Save to File As**.

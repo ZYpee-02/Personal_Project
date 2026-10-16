@@ -9,7 +9,9 @@ HTTP Requests and Studio API Services access **disabled** throughout the test.
 - [ ] Back up the working place; stop Play and follow PHASE2_REPLACEMENT.md.
 - [ ] Replace all five complete raw sources in the existing instances; no duplicates.
 - [ ] Verify Config/RealmState/World are ModuleScripts and the two Realm instances are Script/LocalScript in their documented parents.
+- [ ] Server Realm is enabled with RunContext Legacy; client Realm is enabled. No duplicate Realm scripts or saved runtime Riftbound folders.
 - [ ] Press Play; there are no Output errors and no request to publish/enable APIs.
+- [ ] SERVER Output prints `[Riftbound] Ready`; runtime Riftbound attributes show Ready=true and StartupState=ready. A startup failure shows its stage/original error, not an infinite wait.
 - [ ] Scene has animated clouds/runes/stars, shrines, raised track, podiums and both large boards.
 - [ ] Portal visibly delivers six Demo_ rigs and the actual player's crew stand-in.
 

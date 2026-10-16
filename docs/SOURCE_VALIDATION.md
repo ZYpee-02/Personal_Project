@@ -21,6 +21,9 @@ and `require(script.Parent.World)`. The three names must be extension-free sibli
 ModuleScripts. Config returns its configuration table; RealmState and World return
 their module tables. The client has no requires: it waits for the Riftbound folder
 and Snapshot, Action and Notice events that the server creates in ReplicatedStorage.
+The server now publishes channels before any require and advertises readiness after
+building/rendering the world. Client startup waits have explicit timeouts; see
+[STARTUP_FIX.md](STARTUP_FIX.md) for diagnostic attributes and failure behavior.
 
 Tests verify these dependencies, the final return in each module, matching remote
 names, raw code-block identity, offline restrictions and the absence of the retired
@@ -65,3 +68,10 @@ checks that demo arrivals, gifts, follows, winners, scene callbacks and several
 rounds occur with no players or Keeper events. It also checks DemoStudioOnly and
 OfflineDemoEnabled gates. It cannot exercise World rendering, TweenService, camera
 or GUI layout; those are explicitly covered by the manual Studio checklist instead.
+
+Startup regression tests execute the actual server bootstrap with mocked engine
+services, including missing/wrong/duplicate modules, module exceptions, invalid
+settings, missing Phase 2 exports, failed World construction/render, and animation
+failure shutdown. Client-bootstrap tests check its loading/error GUI contract with
+mocked Instances, including no server, original module errors, readiness timeout
+and wrong remote classes. Neither test suite executes Roblox's actual UI/engine.
