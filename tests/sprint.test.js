@@ -101,11 +101,14 @@ for i=1,5 do
     assert(rig(i).Humanoid.MoveGoal and rig(i).Humanoid.WalkSpeed==12)
 end
 move(1,World.sprintPoint(1,0)+Vector3.new(0,0,-10),20.8)
-assert(rig(1).Humanoid.Jump,"controller did not request a grounded gap jump")
+assert(not rig(1).Humanoid.Jump,"continuous starting apron requested an unnecessary jump")
 move(1,World.sprintPoint(1,1),21)
 assert(state.crew.racer_1.score==1)
+local pad=workspace.RiftboundRealm.SkybridgeSprint['Lane 1 checkpoint 1']
+move(1,Vector3.new(pad.Position.X,68,pad.Position.Z-pad.Size.Z/2+1.8),21.2)
+assert(rig(1).Humanoid.Jump,"controller did not request a jump before the actual pad edge")
 local position=rig(1).PrimaryPart.Position
-publish(21)
+publish(21.2)
 assert((rig(1).PrimaryPart.Position-position).Magnitude<0.0001,"renderer teleported a racing root")
 `));
 
@@ -119,6 +122,25 @@ assert(state.crew.racer_1.score==1 and rig(1).PrimaryPart.Position.Y>=68)
 local safe=rig(1).PrimaryPart.Position
 now=29; World.sprintStep(state,now)
 assert(state.crew.racer_1.score==1 and (rig(1).PrimaryPart.Position-safe).Magnitude<0.001)
+`));
+
+test('takeoff needs ground contact, fires once per gate and recovery uses the moving support pose', () => runLua(scene + `
+move(1,World.sprintPoint(1,1),21)
+local pad=workspace.RiftboundRealm.SkybridgeSprint['Lane 1 checkpoint 1']
+local edge=Vector3.new(pad.Position.X,68,pad.Position.Z-pad.Size.Z/2+1.8)
+rig(1).Humanoid.FloorMaterial=Enum.Material.Air
+move(1,edge,21.2); assert(not rig(1).Humanoid.Jump,'airborne jump was requested')
+rig(1).Humanoid.FloorMaterial=Enum.Material.Slate
+move(1,edge,21.3); assert(rig(1).Humanoid.Jump)
+rig(1).Humanoid.Jump=false
+move(1,edge,21.8); assert(not rig(1).Humanoid.Jump,'repeated takeoff on the same gate')
+for cp=2,14 do move(1,World.sprintPoint(1,cp),22+cp) end
+move(1,Vector3.new(0,40,-270),37)
+local bridge=workspace.RiftboundRealm.SkybridgeSprint['Lane 1 checkpoint 14']
+local root=rig(1).PrimaryPart.Position
+assert(state.crew.racer_1.score==14 and state.crew.racer_1.recoveries==1)
+assert(math.abs(root.X-bridge.Position.X)<0.001 and math.abs(root.Z-bridge.Position.Z)<0.001,'recovery missed moving support')
+assert(math.abs(root.Y-(bridge.Position.Y+bridge.Size.Y/2+3.15))<0.001,'recovery collider overlaps support')
 `));
 
 test('physical finish crossing interpolates time, freezes finishers and preserves racing gift fairness', () => runLua(scene + `

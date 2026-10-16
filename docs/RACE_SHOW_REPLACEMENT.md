@@ -31,6 +31,11 @@ Expected markers: server `[Riftbound] Ready`; client `presentation=race-show-v7`
 The architecture remains exactly three ModuleScripts, one server Script and one
 client LocalScript. No new game modules are required.
 
+**v7.1 contact patch:** if these five v7 scripts are already installed, replace only
+World.lua using [the Starting Dash fix instructions](SPRINT_CONTACT_FIX.md). This
+removes the opening gap and uses actual support edges for jump timing. The client
+marker above stays unchanged; the course attribute becomes `show-v7.1-contact`.
+
 ## The larger race
 
 The course runs from z=60 to z=-1092: **1,152 studs, 48 measured gates, five lanes**.
@@ -148,6 +153,11 @@ collision, Humanoid jump execution, moving-platform contact, accessory mass,
 replication or path obstruction.** The separate ballistic checks establish geometric
 feasibility, not successful native landings. No measured native race-duration result
 is claimed. Recovery frequency can make a difficult native race time out.
+
+The v7.1 patch adds a separate gravity/contact approximation that reproduced the
+opening fall loop and checks actual takeoff edges, moving supports and hurdle
+faces. See [the patch evidence and limits](SPRINT_CONTACT_FIX.md); it supplements
+the command-only stub and still requires native Studio verification.
 
 Required Windows/macOS Studio playtest:
 

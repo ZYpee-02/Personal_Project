@@ -1,5 +1,9 @@
 # Riftbound Live v7 — complete raw scripts for the two-minute race show
 
+**v7.1 contact fix:** an existing v7 installation needs only the complete World
+ModuleScript replaced. See docs/SPRINT_CONTACT_FIX.md for the Starting Dash fix.
+For older installations, follow the full five-source installation below.
+
 **Replace all FIVE complete sources together.** The long course, state contract,
 entrance queue and section director must match. Follow docs/RACE_SHOW_REPLACEMENT.md
 for exact behavior, offline/verified join modes and the native Studio checklist.
@@ -572,7 +576,7 @@ local World = {}
 local root, core, gate, rift, shield, constellation, bloom, winds, scoreText
 local monuments = {}
 local avatars = {}
-local scenery = { clouds = {}, runes = {}, ribbons = {}, particles = {}, stars = {}, shrines = {}, sprintObstacles = {}, movingBridges = {} }
+local scenery = { clouds = {}, runes = {}, ribbons = {}, particles = {}, stars = {}, shrines = {}, sprintObstacles = {}, movingBridges = {}, sprintPads = {}, sprintHurdles = {} }
 local settings = {}
 local sceneState
 local lastFrame = 0
@@ -659,7 +663,7 @@ function World.cameraBounds(state)
     end
 end
 function World.courseInfo()
-    return { revision = "show-v7", checkpoints = 48, length = 1152, stride = 24,
+    return { revision = "show-v7.1-contact", checkpoints = 48, length = 1152, stride = 24,
         sections = sectionNames, finishZ = -1092, gate = { x = -64, y = 80, z = 66 } }
 end
 function World.sprintPoint(lane, checkpoint)
@@ -812,8 +816,11 @@ end
 local function buildSprint()
     local course = Instance.new("Model")
     course.Name, course.Parent = "SkybridgeSprint", root
-    course:SetAttribute("CourseRevision", "show-v7")
-    local start = part("START platform", Vector3.new(46, 2, 26), CFrame.new(0, 64, 65), colors.stone, Enum.Material.Slate, course)
+    course:SetAttribute("CourseRevision", "show-v7.1-contact")
+    -- Overlap the first pads by two studs: entrants must establish real ground
+    -- contact before their first obstacle, rather than fall across a launch gap.
+    local start = part("START platform", Vector3.new(46, 2, 32), CFrame.new(0, 64, 62), colors.stone, Enum.Material.Slate, course)
+    for lane = 1, 5 do scenery.sprintPads[lane] = { [0] = start } end
     label(start, "SKYBRIDGE / 120 SECOND CROSSING", Vector3.new(0, 9, 0), colors.gold, 350)
     for cp = 1, 48 do
         local section = math.min(4, math.floor((cp - 1) / 12) + 1)
@@ -822,6 +829,7 @@ local function buildSprint()
             local point = World.sprintPoint(lane, cp)
             local pad = part("Lane " .. lane .. " checkpoint " .. cp, Vector3.new(7.4, 1, 24 - gap),
                 CFrame.new(point - Vector3.new(0, 3.5, 0)), section % 2 == 0 and colors.violet or colors.mint, Enum.Material.Slate, course)
+            scenery.sprintPads[lane][cp] = pad
             pad:SetAttribute("Checkpoint", cp); pad:SetAttribute("Section", section)
             if section == 2 and cp % 2 == 0 then
                 scenery.movingBridges[#scenery.movingBridges + 1] = { part = pad, frame = pad.CFrame, phase = cp * 0.7 }
@@ -853,7 +861,7 @@ local function buildSprint()
     end
     for _, cp in ipairs({ 8, 28, 36, 42 }) do
         local point = (World.sprintPoint(3, cp - 1) + World.sprintPoint(3, cp)) * 0.5
-        part("Jump hurdle " .. cp, Vector3.new(42, 1.6, 1), CFrame.new(0, point.Y - 2.2, point.Z), colors.violet, Enum.Material.Neon, course)
+        scenery.sprintHurdles[cp] = part("Jump hurdle " .. cp, Vector3.new(42, 1.6, 1), CFrame.new(0, point.Y - 2.2, point.Z), colors.violet, Enum.Material.Neon, course)
     end
     local finish = World.sprintPoint(3, 48)
     part("FINISH island", Vector3.new(48, 3, 38), CFrame.new(0, finish.Y - 5, finish.Z - 8), colors.grass, Enum.Material.Grass, course)
@@ -878,14 +886,25 @@ function World.stepCourse(now)
     end
 end
 
+local function sprintSupport(lane, checkpoint)
+    return scenery.sprintPads[lane] and scenery.sprintPads[lane][checkpoint]
+end
+
 local function resetRacer(record, member, lane, now)
+    local pad = sprintSupport(lane, member.score)
     local point = World.sprintPoint(lane, member.score)
+    -- Use the current moving support, not its authored rest pose. Collider feet
+    -- sit three studs below the root; spawn just above the actual surface.
+    if pad then point = Vector3.new(pad.Position.X, pad.Position.Y + pad.Size.Y / 2 + 3, pad.Position.Z) end
+    if member.score == 0 then point = Vector3.new(World.sprintPoint(lane, 0).X, point.Y, 60) end
     local target = World.sprintPoint(lane, math.min(48, member.score + 1))
-    record.model:PivotTo(CFrame.lookAt(point + Vector3.new(0, 1, 0), target))
+    local spawn = point + Vector3.new(0, 0.15, 0)
+    record.model:PivotTo(CFrame.lookAt(spawn, Vector3.new(target.X, spawn.Y, target.Z)))
     local main = record.model.PrimaryPart
     main.AssemblyLinearVelocity, main.AssemblyAngularVelocity = Vector3.new(), Vector3.new()
     record.race.position, record.race.sampleAt, record.race.lastMoved = main.Position, now, now
     record.race.lastJump, record.race.lastCommand = now - 1, 0
+    record.race.jumpGate = nil
     record.model.Humanoid.Jump = false
 end
 
@@ -953,11 +972,22 @@ function World.sprintStep(state, now)
                                 humanoid:MoveTo(goal)
                                 race.lastCommand = now
                             end
-                            local jumpGoal = World.sprintPoint(race.lane, member.score + 1)
-                            local jumpDelta = jumpGoal - position
-                            local jumpDistance = Vector3.new(jumpDelta.X, 0, jumpDelta.Z).Magnitude
-                            if jumpDistance <= 14.5 and jumpDistance >= 10.5 and now - race.lastJump > 0.4 and humanoid.FloorMaterial ~= Enum.Material.Air then
-                                humanoid.Jump, race.lastJump = true, now
+                            local cp = member.score + 1
+                            local support, landing = sprintSupport(race.lane, member.score), sprintSupport(race.lane, cp)
+                            if support and landing and not blocked and race.jumpGate ~= cp then
+                                local edge = support.Position.Z - support.Size.Z / 2
+                                local gap = edge - (landing.Position.Z + landing.Size.Z / 2)
+                                local rise = landing.Position.Y + landing.Size.Y / 2 - support.Position.Y - support.Size.Y / 2
+                                local hurdle = scenery.sprintHurdles[cp]
+                                if hurdle then edge = math.max(edge, hurdle.Position.Z + hurdle.Size.Z / 2) end
+                                -- Launch BEFORE the actual support edge. A fixed
+                                -- distance from the next pad was already airborne
+                                -- at short pads and the original starting gap.
+                                local edgeDistance = position.Z - edge
+                                if (gap > 0.25 or rise > 0.5 or hurdle) and edgeDistance <= 2 and edgeDistance >= -0.5
+                                    and now - race.lastJump > 0.4 and humanoid.FloorMaterial ~= Enum.Material.Air then
+                                    humanoid.Jump, race.lastJump, race.jumpGate = true, now, cp
+                                end
                             end
                         end
                         race.position, race.sampleAt = position, now

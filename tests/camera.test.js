@@ -417,7 +417,7 @@ function methods:Raycast(origin,direction,params)
     if origin.Z+direction.Z < -55 then return {Instance=handle,Position=origin+direction*0.8} end
 end
 publish(courseBox)
-assert(logged("anchor=START platform world=(0.0,64.0,65.0)"))
+assert(logged("anchor=START platform world=(0.0,64.0,62.0)"))
 assert(logged("anchor=Finish arch world=(0.0,97.0,-1092.0)"))
 assert(logged("sightline=Workspace.RiftboundRealm.Traveler_ObstructingOutfit.OversizedHat.Handle"))
 assert(logged("anchor=Sprint podium 3"))

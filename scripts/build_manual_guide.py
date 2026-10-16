@@ -7,6 +7,10 @@ order = ["Config", "RealmState", "World", "Realm"]
 scripts = sorted(sources(), key=lambda row: (row[0] == "StarterPlayerScripts", order.index(row[2])))
 intro = '''# Riftbound Live v7 — complete raw scripts for the two-minute race show
 
+**v7.1 contact fix:** an existing v7 installation needs only the complete World
+ModuleScript replaced. See docs/SPRINT_CONTACT_FIX.md for the Starting Dash fix.
+For older installations, follow the full five-source installation below.
+
 **Replace all FIVE complete sources together.** The long course, state contract,
 entrance queue and section director must match. Follow docs/RACE_SHOW_REPLACEMENT.md
 for exact behavior, offline/verified join modes and the native Studio checklist.

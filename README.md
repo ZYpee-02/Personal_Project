@@ -6,6 +6,9 @@ Section cameras follow actual competitors, with regular spotlights, finish-line
 coverage and winner celebrations. Queued viewer arrivals get a Star Gate montage
 while the competition keeps running.
 
+**Starting Dash falling at 0/48?** The v7.1 fix requires replacing only the **World
+ModuleScript** in an existing v7 installation. Follow [the contact fix](docs/SPRINT_CONTACT_FIX.md).
+
 **Upgrade: replace all FIVE raw scripts together.** Follow
 [exact replacements and Studio checks](docs/RACE_SHOW_REPLACEMENT.md).
 MANUAL_STUDIO_SETUP.md contains every complete source. Keep
