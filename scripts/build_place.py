@@ -21,6 +21,7 @@ ET.SubElement(place, "External").text = "null"
 ET.SubElement(place, "External").text = "nil"
 workspace, props = item(place, "Workspace", "Workspace")
 ET.SubElement(props, "float", {"name": "FallenPartsDestroyHeight"}).text = "-100"
+ET.SubElement(props, "bool", {"name": "StreamingEnabled"}).text = "false"
 item(place, "Lighting", "Lighting")
 item(place, "ReplicatedStorage", "ReplicatedStorage")
 server, _ = item(place, "ServerScriptService", "ServerScriptService")

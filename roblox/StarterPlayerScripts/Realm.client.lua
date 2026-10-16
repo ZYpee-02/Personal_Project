@@ -96,37 +96,42 @@ local function fits(rect, occupied, bounds, gap)
 end
 -- Fit the main island (including bedrock), avatar routes and giant rigs into the
 -- clear arena rectangle. Side islands remain scenery, not a reason to shrink racers.
-local function arenaCamera(width, height)
+local function arenaCamera(width, height, bounds)
     local scale, ox, oy = viewportLayout(width, height)
     local area = screenRect(Layout.arena, scale, ox, oy)
     local tanV = math.tan(math.rad(50) / 2)
     local tanH = tanV * width / height
     local elevation = math.rad(52)
     local up, back = math.sin(elevation), math.cos(elevation)
-    local centerY, distance = 26, 100
+    local centerY, distance = bounds and (bounds.minY + bounds.maxY) / 2 or 26, 100
+    local centerX, centerZ = bounds and (bounds.minX + bounds.maxX) / 2 or 0, bounds and (bounds.minZ + bounds.maxZ) / 2 or 0
+    local yaw = math.rad(bounds and bounds.yaw or 0)
+    local c, sn = math.cos(yaw), math.sin(yaw)
     local function project(x, y, z, d, shift)
-        local localY = back * (y - centerY) - up * z
-        local localZ = up * (y - centerY) + back * z
+        local across = c * (x - centerX) - sn * (z - centerZ)
+        local along = sn * (x - centerX) + c * (z - centerZ)
+        local localY = back * (y - centerY) - up * along
+        local localZ = up * (y - centerY) + back * along
         local depth = d - localZ
-        return width / 2 + x * width / (2 * tanH * depth),
+        return width / 2 + across * width / (2 * tanH * depth),
             height / 2 - (localY + shift) * height / (2 * tanV * depth), depth
     end
     for _ = 1, 100 do
         local shift = (0.5 - (area.y + area.h / 2) / height) * 2 * distance * tanV
         local safe = true
-        for _, x in ipairs({ -54, 54 }) do
-            for _, y in ipairs({ -10, 60 }) do
-                for _, z in ipairs({ -54, 54 }) do
+        for _, x in ipairs({ bounds and bounds.minX or -54, bounds and bounds.maxX or 54 }) do
+            for _, y in ipairs({ bounds and bounds.minY or -10, bounds and bounds.maxY or 60 }) do
+                for _, z in ipairs({ bounds and bounds.minZ or -54, bounds and bounds.maxZ or 54 }) do
                     local px, py, depth = project(x, y, z, distance, shift)
                     if depth <= 1 or px < area.x + 10 * scale or px > area.x + area.w - 10 * scale
                         or py < area.y + 10 * scale or py > area.y + area.h - 10 * scale then safe = false end
                 end
             end
         end
-        if safe then return distance, shift, up, back, centerY end
+        if safe then return distance, shift, up, back, centerY, centerX, centerZ, yaw end
         distance = distance * 1.05
     end
-    return distance, 0, up, back, centerY
+    return distance, 0, up, back, centerY, centerX, centerZ, yaw
 end
 -- END PRESENTATION MATH
 
@@ -182,6 +187,7 @@ local streamCamera = player:GetAttribute("RiftboundStreamCamera") ~= false
 local cameraDefaultFov = 70
 local cameraDefaultFovMode = Enum.FieldOfViewMode.Vertical
 local cameraTarget
+local resize
 local function money(value)
     if value >= 1000000000 then return string.format("%.1fB", value / 1000000000) end
     if value >= 1000000 then return string.format("%.1fM", value / 1000000) end
@@ -212,7 +218,7 @@ local function board(name, title, rect)
     return container, rows
 end
 local earnerPanel, earners = board("TopEarners", "TOP EARNERS / $", Layout.earners)
-local competitorPanel, competitors = board("RoundLeaders", "ROUND LEADERS / PT", Layout.competitors)
+local competitorPanel, competitors = board("RoundLeaders", "ROUND LEADERS", Layout.competitors)
 local notice = frame(canvas, "EventStrip", Layout.notice)
 notice.Visible = false
 local noticeText = text(notice, "Message", "", { x = 10, y = 2, w = 412, h = 24 }, 14, gold)
@@ -298,7 +304,10 @@ updateHost()
 
 local lastGift, giftFocusUntil = 0, 0
 snapshotRemote.OnClientEvent:Connect(function(state)
+    local changedCamera = not latestState or latestState.physicalSprint ~= state.physicalSprint
     latestState, receivedAt = state, os.clock()
+    if changedCamera and resize then resize() end
+    competitorPanel.Title.Text = state.physicalSprint and "SPRINT / TIME" or "ROUND LEADERS / PT"
     phase.Text = state.activity.name
     stats.Text = string.format("%s / %d TRAVELERS / %d SHARDS", state.demo and "DEMO" or "LOCAL CREW", #state.crew, state.wins)
     timingLabel.Text = ({ gathering = "NEXT ROUND", voting = "STARTS IN", storm = "TIME LEFT", result = "NEXT UP" })[state.phase]
@@ -306,20 +315,22 @@ snapshotRemote.OnClientEvent:Connect(function(state)
         local earner = state.leaderboard[i]
         earners[i].name.Text = earner and (i .. ". " .. earner.username) or (i .. ". Waiting")
         earners[i].score.Text = earner and ("$" .. money(earner.money)) or "—"
-        local row = state.phase == "result" and state.winners[i] or state.activityLeaders[i]
-        competitors[i].name.Text = row and (i .. ". " .. row.username) or (i .. ". Ready")
-        competitors[i].score.Text = row and (row.score .. " pt") or "—"
+        local row = state.phase == "result" and (state.winners[i] or state.activityLeaders[i]) or state.activityLeaders[i]
+        competitors[i].name.Text = row and ((row.placement and row.placement > 0 and row.placement or i) .. ". " .. row.username) or (i .. ". Ready")
+        competitors[i].score.Text = row and (state.physicalSprint and (row.finishedAt > 0 and string.format("%.2fs", row.elapsed) or (row.status == "dnf" and "DNF" or row.score .. "/12")) or row.score .. " pt") or "—"
     end
     local champion = state.phase == "result" and state.winners[1]
     instruction.Text = champion and ("WINNER: " .. champion.username .. " / +$" .. money(champion.prize))
-        or (state.phase == "voting" and "Choose the sky effect; all travelers compete." or state.activity.instruction)
+        or (state.physicalSprint and state.phase == "result" and "NO FINISHERS / NEXT RACE LOADING"
+            or (state.phase == "voting" and "Choose the sky effect; all travelers compete." or state.activity.instruction))
     ward.Visible, sail.Visible = state.phase == "voting", state.phase == "voting"
     roundStatus.Visible = state.phase ~= "voting"
     ward.Text, sail.Text = "WARD / " .. state.ward, "SAIL / " .. state.sail
     local lead = state.leaderboard[1]
     local income = lead and (lead.username .. " $" .. (state.earning and lead.perSecond or 0) .. "/s") or "Waiting for travelers"
-    roundStatus.Text = champion and (champion.score .. " pt / " .. (state.success and "SHARD SAVED" or "ROUND COMPLETE"))
-        or (state.phase == "storm" and string.format("TEAM %d/%d / %s", state.teamScore, state.teamTarget, income) or income)
+    roundStatus.Text = champion and ((state.physicalSprint and string.format("%.2fs", champion.elapsed) or champion.score .. " pt") .. " / FICTIONAL PRIZE")
+        or (state.physicalSprint and state.phase == "result" and "DNF: no finisher bonuses awarded."
+            or (state.phase == "storm" and string.format("TEAM %d/%d / %s", state.teamScore, state.teamTarget, income) or income))
     progressFill.Size = UDim2.fromScale(state.teamTarget > 0 and math.min(1, state.teamScore / state.teamTarget) or 0, 1)
     footer.Text = string.format("%s / %d FOLLOWS / SESSION ONLY", state.demo and "SIMULATED LIVE EVENTS" or "OFFLINE", state.followers)
     if state.lastGift.sequence > lastGift then
@@ -436,14 +447,14 @@ local function updateLabels(now)
 end
 
 local cameraConnection
-local function resize()
+resize = function()
     local camera = workspace.CurrentCamera
     if not camera or camera.ViewportSize.X <= 0 or camera.ViewportSize.Y <= 0 then return end
     local width, height = camera.ViewportSize.X, camera.ViewportSize.Y
     canvasScale.Scale = viewportLayout(width, height)
-    local distance, shift, up, back, centerY = arenaCamera(width, height)
-    local focus = Vector3.new(0, centerY, 0)
-    cameraTarget = CFrame.lookAt(focus + Vector3.new(0, up * distance, back * distance), focus) * CFrame.new(0, -shift, 0)
+    local distance, shift, up, back, centerY, cx, cz, yaw = arenaCamera(width, height, latestState and latestState.cameraBounds)
+    local focus = Vector3.new(cx, centerY, cz)
+    cameraTarget = CFrame.lookAt(focus + Vector3.new(math.sin(yaw) * back * distance, up * distance, math.cos(yaw) * back * distance), focus) * CFrame.new(0, -shift, 0)
     if streamCamera and gui.Enabled then setCamera(true) end
 end
 local function bindCamera()

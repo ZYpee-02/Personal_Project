@@ -6,7 +6,7 @@ const read = name => readFileSync(new URL(`../roblox/ServerScriptService/${name}
 const config = read('Config.lua');
 const domain = read('RealmState.lua');
 const server = read('Realm.server.lua');
-const setup = `local Realm = (function() ${domain} end)()\nlocal Config = (function() ${config} end)()\n`;
+const setup = `local Realm = (function() ${domain} end)()\nlocal Config = (function() ${config} end)()\nConfig.SprintOnly=false; Config.SprintRaceSeconds=30; Config.LoadAvatarAppearances=false\n`;
 
 test('automatic competitions rotate through three activities without a single vote or host action', () => runLua(setup + `
 local r = Realm.new(Config, 0)
@@ -14,6 +14,12 @@ for i = 1, 6 do r:addCrew("Demo_Crew" .. i, i) end
 local seen, results = {}, 0
 for now = 0, 185, 0.1 do
     r:tick(now)
+    if r.phase=="storm" and r.activity.id=="sprint" then
+        for _,key in ipairs(r.crewOrder) do
+            local m=r.crew[key]
+            if m.activityEntered and m.score<12 and now-r.activityStarted>m.score+1 then r:recordCheckpoint(m.username,m.score+1,now,r.round) end
+        end
+    end
     if r:advance(now) and r.phase == "result" then
         results = results + 1
         assert(#r.winners == 3 and r.winners[1].score > 0)
@@ -53,6 +59,12 @@ local function simulate(withGift)
     r:advance(12); assert(r.activity.id == "sprint")
     r:advance(20)
     if withGift then r:gift("Bobby", "giant", 20, 21) end
+    -- Explicit simulated gate observations, not elapsed-time race progress.
+    for cp=1,12 do
+        assert(r:recordCheckpoint("Alice",cp,20+cp,r.round))
+        assert(r:recordCheckpoint("Bobby",cp,20+cp*0.9,r.round))
+        assert(r:recordCheckpoint("Clara",cp,20+cp*0.8,r.round))
+    end
     r:tick(50); r:advance(50)
     assert(r.crew.alice.finishedAt > 0 and r.crew.bobby.finishedAt > 0)
     return r
@@ -115,6 +127,16 @@ local world = {
         if s.lastGift.sequence > 0 then gifts = true end
     end,
     animate = function() frames = frames + 1 end,
+    loadAppearance = function() end,
+    cameraBounds = function() end,
+    sprintStep = function(state,time)
+        if state.phase=="storm" and state.activity.id=="sprint" then
+            for _,key in ipairs(state.crewOrder) do
+                local m=state.crew[key]
+                if m.activityEntered and m.score<12 and time-state.activityStarted>m.score+1 then state:recordCheckpoint(m.username,m.score+1,time,state.round) end
+            end
+        end
+    end,
 }
 local modules = instance("ServerScriptService", "ServerScriptService")
 for _, name in ipairs({ "Config", "RealmState", "World" }) do instance("ModuleScript", name, modules) end

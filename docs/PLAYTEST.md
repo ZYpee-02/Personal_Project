@@ -1,5 +1,11 @@
 # Phase 2 Studio acceptance checklist — NOT executed in the cloud
 
+**Current physical Sprint update:** replace all five files together and first run
+[SPRINT_REPLACEMENT.md](SPRINT_REPLACEMENT.md)'s complete acceptance checklist.
+Default timing is 12s gather / 8s vote / up to 80s physical Sprint / 10s results,
+with five Demo_ rigs and optional native Roblox appearance requests. The older
+rotation checks below apply when SprintOnly=false; Sprint itself is always physical.
+
 The user reported Phase 2 gameplay running, with overlapping UI and world labels.
 This presentation update has not been playtested here. Use Studio on Windows/macOS. Keep
 HTTP Requests and Studio API Services access **disabled** throughout the test.

@@ -3,9 +3,9 @@ import { geometry } from './geometry.js';
 
 // Deliberately limited UI/service mocks. Layout is arithmetic, not font rasterization.
 export const presentationEngine = instances + geometry + `
-local now, delays, actions = 0, {}, {}
+local now, delays, actions, spawnedJobs = 0, {}, {}, {}
 os.clock = function() return now end
-task = { delay=function(seconds,fn) delays[#delays+1]={seconds,fn} end, wait=function(seconds) now=now+(seconds or 0.03) end }
+task = { spawn=function(fn) spawnedJobs[#spawnedJobs+1]=fn end, delay=function(seconds,fn) delays[#delays+1]={seconds,fn} end, wait=function(seconds) now=now+(seconds or 0.03) end }
 warn = function(message) error(message) end
 local viewport = Vector2.new(390,844)
 function methods:GetDescendants()
@@ -22,7 +22,7 @@ end
 function methods:IsA(class) return self.ClassName==class or (class=="BasePart" and (self.ClassName=="Part" or self.ClassName=="SpawnLocation")) end
 function methods:GetPropertyChangedSignal(name) return self:GetAttributeChangedSignal("property:"..name) end
 function methods:FireServer(...) actions[#actions+1]={...} end
-function methods:GetPivot() return self._properties.Pivot or (self.PrimaryPart and self.PrimaryPart.CFrame) or CFrame.new() end
+function methods:GetPivot() return (self.PrimaryPart and self.PrimaryPart.CFrame) or self._properties.Pivot or CFrame.new() end
 function methods:PivotTo(value)
     local delta=value.Position-self:GetPivot().Position
     for _,part in ipairs(self:GetDescendants()) do
@@ -31,6 +31,8 @@ function methods:PivotTo(value)
     self.Pivot=value
 end
 function methods:ScaleTo(value) self.AppliedScale=value end
+function methods:MoveTo(value) self.MoveGoal=value end
+function methods:SetNetworkOwner(value) self.ServerOwned=value==nil end
 local function uiRect(node)
     if not node or node.ClassName=="PlayerGui" then return {x=0,y=0,w=viewport.X,h=viewport.Y},1 end
     local parent,scale=uiRect(node.Parent)
@@ -59,6 +61,7 @@ Instance.new=function(class)
     if class=="ScreenGui" or class=="BillboardGui" then node.Enabled=true end
     if class=="BillboardGui" then node.StudsOffset, node.StudsOffsetWorldSpace=Vector3.new(),Vector3.new() end
     if class=="TextButton" then node.Activated=signal() end
+    if class=="Humanoid" then node.Health=100; node.FloorMaterial=Enum.Material.Slate end
     if class=="Part" or class=="SpawnLocation" then node.CFrame=CFrame.new() end
     return node
 end

@@ -1,5 +1,9 @@
 # Phase 2 presentation update — exact replacement guide
 
+**Historical two-file update.** For the current physical Skybridge Sprint game,
+replace all five files per [SPRINT_REPLACEMENT.md](SPRINT_REPLACEMENT.md). Its native
+appearance option, course/camera bounds and Sprint timing supersede this baseline.
+
 This update changes presentation only. Automatic rounds, scoring, income, viewer
 joining, simulated gifts/follows and the startup repair remain intact. All data
 remains in memory. No save-service access, external requests or TikTok connection

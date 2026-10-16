@@ -1,32 +1,19 @@
-# Riftbound Live — Phase 2 / autonomous offline playtest v0.3.2
+# Riftbound Live — Skybridge Sprint v0.4.0
 
-A fantasy sky-island Roblox game with username joining, local viewer avatars,
-automatic competitions, moving avatars, live leaderboards, money-per-second earnings, and
-simulated gifts/follows. All game data is in memory; `PersistenceEnabled = false`.
-There are no save-service, HTTP, account-lookup or external-asset calls in the game.
+A fantasy sky-island spectator game with five automatic physical NPC racers,
+verified checkpoints/finish times, fictional earnings, leaderboards, cosmetic gifts
+and a portrait spectator camera. All state stays in memory. DataStoreService,
+custom HTTP and TikTok networking are disabled.
 
-## Upgrade the working Studio game
+**Replace all five scripts together** using
+[the exact Sprint replacement guide](docs/SPRINT_REPLACEMENT.md).
+`MANUAL_STUDIO_SETUP.md` contains their complete raw Luau sources. No Command Bar
+installer is used. The older two-file presentation update is not sufficient.
 
-Replace all five complete sources in their existing instances using
-[the exact Phase 2 replacement guide](docs/PHASE2_REPLACEMENT.md). Do not mix versions.
-`MANUAL_STUDIO_SETUP.md` contains all five full raw Luau code blocks. With defaults,
-Studio seeds six clearly labeled demo travelers and runs rounds/gifts unattended.
-No Keeper Tools are needed. Real TikTok integration remains disabled.
-
-**Presentation update:** Replace **World.lua and Realm.client.lua** together using
-[the exact presentation replacement guide](docs/PRESENTATION_REPLACEMENT.md).
-Leaderboards now occupy separate bottom panels, results reuse the lower dock,
-and the center stays clear for a viewport-fitted arena camera. Stream view hides
-duplicate world boards and limits projected names/earnings. All five complete raw
-sources remain in `MANUAL_STUDIO_SETUP.md`. Config, RealmState and the server
-script are unchanged from the working startup repair.
-
-**Missing map/HUD or infinite wait for Riftbound?** The startup repair changes
-the server and client scripts together. It publishes channels before module loads,
-checks dependencies/settings, and shows startup errors on screen. Follow
-[the earlier startup diagnosis guide](docs/STARTUP_FIX.md). Restore all five from
-the current manual guide if copies are mixed. No Roblox Studio playtest has been
-performed in this cloud workspace; the user reported the preceding Phase 2 running.
+Five Demo_ competitors seed in Studio. Fallback R6 rigs spawn immediately. Optional
+Roblox appearance loading is enabled by default; set `LoadAvatarAppearances=false`
+for a strictly local fallback-only test. No TikTok viewer/gift is connected.
+The cloud checks do not establish real Roblox physics or Studio rendering success.
 
 ## Manual setup in Roblox Studio
 
@@ -57,10 +44,9 @@ blocks if you prefer copying from one document.
    previous attempts active. Do not paste this code into the Command Bar or combine
    files. The client waits for remotes that the server creates automatically.
 6. Press **Play**, not Run. The islands appear at runtime, and your player gets a HUD.
-7. Wait for the six Demo_ travelers and first competition. Observe Starfall Scramble,
-   Skybridge Sprint and Heartseed Relay over about three minutes. TEST TOOLS are
-   optional. ROAM VIEW restores the normal camera; STREAM VIEW returns to the show.
-   See `docs/PLAYTEST.md` for required Studio checks.
+7. Watch three automatic Sprint rounds (allow up to six minutes). TEST TOOLS is
+   optional. ROAM VIEW restores the normal camera; STREAM VIEW returns to the
+   fitted course view. See `docs/SPRINT_REPLACEMENT.md` for physics/appearance checks.
 8. Stop and Play again: all gameplay state starts fresh.
 
 If Studio says Config/RealmState/World is not a valid member, check the parent,
@@ -69,64 +55,52 @@ that the client is a **LocalScript in StarterPlayerScripts**, that you used Play
 and that the server has no errors in Output. Do not manually create the Riftbound
 remotes or install anything from `integrations/` for this offline test.
 
-## Avatar behavior in offline mode
+## Physical Sprint and appearances
 
-Username format is checked, and duplicates are rejected case-insensitively. Names
-are labels; no account existence or ownership is verified. All crew avatars use
-procedural block rigs, not downloaded Roblox outfits. This is necessary for a
-playtest with no custom network requests. Actual player characters still behave
-normally under Roblox's own engine; this game adds no account/asset fetch calls.
+The 12s gathering → 8s optional vote → up to 80s race → 10s results loop repeats
+without host actions. Five crew enter; extra/later joins wait for rotating cohorts.
+The Studio host spectates by default (`AutoJoinPlayers=false`); JOIN tools still
+accept usernames, and that flag can restore automatic player stand-ins.
 
-Arrival animations, colored character rigs, name/earnings labels, and gift effects
-remain playable. Real avatar lookup is retained separately under `integrations/`
-and is deliberately excluded from the manual game files and place.
+Unanchored R6 Humanoids walk/jump along five equal lanes through twelve physical
+pads, rises, gaps and moving wind gates. The server owns their assemblies and
+samples actual roots. Gates must be reached in order; the finish requires a
+physical plane crossing, with an interpolated timestamp. Winners are not selected
+by names, money, gifts or theoretical speeds. Falls/stalls reset to verified pads
+without stopping the clock. Timeout/dead/missing rigs DNF. No finisher means no
+invented champion. Top finishers celebrate on the finish-island podium; the next
+round resets automatically. Equal observed times share placements/bonuses.
 
-## Automatic rounds, competition and economy
+All movement settings/colliders are identical. Simulated giant scaling waits until
+a break during physical racing, while its aura and sky effects still appear.
+Starfall/Relay remain available as the original kinematic demonstrations when
+`SprintOnly=false`; Sprint always requires observed physical gates.
 
-The 60-second default loop is **12s gathering → 8s optional vote → 30s competition
-→ 10s results**. It repeats without any player input. Activities rotate:
+Appearance loading uses only two native Roblox APIs in a guarded asynchronous
+loader. Configured IDs supply Demo_ cosmetics; actual auto-joined player stand-ins
+can use their known Roblox ID. Typed usernames remain labels and use fallback rigs;
+there is no username lookup. Failures/late responses retain the playable fallback.
+Loaded scripts/tools are removed, size settings/colliders normalized, and appearances
+install only outside races. The eight-second deadline is soft: in-flight engine
+requests cannot be canceled. `LoadAvatarAppearances=false` makes zero authored
+account/appearance requests while preserving all gameplay. HTTP/API access settings
+can stay disabled. See [offline boundaries](docs/OFFLINE_SAFETY.md).
 
-| Competition | Visible activity | Ranking |
-| --- | --- | --- |
-| Starfall Scramble | Collect stars around the inner ring | Most checkpoint points |
-| Skybridge Sprint | Race twelve raised checkpoints | Completed checkpoints, then earliest finish |
-| Heartseed Relay | Carry energy between shrines and heartseed | Most deliveries/checkpoint points |
+## Fictional money and presentation
 
-Motion is scripted and kinematic. Server-selected paces vary deterministically by
-name, round and activity; they are not affected by gifts. Ties use actual finish
-progress then arrival order. Arrivals mid-round receive only their time remaining.
-The automatic team goal scales with entrants; meeting it saves a shard without
-votes. The existing optional Ward/Sail vote can also save a shard and chooses the
-shield/wind scenery. It does not decide who wins the automatic competition.
+Verified checkpoints pay $2; finishing pays $40; placements 1/2/3 add $120/$75/$40.
+Passive income, vote participation, shard/championship bonuses and the existing
+$100/s / $1B caps remain. Rewards pay once and all balances reset on Stop. This
+currency is fictional game money, not Robux.
 
-Income is $5/s in voting and competition, plus $2/s for active competition, $3/s
-for a vote that round, $2/s per saved team shard, and $1/s per personal championship.
-Rates are capped at $100/s; all balances at $1 billion. Each competition checkpoint
-adds $2, and the top three get $120/$75/$40. Results/gathering pay no passive money.
-Round money resets on the next vote, while session balances last until Stop. Income
-uses elapsed time and bounded phase deadlines, not a fixed assumed frame rate.
-
-The HUD shows session money leaders and competition point leaders. Two large world
-boards show session and round money leaders nearby in roam view; duplicate world
-boards are hidden in stream view. The top three walk to podiums with a
-winner/prize in the lower dock, crown/cheering motion and pooled celebration motes.
-The dock shows the leading earner's current $/s; selected avatar labels show
-names and +$ pops for real credited deltas. Team shards
-add crystals to the garden (maximum 24 visible). Empty rounds safely keep running.
-
-The centered portrait HUD/camera fits 480×854 logical pixels and reserves the lower
-136 pixels for a stream interface. A landscape capture can be center-cropped to
-9:16. Actual mobile/capture readability must be checked in Studio. TEST TOOLS starts
-closed. All earlier manual joins, votes, sky blessings, targeted gifts and follows
-remain available there; every Studio player is a host for testing.
-
-`OfflineDemoEnabled` seeds six Demo_ avatars; `DemoStudioOnly` confines the fake
-crew/events to Studio by default. `AutoSimulateGifts` cycles cosmetic Bloom, Aurora
-and Giant events every 18 seconds after seeding, with deduplicated demo follows.
-Turn these off to test only real player stand-ins/manual inputs. Effects expire
-after 18 seconds, restore scale and have no scoring/income advantage. The visuals
-use local Parts (including pooled motes), highlights and lighting; no downloaded
-textures, particles, sounds or outfits. Follows are bounded at 10,000 per session.
+The portrait edge HUD retains separate Top Earners/round panels and a lower result
+dock. Sprint rows show actual seconds or checkpoints/DNF. Name/earnings labels are
+bounded and culled in screen space. A fixed diagonal view fits the whole course,
+jumper envelope and podium into the clear center, including landscape center crops.
+The realm is a persistent streaming Model; geometry stays loaded between rounds
+and when the player's character is far from the spectator camera. The optional
+place also starts with StreamingEnabled=false. Actual clipping, font readability,
+occlusion and performance still require Studio testing.
 
 ## Node simulator and future TikTok integration are separate
 

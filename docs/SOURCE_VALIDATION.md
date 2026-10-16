@@ -1,5 +1,9 @@
 # Raw Luau source validation
 
+Current release: physical Skybridge Sprint. All five files changed; follow
+[SPRINT_REPLACEMENT.md](SPRINT_REPLACEMENT.md). Native Roblox appearance loading is
+optional and guarded; no persistence/custom HTTP/TikTok code is enabled.
+
 The manual game consists of exactly:
 
 | File | Type | Parent | Instance name |
@@ -92,3 +96,17 @@ scaling/occlusion, tween over time or measure performance. Numeric font sizes an
 rectangle fitting are not visual readability approval. Use
 [PRESENTATION_REPLACEMENT.md](PRESENTATION_REPLACEMENT.md) and the Studio checklist
 to verify those remaining behaviors on the intended capture/device.
+
+## Physical Sprint checks
+
+Sprint tests exercise actual Config/RealmState/World: no timer-only finishes,
+sequential gates and replay/stale/time rejection, observed standings for all five
+racers, ties, one-time rewards, cohort/reset/DNF behavior, unanchored server-owned
+rigs, MoveTo/jump commands, sampled root positions and recovery, appearance
+disabled/failure/success/timeout, and full-course camera bounds at seven resolutions.
+
+An end-to-end scheduler executes the actual server, World and client for several
+rounds with a command-following movement stub. Root samples and stubbed movement
+are **not actual Roblox physics**. No native appearance requests were made by these
+tests. Real R6 avatar assets, collision/jump traversal, streaming, rendering,
+occlusion, model scaling and performance require Windows/macOS Studio playtesting.

@@ -1,5 +1,9 @@
 # Phase 2 — exact replacement guide
 
+**Skybridge Sprint supersedes this update:** replace all five files using
+[SPRINT_REPLACEMENT.md](SPRINT_REPLACEMENT.md). The timing, appearance and physical
+race behavior below describe the older Phase 2 baseline, not current defaults.
+
 Use this with your already-working Riftbound Live place. These are complete raw
 Luau files, not patches, JSON, escaped source strings, or a Command Bar installer.
 The five-script architecture and all three require paths stay unchanged.

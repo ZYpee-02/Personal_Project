@@ -8,8 +8,8 @@ retired into ignored `.local/retired-command-bar/`; the build/tests never run th
 ## Offline boundaries
 
 The five game files contain no DataStoreService, MemoryStoreService, HttpService,
-external asset URLs, account/appearance downloads, remote module IDs, purchases,
-periodic saves or shutdown saves. `Config.PersistenceEnabled` must remain false;
+authored external asset URLs, remote module IDs, purchases, periodic saves or
+shutdown saves. `Config.PersistenceEnabled` must remain false;
 there is no save implementation. Every crew member, avatar, balance, vote,
 leaderboard row, gift/follow count and shard resets when the game server stops.
 
@@ -20,7 +20,14 @@ server-created Riftbound folder and Snapshot, Action and Notice RemoteEvents.
 These synchronize clients within Roblox; they do not contact external services.
 
 During Play, World builds its own geometry and lighting and creates avatars from
-local Parts. Usernames are format-checked labels, not verified accounts. A
+local Parts. `LoadAvatarAppearances=true` additionally allows two guarded native
+Roblox calls: GetHumanoidDescriptionFromUserIdAsync and
+CreateHumanoidModelFromDescriptionAsync, with normal Roblox outfit asset loads.
+This is enabled by default to supply the requested Demo_ appearances. Set it false
+for zero authored appearance/account requests and the same physical fallback rigs.
+The loader is asynchronous, attempts once per rig, uses a soft deadline, strips
+scripts/tools, and installs cosmetics only outside a race. Failed/late results keep
+the fallback. No username lookup is used; typed labels are not verified accounts. A
 server-only BindableFunction remains available for a future explicitly installed
 adapter, but it never starts a connection itself. Online helpers are isolated in
 `integrations/` and are not included in the five-file setup or default Rojo project.
@@ -41,8 +48,9 @@ compiles all five source files and the corresponding XML-exported sources.
 These are checks for this authored source, not a guarantee for arbitrary untrusted
 or obfuscated code. Actual Roblox rendering, physics, UI and avatar scaling must
 be playtested in Studio. Keep HTTP Requests and Studio API Services access disabled
-and follow `docs/PLAYTEST.md`. Studio/the Roblox engine may use its own normal
-services; the five game scripts make no custom external requests.
+and follow `docs/SPRINT_REPLACEMENT.md`. Studio/the Roblox engine may use normal
+services. Native appearance requests are the explicitly permitted exception;
+custom HTTP and real TikTok networking remain disabled.
 
 
 ## Phase 2 automation and visual bounds
@@ -50,11 +58,15 @@ services; the five game scripts make no custom external requests.
 The Studio-only demo explicitly labels its seeded audience and events. Set
 OfflineDemoEnabled=false or AutoSimulateGifts=false to stop those simulations;
 DemoStudioOnly=true prevents them outside Studio by default. Rounds and automatic
-competition do not depend on Keeper input. Paces and competition awards are
-server-authoritative and independent of gifts; all currency is fictional in-memory
-test currency.
+competition do not depend on Keeper input. Sprint uses actual physical observations
+and measured finish times, never the legacy deterministic paces. Starfall/Relay
+retain those kinematic demos when SprintOnly=false. All currency is fictional,
+server-authoritative and in memory. Giant scaling is deferred during Sprint to
+keep movement/collider dimensions equal; auras and sky effects remain available.
 
 Scene animation is bounded to 12 updates/s by default (allowed setting 4–30),
 crew remains capped at 18, and a 36-Part particle pool and one popup per avatar are
-reused. No external particle texture, sound or outfit is loaded. These are resource
-bounds, not a measured performance guarantee. Test network/frame costs in Studio.
+reused. No custom particle texture/sound URLs are loaded. Optional native Roblox
+outfits are documented above. At most five physical racers enter each Sprint;
+extra viewers wait for rotating cohorts. These are bounds, not a performance
+guarantee. Test physics/network/frame costs in Studio.

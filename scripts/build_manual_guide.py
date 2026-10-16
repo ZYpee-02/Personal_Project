@@ -5,22 +5,16 @@ from offline_sources import sources
 ROOT = Path(__file__).resolve().parents[1]
 order = ["Config", "RealmState", "World", "Realm"]
 scripts = sorted(sources(), key=lambda row: (row[0] == "StarterPlayerScripts", order.index(row[2])))
-intro = '''# Riftbound Live Phase 2: complete raw scripts and manual replacement
+intro = '''# Riftbound Live: Skybridge Sprint complete raw scripts and manual replacement
 
 Use the Script Editor and Explorer. Do not paste this document or any script into
 the Command Bar. There is no generated installer or serialized source wrapper.
 
-**Updating the working Phase 1 game?** Save a backup of your Studio place, stop
-Play, and replace the ENTIRE source of each of the five existing instances below.
-Keep their names, types and parents. Replace all five together; do not mix versions
-or add duplicates. Restore any custom HostUserIds into the new Config afterward.
-**Updating the working Phase 2 game to the presentation fix?** Replace the ENTIRE
-source of **World.lua and Realm.client.lua** together. Config, RealmState and the
-server Realm are unchanged from the working startup repair. All five complete
-files are provided below in case your copies are mixed. Follow
-`docs/PRESENTATION_REPLACEMENT.md` for exact replacement and resolution checks.
-`docs/STARTUP_FIX.md` documents the earlier startup repair;
-`docs/PHASE2_REPLACEMENT.md` covers the first-three-round checklist.
+**Skybridge Sprint update:** Replace the ENTIRE source of **all five** existing
+instances below together. All five changed. Keep names/types/parents; do not mix
+versions or add duplicates. Restore custom HostUserIds afterward. Follow
+`docs/SPRINT_REPLACEMENT.md` for exact replacement and physics playtesting.
+The older presentation/startup guides document previous updates only.
 
 ## Step-by-step
 
@@ -42,12 +36,14 @@ files are provided below in case your copies are mixed. Follow
    before pressing Play. Do not keep duplicate Realm server/client scripts active.
 8. Press **Play**, not Run. The server creates the islands, stand-in avatars, event
    objects and money/round state; the LocalScript builds the player HUD.
-9. Wait: six clearly named Demo_ travelers arrive automatically in Studio. After
-   12 seconds gathering and 8 seconds optional voting, they compete for 30 seconds.
-   A 10-second result/celebration phase follows, then the next round starts itself.
-10. Watch three rounds: Starfall Scramble, Skybridge Sprint, then Heartseed Relay.
-    No votes, clicks or Keeper Tools are needed. Demo gifts/follows also run in Studio.
-    Usernames label local procedural avatars; no real account/outfit is downloaded.
+9. Five Demo_ travelers seed in Studio. After 12 seconds gathering and 8 seconds
+   optional voting, up to five race the raised obstacle course using Humanoids.
+   The race lasts at most 80 seconds, or ends when every entrant finishes/DNFs.
+   Ten seconds of results follow, then the next round starts automatically.
+10. Watch at least three Sprint rounds. Gates/times require actual root movement;
+    timeouts do not manufacture winners. Demo gifts/follows remain automatic.
+    Default Roblox appearance loading is optional; LoadAvatarAppearances=false
+    keeps the exact same physical gameplay with local fallback rigs only.
 11. Optional **TEST TOOLS** can add a username, start gathering early, simulate votes,
     gifts or a follow. **ROAM VIEW** restores normal character camera controls;
     **STREAM VIEW** returns to the fitted 9:16 arena view. Keep tools closed for capture.
@@ -82,11 +78,13 @@ The presentation update keeps a clear central arena area, puts both leaderboards
 in separate bottom panels, and reuses the bottom round dock for results. Stream
 view hides duplicate world/scenery boards and limits projected avatar labels to
 four names/two earnings rows. Roam view restores nearby world boards. Camera
-distance adapts to the viewport; no result zoom or central winner banner is used.
+distance fits the full Sprint course (or the legacy arena) and stays outside it; no result zoom or central winner banner is used.
 
-All game data is in memory, with `PersistenceEnabled = false`. These sources have
-no save-service access, HTTP calls, external asset fetches, or TikTok connection.
-Roblox Studio/engine behavior still requires a local Windows/macOS playtest.
+All game data is in memory, with `PersistenceEnabled = false`. There are no
+save-service, custom HTTP or TikTok calls. LoadAvatarAppearances=true permits two
+native Roblox appearance APIs; false makes zero account/appearance requests.
+Fallback rigs spawn immediately, and late/failing appearances never block rounds.
+Roblox physics, asset loading and rendering still need a Windows/macOS playtest.
 
 ## Complete source files
 
