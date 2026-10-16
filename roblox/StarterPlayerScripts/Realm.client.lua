@@ -64,6 +64,7 @@ local pale = Color3.fromRGB(232, 240, 236)
 local muted = Color3.fromRGB(160, 181, 190)
 local mint = Color3.fromRGB(127, 239, 204)
 local gold = Color3.fromRGB(245, 211, 155)
+local CAMERA_DIAGNOSTICS = true -- Temporary: set false after the Studio camera playtest.
 
 -- BEGIN PRESENTATION MATH (pure geometry, also exercised by automated checks)
 local Layout = {
@@ -94,18 +95,55 @@ local function fits(rect, occupied, bounds, gap)
     end
     return true
 end
--- Fit the main island (including bedrock), avatar routes and giant rigs into the
--- clear arena rectangle. Side islands remain scenery, not a reason to shrink racers.
-local function arenaCamera(width, height, bounds)
+local SprintBounds = { minX = -26, maxX = 26, minY = 54, maxY = 88, minZ = -82, maxZ = 76, yaw = 60 }
+local LegacyBounds = { minX = -54, maxX = 54, minY = -10, maxY = 62, minZ = -54, maxZ = 54, yaw = 0 }
+local function finite(value)
+    return type(value) == "number" and value == value and math.abs(value) < math.huge
+end
+local function usableViewport(width, height)
+    return finite(width) and finite(height) and width >= 64 and height >= 64
+        and width <= 32768 and height <= 32768 and width / height >= 0.25 and width / height <= 4
+end
+local function cameraBounds(bounds, physicalSprint)
+    -- Never fall back to the lower original island while awaiting a Sprint snapshot.
+    local expected = physicalSprint == false and LegacyBounds or SprintBounds
+    if bounds == nil then return expected, physicalSprint == false and "legacy defaults" or "missing; Skybridge fallback" end
+    if type(bounds) ~= "table" then return expected, "invalid type; fallback" end
+    for _, axis in ipairs({ "X", "Y", "Z" }) do
+        local lo, hi = bounds["min" .. axis], bounds["max" .. axis]
+        if not finite(lo) or not finite(hi) or lo >= hi then return expected, "invalid " .. axis .. "; fallback" end
+        -- This is a fixed, known course. Reject translated, undersized or enormous
+        -- server boxes instead of following them below the map or into the fog.
+        if lo > expected["min" .. axis] or hi < expected["max" .. axis]
+            or lo < expected["min" .. axis] - 16 or hi > expected["max" .. axis] + 16 then
+            return expected, "outside course envelope; fallback"
+        end
+    end
+    if not finite(bounds.yaw) or bounds.yaw ~= expected.yaw then return expected, "invalid yaw; fallback" end
+    -- Symmetric padding preserves the same course center and heading in every phase.
+    local box = { yaw = expected.yaw }
+    for _, axis in ipairs({ "X", "Y", "Z" }) do
+        local center = (expected["min" .. axis] + expected["max" .. axis]) / 2
+        local radius = math.max(center - bounds["min" .. axis], bounds["max" .. axis] - center)
+        box["min" .. axis], box["max" .. axis] = center - radius, center + radius
+    end
+    return box, "server bounds verified"
+end
+-- Fixed heading/elevation; only aspect-ratio fitting changes the distance. Always
+-- return a finite, bounded solution, even before a usable viewport/snapshot exists.
+local function arenaCamera(width, height, receivedBounds, physicalSprint)
+    local bounds, reason = cameraBounds(receivedBounds, physicalSprint)
+    local viewportReady = usableViewport(width, height)
+    if not viewportReady then width, height = 390, 844 end
     local scale, ox, oy = viewportLayout(width, height)
     local area = screenRect(Layout.arena, scale, ox, oy)
     local tanV = math.tan(math.rad(50) / 2)
     local tanH = tanV * width / height
     local elevation = math.rad(52)
     local up, back = math.sin(elevation), math.cos(elevation)
-    local centerY, distance = bounds and (bounds.minY + bounds.maxY) / 2 or 26, 100
-    local centerX, centerZ = bounds and (bounds.minX + bounds.maxX) / 2 or 0, bounds and (bounds.minZ + bounds.maxZ) / 2 or 0
-    local yaw = math.rad(bounds and bounds.yaw or 0)
+    local centerY = (bounds.minY + bounds.maxY) / 2
+    local centerX, centerZ = (bounds.minX + bounds.maxX) / 2, (bounds.minZ + bounds.maxZ) / 2
+    local yaw = math.rad(bounds.yaw)
     local c, sn = math.cos(yaw), math.sin(yaw)
     local function project(x, y, z, d, shift)
         local across = c * (x - centerX) - sn * (z - centerZ)
@@ -116,22 +154,31 @@ local function arenaCamera(width, height, bounds)
         return width / 2 + across * width / (2 * tanH * depth),
             height / 2 - (localY + shift) * height / (2 * tanV * depth), depth
     end
-    for _ = 1, 100 do
-        local shift = (0.5 - (area.y + area.h / 2) / height) * 2 * distance * tanV
-        local safe = true
-        for _, x in ipairs({ bounds and bounds.minX or -54, bounds and bounds.maxX or 54 }) do
-            for _, y in ipairs({ bounds and bounds.minY or -10, bounds and bounds.maxY or 60 }) do
-                for _, z in ipairs({ bounds and bounds.minZ or -54, bounds and bounds.maxZ or 54 }) do
+    local shiftRatio = (0.5 - (area.y + area.h / 2) / height) * 2 * tanV
+    local function fitsCourse(distance)
+        for _, x in ipairs({ bounds.minX, bounds.maxX }) do
+            for _, y in ipairs({ bounds.minY, bounds.maxY }) do
+                for _, z in ipairs({ bounds.minZ, bounds.maxZ }) do
+                    local shift = shiftRatio * distance
                     local px, py, depth = project(x, y, z, distance, shift)
                     if depth <= 1 or px < area.x + 10 * scale or px > area.x + area.w - 10 * scale
-                        or py < area.y + 10 * scale or py > area.y + area.h - 10 * scale then safe = false end
+                        or py < area.y + 10 * scale or py > area.y + area.h - 10 * scale then return false end
                 end
             end
         end
-        if safe then return distance, shift, up, back, centerY, centerX, centerZ, yaw end
-        distance = distance * 1.05
+        return true
     end
-    return distance, 0, up, back, centerY, centerX, centerZ, yaw
+    local near, far = 120, 850
+    local fitted = fitsCourse(far)
+    if fitted then
+        for _ = 1, 24 do
+            local middle = (near + far) / 2
+            if fitsCourse(middle) then far = middle else near = middle end
+        end
+    end
+    -- Never repeat the old unbounded zoom-out on an impossible fit. Keep a safe
+    -- view and report it; extreme/narrow viewports can be resized by the operator.
+    return far, shiftRatio * far, up, back, centerY, centerX, centerZ, yaw, bounds, reason, fitted and viewportReady
 end
 -- END PRESENTATION MATH
 
@@ -186,7 +233,11 @@ local latestState, receivedAt = nil, 0
 local streamCamera = player:GetAttribute("RiftboundStreamCamera") ~= false
 local cameraDefaultFov = 70
 local cameraDefaultFovMode = Enum.FieldOfViewMode.Vertical
-local cameraTarget
+local cameraTarget, cameraFocus, activeBounds
+local boundsReason, cameraDistance, cameraFitted = "waiting for snapshot", 0, false
+local cameraWidth, cameraHeight = 0, 0
+local nextCameraDiagnostic = 0
+local streamRequestPending, streamRequests, nextStreamRequest = false, 0, 0
 local resize
 local function money(value)
     if value >= 1000000000 then return string.format("%.1fB", value / 1000000000) end
@@ -277,19 +328,30 @@ text(controls, "Hint3", "Close tools to restore the leaderboard dock.", { x = 16
 local keeper = button(canvas, "KeeperToggle", "TEST TOOLS", { x = 342, y = 18, w = 114, h = 30 }, function() showTools(not controls.Visible) end)
 keeper.TextSize = 11
 local cameraButton
+local function applyCamera(camera)
+    if not cameraTarget or not cameraFocus then return end
+    -- FOV mode must be set BEFORE FieldOfView, including after another camera
+    -- controller changes it. Scriptable cameras also need an explicit Focus.
+    camera.CameraType = Enum.CameraType.Scriptable
+    camera.FieldOfViewMode = Enum.FieldOfViewMode.Vertical
+    camera.FieldOfView = 50
+    camera.CFrame, camera.Focus = cameraTarget, CFrame.new(cameraFocus)
+end
 local function setCamera(enabled)
+    if enabled and not streamCamera then
+        nextCameraDiagnostic, streamRequests, nextStreamRequest = 0, 0, 0
+    end
     streamCamera = enabled
     if cameraButton then cameraButton.Text = enabled and "ROAM VIEW" or "STREAM VIEW" end
     local camera = workspace.CurrentCamera
     if camera and not enabled then
-        camera.CameraType, camera.FieldOfView = Enum.CameraType.Custom, cameraDefaultFov
         camera.FieldOfViewMode = cameraDefaultFovMode
+        camera.CameraType, camera.FieldOfView = Enum.CameraType.Custom, cameraDefaultFov
         local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
         if humanoid then camera.CameraSubject = humanoid end
     elseif camera and cameraTarget then
         -- Apply the fitted view immediately; never sweep through the scene at boot.
-        camera.CameraType, camera.FieldOfView, camera.CFrame = Enum.CameraType.Scriptable, 50, cameraTarget
-        camera.FieldOfViewMode = Enum.FieldOfViewMode.Vertical
+        applyCamera(camera)
     end
 end
 cameraButton = button(canvas, "CameraToggle", "ROAM VIEW", { x = 216, y = 18, w = 114, h = 30 }, function() setCamera(not streamCamera) end)
@@ -304,9 +366,11 @@ updateHost()
 
 local lastGift, giftFocusUntil = 0, 0
 snapshotRemote.OnClientEvent:Connect(function(state)
-    local changedCamera = not latestState or latestState.physicalSprint ~= state.physicalSprint
+    if not latestState or latestState.phase ~= state.phase then nextCameraDiagnostic = 0 end
     latestState, receivedAt = state, os.clock()
-    if changedCamera and resize then resize() end
+    -- Validate EVERY snapshot. Corrected/missing bounds can arrive without an
+    -- activity change; never leave the camera stuck on the first received box.
+    if resize then resize() end
     competitorPanel.Title.Text = state.physicalSprint and "SPRINT / TIME" or "ROUND LEADERS / PT"
     phase.Text = state.activity.name
     stats.Text = string.format("%s / %d TRAVELERS / %d SHARDS", state.demo and "DEMO" or "LOCAL CREW", #state.crew, state.wins)
@@ -449,13 +513,94 @@ end
 local cameraConnection
 resize = function()
     local camera = workspace.CurrentCamera
-    if not camera or camera.ViewportSize.X <= 0 or camera.ViewportSize.Y <= 0 then return end
+    if not camera then return end
     local width, height = camera.ViewportSize.X, camera.ViewportSize.Y
-    canvasScale.Scale = viewportLayout(width, height)
-    local distance, shift, up, back, centerY, cx, cz, yaw = arenaCamera(width, height, latestState and latestState.cameraBounds)
+    cameraWidth, cameraHeight = width, height
+    if usableViewport(width, height) then canvasScale.Scale = viewportLayout(width, height) end
+    local physicalSprint = not latestState or latestState.physicalSprint ~= false
+    local distance, shift, up, back, centerY, cx, cz, yaw, bounds, reason, fitted = arenaCamera(width, height,
+        latestState and latestState.cameraBounds, physicalSprint)
     local focus = Vector3.new(cx, centerY, cz)
-    cameraTarget = CFrame.lookAt(focus + Vector3.new(math.sin(yaw) * back * distance, up * distance, math.cos(yaw) * back * distance), focus) * CFrame.new(0, -shift, 0)
+    local target = CFrame.lookAt(focus + Vector3.new(math.sin(yaw) * back * distance, up * distance, math.cos(yaw) * back * distance), focus) * CFrame.new(0, -shift, 0)
+    local position = target.Position
+    if not finite(position.X) or not finite(position.Y) or not finite(position.Z)
+        or math.abs(position.X) > 700 or math.abs(position.Z) > 700
+        or position.Y < bounds.maxY + 24 or position.Y > 900 or (position - focus).Magnitude > 950 then
+        -- Last-resort known view. Do not clamp individual CFrame components:
+        -- that would change the viewing direction and could clip the course.
+        distance, shift, up, back, centerY, cx, cz, yaw, bounds = arenaCamera(390, 844, nil, physicalSprint)
+        focus = Vector3.new(cx, centerY, cz)
+        target = CFrame.lookAt(focus + Vector3.new(math.sin(yaw) * back * distance, up * distance, math.cos(yaw) * back * distance), focus) * CFrame.new(0, -shift, 0)
+        reason, fitted = "unsafe position rejected; fixed fallback", false
+    end
+    if reason ~= boundsReason then nextCameraDiagnostic = 0 end
+    cameraTarget, cameraFocus, activeBounds = target, focus, bounds
+    boundsReason, cameraDistance, cameraFitted = reason, distance, fitted
     if streamCamera and gui.Enabled then setCamera(true) end
+end
+
+local function cameraDiagnostics(now)
+    if now < nextCameraDiagnostic or not cameraFocus then return end
+    nextCameraDiagnostic = now + 10
+    local realm = workspace:FindFirstChild("RiftboundRealm")
+    local sprint = not latestState or latestState.physicalSprint ~= false
+    local course = sprint and realm and realm:FindFirstChild("SkybridgeSprint") or (not sprint and realm)
+    local parts, opaque = 0, 0
+    if course then
+        for _, object in ipairs(course:GetDescendants()) do
+            if object:IsA("BasePart") then
+                parts = parts + 1
+                if (object.Transparency or 0) < 0.95 and (object.LocalTransparencyModifier or 0) < 0.95 then opaque = opaque + 1 end
+            end
+        end
+    end
+    local anchors, projected = 0, 0
+    local camera = workspace.CurrentCamera
+    for _, name in ipairs(sprint and { "START platform", "FINISH island", "Finish arch", "Sprint podium 1", "Sprint podium 2", "Sprint podium 3" } or {}) do
+        local object = course and course:FindFirstChild(name)
+        if object and object:IsA("BasePart") then
+            anchors = anchors + 1
+            if camera then
+                local _, visible = camera:WorldToViewportPoint(object.Position)
+                if visible then projected = projected + 1 end
+            end
+        end
+    end
+    -- Persistent is the server's replication policy, not evidence of local
+    -- geometry readiness. Check actual parts/anchors before calling it loaded.
+    -- buildSprint currently authors 155 BaseParts, including all sixty lane pads.
+    local missingGeometry = not course or opaque == 0 or (sprint and (anchors < 6 or parts < 155))
+    if workspace.StreamingEnabled and missingGeometry and not streamRequestPending and streamRequests < 3 and now >= nextStreamRequest then
+        streamRequestPending, streamRequests, nextStreamRequest = true, streamRequests + 1, now + 15
+        local requestFocus = cameraFocus
+        task.spawn(function()
+            -- Native Roblox geometry streaming only; no custom HTTP/TikTok.
+            -- A completed request does NOT prove geometry has replicated.
+            local ok, issue = pcall(function() player:RequestStreamAroundAsync(requestFocus, 5) end)
+            streamRequestPending = false
+            if CAMERA_DIAGNOSTICS then
+                print("[Riftbound camera] native stream request " .. (ok and "returned; rechecking geometry" or ("failed: " .. tostring(issue))))
+            end
+        end)
+    end
+    if not CAMERA_DIAGNOSTICS or not camera then return end
+    local p, f, box = camera.CFrame.Position, cameraFocus, activeBounds
+    local ok, hit = pcall(function() return workspace:Raycast(p, f - p) end)
+    local hitText = ok and "clear" or "unavailable"
+    if ok and hit then hitText = hit.Instance.Name .. " at " .. string.format("%.1f studs", (hit.Position - p).Magnitude) end
+    print(string.format("[Riftbound camera] phase=%s viewport=%sx%s pos=(%.1f,%.1f,%.1f) focus=(%.1f,%.1f,%.1f) distance=%.1f fit=%s FOV=%.1f mode=%s",
+        latestState and latestState.phase or "awaiting snapshot", tostring(camera.ViewportSize.X), tostring(camera.ViewportSize.Y),
+        p.X, p.Y, p.Z, f.X, f.Y, f.Z, cameraDistance, tostring(cameraFitted), camera.FieldOfView, tostring(camera.FieldOfViewMode)))
+    print(string.format("[Riftbound camera] bounds=(%.1f..%.1f,%.1f..%.1f,%.1f..%.1f) yaw=%d %s; streaming=%s realm=%s policy=%s parts=%d opaque=%d anchors=%d/6 projected=%d geometry=%s ray=%s requests=%d/3",
+        box.minX, box.maxX, box.minY, box.maxY, box.minZ, box.maxZ, box.yaw, boundsReason,
+        tostring(workspace.StreamingEnabled), tostring(realm ~= nil), realm and tostring(realm.ModelStreamingMode) or "absent",
+        parts, opaque, anchors, projected, missingGeometry and "MISSING/PARTIAL" or "present", hitText, streamRequests))
+    local received = latestState and latestState.cameraBounds
+    if type(received) == "table" then
+        print(string.format("[Riftbound camera] received bounds=(%s..%s,%s..%s,%s..%s) yaw=%s",
+            tostring(received.minX), tostring(received.maxX), tostring(received.minY), tostring(received.maxY),
+            tostring(received.minZ), tostring(received.maxZ), tostring(received.yaw)))
+    end
 end
 local function bindCamera()
     if cameraConnection then cameraConnection:Disconnect() end
@@ -472,11 +617,13 @@ end
 workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindCamera)
 bindCamera()
 local labelAccumulator = 0
-RunService:BindToRenderStep("RiftboundPortraitCamera", Enum.RenderPriority.Camera.Value + 1, function(dt)
+RunService:BindToRenderStep("RiftboundPortraitCamera", Enum.RenderPriority.Last.Value, function(dt)
     if latestState then timer.Text = tostring(math.max(0, math.ceil(latestState.seconds - (os.clock() - receivedAt)))) end
     if streamCamera and gui.Enabled and workspace.CurrentCamera and cameraTarget then
         local camera = workspace.CurrentCamera
-        camera.CameraType, camera.FieldOfView, camera.CFrame = Enum.CameraType.Scriptable, 50, cameraTarget
+        if camera.ViewportSize.X ~= cameraWidth or camera.ViewportSize.Y ~= cameraHeight then resize() end
+        applyCamera(camera)
+        cameraDiagnostics(os.clock())
     end
     labelAccumulator = labelAccumulator + dt
     if labelAccumulator >= 0.12 then labelAccumulator = 0; updateLabels(os.clock()) end

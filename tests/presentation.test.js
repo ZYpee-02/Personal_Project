@@ -22,7 +22,7 @@ for _,name in ipairs({"toolbar","header","notice","arena","earners","competitors
     occupied[#occupied+1]=rect
     assert(Layout[name].y+Layout[name].h<=718,"reserved lower LIVE area")
 end
-local d,shift,up,back,cy=arenaCamera(${w},${h})
+local d,shift,up,back,cy=arenaCamera(${w},${h},nil,false) -- explicitly test the legacy arena
 assert(d<1500,"camera fitting did not converge")
 local area=screenRect(Layout.arena,s,ox,oy)
 local tanV=math.tan(math.rad(50)/2)

@@ -18,6 +18,7 @@ with ZipFile(target, "w", ZIP_DEFLATED) as archive:
         ("docs/PHASE2_REPLACEMENT.md", "docs/PHASE2_REPLACEMENT.md"),
         ("docs/PRESENTATION_REPLACEMENT.md", "docs/PRESENTATION_REPLACEMENT.md"),
         ("docs/SPRINT_REPLACEMENT.md", "docs/SPRINT_REPLACEMENT.md"),
+        ("docs/CAMERA_FIX.md", "docs/CAMERA_FIX.md"),
         ("docs/STARTUP_FIX.md", "docs/STARTUP_FIX.md"),
         ("docs/OFFLINE_SAFETY.md", "docs/OFFLINE_SAFETY.md"),
         ("docs/SOURCE_VALIDATION.md", "docs/SOURCE_VALIDATION.md"),

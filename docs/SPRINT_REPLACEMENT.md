@@ -1,5 +1,9 @@
 # Skybridge Sprint — exact five-file replacement
 
+Already running physical Sprint and applying only the camera fix? Use
+[CAMERA_FIX.md](CAMERA_FIX.md) and replace **only the client**. The five-file steps
+below apply to fresh installs/upgrades from versions before physical Sprint.
+
 Replace **all five complete sources together**. Config, RealmState, World, server
 and client all changed. The earlier two-file presentation replacement is no longer
 sufficient. No sixth script, plugin, Command Bar installer or Node process is needed.
@@ -95,8 +99,9 @@ only during racing; staging and celebrations use scripted positioning.
 The spectator camera fits a fixed box around the whole raised course, jumping
 avatars and podium at a diagonal angle. It does not chase a root or zoom into the
 floor. Bounds are recomputed on resize/arena changes, including landscape center
-crops. The complete procedural realm uses ModelStreamingMode.Persistent so it
-remains loaded even when the player's body is far from the camera. Fog/atmosphere
+crops. The complete procedural realm uses ModelStreamingMode.Persistent; that is a
+replication policy, not proof of client geometry readiness. See the camera guide
+for actual local-geometry checks and limited native streaming retries. Fog/atmosphere
 were reduced for the wider view; geometry is retained between rounds, not destroyed.
 
 Aurora/Bloom/aura effects remain cosmetic. **Giant body scaling waits until a break**

@@ -5,10 +5,12 @@ verified checkpoints/finish times, fictional earnings, leaderboards, cosmetic gi
 and a portrait spectator camera. All state stays in memory. DataStoreService,
 custom HTTP and TikTok networking are disabled.
 
-**Replace all five scripts together** using
-[the exact Sprint replacement guide](docs/SPRINT_REPLACEMENT.md).
-`MANUAL_STUDIO_SETUP.md` contains their complete raw Luau sources. No Command Bar
-installer is used. The older two-file presentation update is not sufficient.
+**Already running physical Sprint? Replace only Realm.client.lua** using
+[the fixed spectator camera guide](docs/CAMERA_FIX.md). Keep your working four
+server files and Config settings. For a fresh install or an upgrade from before
+physical Sprint, install all five using [the Sprint guide](docs/SPRINT_REPLACEMENT.md).
+`MANUAL_STUDIO_SETUP.md` contains all five complete raw sources. No Command Bar
+installer is used.
 
 Five Demo_ competitors seed in Studio. Fallback R6 rigs spawn immediately. Optional
 Roblox appearance loading is enabled by default; set `LoadAvatarAppearances=false`
@@ -97,10 +99,19 @@ The portrait edge HUD retains separate Top Earners/round panels and a lower resu
 dock. Sprint rows show actual seconds or checkpoints/DNF. Name/earnings labels are
 bounded and culled in screen space. A fixed diagonal view fits the whole course,
 jumper envelope and podium into the clear center, including landscape center crops.
-The realm is a persistent streaming Model; geometry stays loaded between rounds
-and when the player's character is far from the spectator camera. The optional
-place also starts with StreamingEnabled=false. Actual clipping, font readability,
-occlusion and performance still require Studio testing.
+The fixed camera stays centered at (0, 71, -3), with yaw 60° and elevation 52°.
+It rejects malformed bounds, caps fitting at 850 studs, and reapplies Scriptable,
+vertical FOV 50° and Focus after the default camera updates. Validated bounds are
+checked on every snapshot. Diagnostic logs report position, received/used bounds,
+local geometry counts, projected anchors and foreground ray hits.
+
+The realm uses ModelStreamingMode.Persistent, but that policy alone does not prove
+the client has its geometry. When engine streaming is enabled and course parts are
+missing, at most three native geometry requests run per Stream View session. They
+use a five-second timeout argument and a 15-second minimum retry interval; returning
+does not count as geometry loaded. No requests run with streaming disabled or a
+complete course. The optional place starts with StreamingEnabled=false.
+Actual clipping, streaming, fonts, occlusion and performance still require Studio.
 
 ## Node simulator and future TikTok integration are separate
 
