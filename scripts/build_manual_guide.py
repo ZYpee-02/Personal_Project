@@ -10,8 +10,13 @@ intro = '''# Riftbound Live: Skybridge Sprint complete raw scripts and manual re
 Use the Script Editor and Explorer. Do not paste this document or any script into
 the Command Bar. There is no generated installer or serialized source wrapper.
 
-**Cinematic/restart update (Studio confirmation required):** If physical Skybridge
-Sprint already runs, replace these THREE complete sources: **World.lua** in the
+**Round-transition update v5.1 (Studio confirmation required):** If cinematic-v5
+already runs, replace ONLY **Realm.client.lua**, the Realm LocalScript under
+StarterPlayer → StarterPlayerScripts. It fixes per-frame overview diagnostics/scans
+and adds TEST TOOLS → HOLD CAMERA to keep the view fixed across automatic rounds.
+Follow `docs/CAMERA_FIX.md` for the next-round comparison. The gray cause is unconfirmed.
+
+Older physical Skybridge Sprint installations need the v5 baseline too: **World.lua** in the
 ServerScriptService World ModuleScript, **Realm.server.lua** in the normal
 ServerScriptService Realm Script, and **Realm.client.lua** in the Realm LocalScript
 under StarterPlayer → StarterPlayerScripts. Keep Config and RealmState unchanged.
@@ -96,7 +101,7 @@ the course. Roam restores the previous light properties and local shell opacity;
 server effects and game state are unchanged.
 Temporary `[Riftbound camera]` diagnostics check actual local geometry as well as
 the streaming policy, actual CFrame/Focus, all six anchor sightlines and lens enclosures.
-See docs/CAMERA_FIX.md for the ward/camera hypotheses and their Studio A/B check.
+See docs/CAMERA_FIX.md for current evidence and the held-camera round-transition test.
 Missing geometry with engine streaming enabled can trigger
 at most three native Roblox stream requests per Stream View session; none run
 when streaming is disabled or the course is present. No external bridge is used.

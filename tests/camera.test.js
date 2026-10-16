@@ -512,6 +512,61 @@ assert(found,"inter-frame camera conflict was lost before diagnostics")
 assertFraming(390,844)
 `));
 
+test('overview refits keep ten-second logging and quarter-second scene-scan limits across snapshots', () => runLua(clientScene + `
+local sceneScans=0
+local originalDescendants=methods.GetDescendants
+function methods:GetDescendants()
+    if self==workspace then sceneScans=sceneScans+1 end
+    return originalDescendants(self)
+end
+publish(courseBox)
+for step=1,660 do
+    now=step/60
+    if step%30==0 then publish(courseBox) else renderStep(1/60) end
+end
+local blocks=0
+for _,line in ipairs(logs) do if string.find(line,"[Riftbound camera] presentation=",1,true) then blocks=blocks+1 end end
+assert(blocks==2,"overview reset diagnostic throttle: "..blocks.." blocks in 11 seconds")
+assert(sceneScans<=46,"overview reset lens-scan throttle: "..sceneScans.." full scene scans")
+assertFraming(390,844)
+`));
+
+test('held camera survives phase/round/viewport changes and camera replacement without stopping the game', () => runLua(clientScene + `
+publish(courseBox)
+local heldFrame,heldFocus,heldFov=camera.CFrame,camera.Focus.Position,camera.FieldOfView
+local actionCount=#actions
+canvas.TestTools.HoldCamera.Activated:Fire()
+assert(not canvas.TestTools.Visible and canvas.TestTools.HoldCamera.Text=="HOLD CAMERA: ON")
+local function sameView()
+    assert((camera.CFrame.Position-heldFrame.Position).Magnitude<0.0001)
+    assert(camera.CFrame.LookVector:Dot(heldFrame.LookVector)>0.99999)
+    assert((camera.Focus.Position-heldFocus).Magnitude<0.0001 and camera.FieldOfView==heldFov)
+end
+for _,time in ipairs({12,20,100,110,122}) do
+    state:tick(time); state:advance(time); now=time
+    local snapshot=state:snapshot(now); snapshot.cameraBounds=courseBox
+    remotes.Snapshot.OnClientEvent:Fire(snapshot)
+    sameView() -- snapshot resize must not apply another view between frames
+    renderStep(0.13); sameView()
+end
+setViewport(1080,1920); sameView(); renderStep(0.13); sameView()
+local replacement=instance("Camera","Replacement",workspace)
+replacement.CFrame=CFrame.new(0,-500,0); replacement.ViewportSize=viewport
+replacement.CameraType=Enum.CameraType.Custom; replacement.FieldOfView=70
+replacement.FieldOfViewMode=Enum.FieldOfViewMode.Vertical
+camera=replacement; workspace.CurrentCamera=replacement
+workspace:GetPropertyChangedSignal("CurrentCamera"):Fire(); sameView()
+renderStep(0.13); sameView()
+assert(logged("shot=held camera") and logged("round=2"))
+assert(#actions==actionCount and state:snapshot(now).round==2,"holding stopped or changed server rounds")
+canvas.TestTools.HoldCamera.Activated:Fire(); renderStep(0.13)
+assert(canvas.TestTools.HoldCamera.Text=="HOLD CAMERA: OFF")
+assert((camera.CFrame.Position-heldFrame.Position).Magnitude>1,"release did not restore viewport fitting")
+canvas.TestTools.HoldCamera.Activated:Fire(); renderStep(0.13)
+canvas.CameraToggle.Activated:Fire()
+assert(camera.CameraType==Enum.CameraType.Custom and canvas.TestTools.HoldCamera.Text=="HOLD CAMERA: OFF")
+`));
+
 test('spectator deck rescues existing player characters and handles later respawns outside the race lanes', () => runLua(presentationEngine + modules + `
 World.build(Config)
 player.CharacterAdded=signal()

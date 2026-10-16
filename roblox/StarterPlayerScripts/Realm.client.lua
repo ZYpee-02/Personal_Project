@@ -322,6 +322,7 @@ local cameraTarget, cameraFocus, activeBounds
 local overviewTarget, overviewFocus, overviewDistance, overviewFov
 local directorFrame, directorFocus, directorKey, directorSubject
 local directorShot = "overview"
+local heldCamera, holdCameraButton
 local boundsReason, cameraDistance, cameraFitted = "waiting for snapshot", 0, false
 local cameraFov = 55
 local hiddenWard, originalWardTransparency = nil, 0
@@ -430,12 +431,24 @@ text(controls, "Hint", "Testing only. All rounds advance automatically.", { x = 
 text(controls, "Hint2", "Gifts/follows are simulated. Progress resets on Stop.", { x = 16, y = 342, w = 400, h = 24 }, 13, muted)
 text(controls, "Hint3", "Close tools to restore the leaderboard dock.", { x = 16, y = 372, w = 400, h = 24 }, 14, mint)
 local renderCheckButton
-renderCheckButton = button(controls, "RenderCheck", "RENDER CHECK: OFF", { x = 16, y = 410, w = 400, h = 36 }, function()
+renderCheckButton = button(controls, "RenderCheck", "RENDER CHECK: OFF", { x = 16, y = 410, w = 194, h = 36 }, function()
     renderCheckEnabled = not renderCheckEnabled
     renderCheckButton.Text = renderCheckEnabled and "RENDER CHECK: ON" or "RENDER CHECK: OFF"
     nextCameraDiagnostic = 0
     showTools(false)
     notify(renderCheckEnabled and "RENDER CHECK / near PINK + distant GREEN cubes" or "RENDER CHECK / removed")
+end)
+holdCameraButton = button(controls, "HoldCamera", "HOLD CAMERA: OFF", { x = 222, y = 410, w = 194, h = 36 }, function()
+    local camera = workspace.CurrentCamera
+    if heldCamera then
+        heldCamera = nil
+    elseif camera and streamCamera then
+        heldCamera = { frame = camera.CFrame, focus = camera.Focus.Position, fov = camera.FieldOfView }
+    end
+    holdCameraButton.Text = heldCamera and "HOLD CAMERA: ON" or "HOLD CAMERA: OFF"
+    directorKey, nextCameraDiagnostic = nil, 0
+    showTools(false)
+    notify(heldCamera and "CAMERA HELD / rounds continue normally" or "CAMERA RELEASED / automatic shots")
 end)
 local keeper = button(canvas, "KeeperToggle", "TEST TOOLS", { x = 342, y = 18, w = 114, h = 30 }, function() showTools(not controls.Visible) end)
 keeper.TextSize = 11
@@ -581,6 +594,11 @@ local function updateLensMasks(now)
     end
 end
 local function updateDirector(now, dt)
+    if heldCamera then
+        cameraTarget, cameraFocus, cameraFov = heldCamera.frame, heldCamera.focus, heldCamera.fov
+        cameraDistance, directorShot = (cameraTarget.Position - cameraFocus).Magnitude, "held camera"
+        return
+    end
     local desired, focus, distance, fov = overviewTarget, overviewFocus, overviewDistance, overviewFov
     local key, shot = "overview", "overview"
     local state = latestState
@@ -638,13 +656,16 @@ local function updateDirector(now, dt)
         elseif shot ~= "overview" then shot = "overview / awaiting avatars" end
     end
     if not desired or not focus then return end
-    if string.sub(shot, 1, 8) == "overview" or directorKey ~= key or not directorFrame or shot ~= directorShot then
+    local changed = directorKey ~= key or not directorFrame or shot ~= directorShot
+    if string.sub(shot, 1, 8) == "overview" or changed then
         directorFrame, directorFocus = desired, focus -- Safe cut; never fly through the arena.
-        nextLensScan, nextCameraDiagnostic = 0, 0
     else
         local alpha = 1 - math.exp(-math.max(0, math.min(dt, 0.25)) * 5)
         directorFrame, directorFocus = directorFrame:Lerp(desired, alpha), directorFocus:Lerp(focus, alpha)
     end
+    -- Overview refitting is not a shot change. Resetting these every frame
+    -- bypassed both throttles and flooded Studio Output with full scene scans.
+    if changed then nextLensScan, nextCameraDiagnostic = 0, 0 end
     directorKey, directorShot = key, shot
     cameraTarget = directorFrame
     -- Keep Focus exactly on the optical axis, even during smoothing.
@@ -657,8 +678,8 @@ local function applyCamera(camera)
     -- controller changes it. Scriptable cameras also need an explicit Focus.
     camera.CameraType = Enum.CameraType.Scriptable
     camera.FieldOfViewMode = Enum.FieldOfViewMode.Vertical
-    camera.FieldOfView = cameraFov
-    camera.CFrame, camera.Focus = cameraTarget, CFrame.new(cameraFocus)
+    camera.FieldOfView = heldCamera and heldCamera.fov or cameraFov
+    camera.CFrame, camera.Focus = heldCamera and heldCamera.frame or cameraTarget, CFrame.new(heldCamera and heldCamera.focus or cameraFocus)
 end
 local function setCamera(enabled)
     if enabled and not streamCamera then
@@ -666,7 +687,10 @@ local function setCamera(enabled)
         maximumPositionDrift, maximumAimDrift = 0, 0
     end
     streamCamera = enabled
-    if not enabled then directorFrame, directorFocus, directorKey = nil, nil, nil end
+    if not enabled then
+        directorFrame, directorFocus, directorKey, heldCamera = nil, nil, nil, nil
+        if holdCameraButton then holdCameraButton.Text = "HOLD CAMERA: OFF" end
+    end
     updateRenderCheck()
     updateStreamScenery()
     updateStreamLighting()
@@ -933,9 +957,9 @@ local function cameraDiagnostics(now)
         end)
     end
     if not CAMERA_DIAGNOSTICS or not camera then return end
-    print(string.format("[Riftbound camera] presentation=cinematic-v5 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
+    print(string.format("[Riftbound camera] presentation=cinematic-v5.1 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
         tostring(STREAM_DAYLIGHT and streamCamera and gui.Enabled), Lighting.ClockTime, Lighting.Brightness, Lighting.ExposureCompensation))
-    print(string.format("[Riftbound render] revision=cinematic-v5 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
+    print(string.format("[Riftbound render] revision=cinematic-v5.1 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
         directorShot, tostring(STREAM_CLEAR_EFFECTS), tostring(renderCheckEnabled), parts > 0 and minOpacity or 0, parts > 0 and sumOpacity / parts or 0, maxOpacity, maximumPositionDrift, maximumAimDrift))
     local atmosphereCount, effectCount, enclosureCount = 0, 0, 0
     for _, record in pairs(suspendedEffects) do
@@ -965,8 +989,8 @@ local function cameraDiagnostics(now)
         return workspace:Raycast(p, f - p, params)
     end)
     if rayOk then visibleRay = rayHit and (rayHit.Instance.Name .. " at " .. string.format("%.1f studs", (rayHit.Position - p).Magnitude)) or "clear" end
-    print(string.format("[Riftbound camera] phase=%s viewport=%sx%s pos=(%.1f,%.1f,%.1f) focus=(%.1f,%.1f,%.1f) distance=%.1f fit=%s FOV=%.1f mode=%s",
-        latestState and latestState.phase or "awaiting snapshot", tostring(camera.ViewportSize.X), tostring(camera.ViewportSize.Y),
+    print(string.format("[Riftbound camera] phase=%s round=%s viewport=%sx%s pos=(%.1f,%.1f,%.1f) focus=(%.1f,%.1f,%.1f) distance=%.1f fit=%s FOV=%.1f mode=%s",
+        latestState and latestState.phase or "awaiting snapshot", latestState and tostring(latestState.round) or "unknown", tostring(camera.ViewportSize.X), tostring(camera.ViewportSize.Y),
         p.X, p.Y, p.Z, f.X, f.Y, f.Z, cameraDistance, tostring(cameraFitted), camera.FieldOfView, tostring(camera.FieldOfViewMode)))
     local look, up = camera.CFrame.LookVector, camera.CFrame.UpVector
     local delta = f - p

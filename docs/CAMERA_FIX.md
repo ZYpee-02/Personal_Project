@@ -1,11 +1,56 @@
-# Cinematic/restart update v5 — replace THREE scripts
+# Round-transition update v5.1 — replace ONE client script
 
-The gray screen returned after a fresh Play run. The previous visible screenshot
-was not a permanent fix. User confirmation: only the server Realm was replaced;
-no Workspace object was hidden/deleted. **The exact gray-screen cause is still
-unconfirmed. This update requires actual Roblox Studio rendering tests.**
+The latest native Studio capture confirms v5 runs and gray occurs at the next round.
+The desktop viewport is 923.2×427.2. During gathering/overview the lens is at
+(0,330.9,229.1), 321 studs from Focus. All 155 course parts are fully opaque; six
+anchors project on screen and rays hit native course parts. Streaming is disabled,
+two Atmospheres and four PostEffects are already isolated, and the rendered camera
+matches the requested camera with zero measured drift. These checks do not prove
+that pixels are drawn or establish the gray-screen cause. The capture also contains
+closer racing shots, but their visual result has not been confirmed.
 
-## Exact replacements — Stop Play first
+**Confirmed v5 bug fixed:** overview refitting reset both diagnostic and lens-scan
+timers every frame, bypassing their ten-second/quarter-second limits. The native log
+shows repeated full blocks approximately every 0.08 seconds. v5.1 resets those
+timers only on actual shot changes. This removes avoidable scans/Output traffic;
+the older gray-screen issue is still unconfirmed.
+
+## Install v5.1 on the existing v5 place
+
+Stop Play. Replace the ENTIRE source of **StarterPlayer → StarterPlayerScripts →
+Realm**, a **LocalScript**, with [Realm.client.lua](../roblox/StarterPlayerScripts/Realm.client.lua).
+Save the place. Keep all four ServerScriptService files unchanged. Do not replace
+the server Realm Script or the temporary Players → your name → PlayerScripts copy.
+The new Output marker is **presentation=cinematic-v5.1**.
+
+## Hold the same camera across the next round
+
+1. Start Play and obtain a visible Stream View. If necessary, use the existing
+   Server → Client workaround once to obtain that starting view.
+2. While the full-course overview is visible, open **TEST TOOLS → HOLD CAMERA**.
+   The drawer closes; the notice says CAMERA HELD. The diagnostic says
+   **shot=held camera** and includes **round=**. Position, aim, Focus and FOV stay
+   fixed even across snapshots, round changes and replacement of CurrentCamera.
+3. Let results finish and the next gathering/voting/race begin without opening
+   the Server tab. Gameplay continues normally. Observe whether the held view
+   stays visible or turns gray. A held close-up may naturally leave racers off
+   screen as they move; use the overview for this comparison.
+4. Toggle HOLD CAMERA again to resume the montage. Entering Roam also releases it.
+   It is off by default and sends no gameplay actions.
+
+If the same held view turns gray at the transition, camera movement is not required
+for that occurrence. If it stays visible, compare releasing the hold and note the
+shot/round where gray returns. Neither result alone establishes a renderer defect.
+Report the visual outcome and one diagnostic block around the transition;
+continuous Output dumps are unnecessary.
+
+## v5 baseline — only for older installations
+
+Existing v5 users need only the client replacement above. For older physical Sprint
+users, the baseline adds the spectator deck and automatic montage described below.
+**The exact gray-screen cause remains unconfirmed; native Studio checks are needed.**
+
+### Baseline replacements — Stop Play first
 
 Back up the place. Stop Play, then replace each entire source using its matching
 raw file. Do not append source, create duplicate Realm scripts, paste Markdown or
@@ -83,7 +128,7 @@ not read or remove Terrain voxels or guarantee visibility against arbitrary mesh
 ## Studio verification — do TWO fresh Play runs
 
 1. Keep native streaming disabled for the first comparison. Press Play and confirm
-   Output shows **[Riftbound render] revision=cinematic-v5**. If it still references
+   Output shows **[Riftbound render] revision=cinematic-v5.1**. If it still references
    only older revisions, the saved StarterPlayerScripts client was not replaced.
 2. Confirm Stream View displays the course from gathering/countdown. During racing,
    watch the first nine seconds to see overview, pack and racer close-up beats. A race
@@ -110,6 +155,9 @@ regressions, spawn rescue/respawns, Roam camera position, racer/podium shot sele
 actual-root following, bounds/framing, restoration of effects and exterior scenery
 masks. Native Luau compilation covers five raw sources and five exported equivalents.
 Exported/manual/bundle sources are checked against the raw files.
+v5.1 regressions verify the scan/log budgets over repeated snapshots and verify
+holding/releasing the view through phases, rounds, viewport changes, camera
+replacement and Roam, without changing server actions.
 
 **Roblox Studio visual rendering, engine physics, actual restart behavior and native
 streaming were not performed in the cloud.** The spawn correction and montage are

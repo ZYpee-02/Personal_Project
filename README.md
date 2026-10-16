@@ -5,10 +5,12 @@ verified checkpoints/finish times, fictional earnings, leaderboards, cosmetic gi
 and a portrait spectator camera. All state stays in memory. DataStoreService,
 custom HTTP and TikTok networking are disabled.
 
-**Already running physical Sprint? Replace World.lua, Realm.server.lua and
-Realm.client.lua** using [the camera/restart guide](docs/CAMERA_FIX.md). Keep Config
-and RealmState unchanged. The new client adds racing/podium shots and reversible
-rendering safeguards; the reported gray screen still requires Studio confirmation.
+**Already running cinematic-v5? Replace only Realm.client.lua**, the Realm
+LocalScript under StarterPlayer → StarterPlayerScripts, using
+[the camera/round-transition guide](docs/CAMERA_FIX.md). v5.1 fixes repeated overview
+diagnostics/scans and adds HOLD CAMERA to isolate the gray next-round view.
+Older physical Sprint installations also need the v5 World/server sources described
+in that guide. The reported gray screen still requires Studio confirmation.
 For a fresh install or an upgrade from before physical Sprint, install all five
 using [the Sprint guide](docs/SPRINT_REPLACEMENT.md). `MANUAL_STUDIO_SETUP.md` contains
 all five complete raw sources. No Command Bar installer is used.
@@ -118,8 +120,14 @@ Player characters now spawn on a separate raised spectator deck outside the race
 lanes. Server preparation rescues the already-spawned first character and handles
 respawns. Roam restores the Humanoid camera subject and begins above/outside the deck.
 
-Diagnostics identify **cinematic-v5**, the selected shot, effect-isolation counts,
+TEST TOOLS → HOLD CAMERA freezes the current Stream View position, aim, Focus and
+FOV across round changes while gameplay continues. Toggle it again or enter Roam
+to restore automatic shots. This is an optional diagnostic; it starts disabled.
+
+Diagnostics identify **cinematic-v5.1**, the round, selected shot, effect-isolation counts,
 actual CFrame/Focus/rendered frame, opacity, enclosing objects and anchor sightlines.
+Overview refitting preserves the ten-second diagnostic and quarter-second lens-scan
+limits; phase/shot changes can request an immediate diagnostic.
 A count of 155 opaque parts or six projected anchors is not proof of visibility.
 See [exact replacement and Studio checks](docs/CAMERA_FIX.md).
 The gray-screen cause is not claimed established or resolved by cloud checks.
