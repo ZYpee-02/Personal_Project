@@ -1,179 +1,122 @@
-# Fixed cinematic spectator camera — exact replacement
+# Stream View direct camera and ward test — replace only the client
 
-This update changes **only `roblox/StarterPlayerScripts/Realm.client.lua`**.
-Your running physical Skybridge Sprint server, Config, RealmState and World are
-unchanged. The five-script architecture, observed checkpoint/finish times, fictional
-income, gifts, standings, rounds and podium logic remain intact. No installer,
-plugin, custom HTTP, TikTok connection or persistence service is added.
+This is a targeted presentation change for the reported case where Roam View
+renders correctly but Stream View is black with 155 opaque course parts present.
+**Studio visual success is not confirmed.** The file is ready for the controlled
+Studio test below; automated projection/logic checks are distinct from rendering.
 
-## Replace exactly one script
+## Exact replacement
 
-1. Back up your working place and **Stop Play**. Open Explorer and the Script Editor.
-2. Expand **StarterPlayer → StarterPlayerScripts** and open the existing **Realm
-   LocalScript**. Do not edit the server Script named Realm.
-3. Replace its **entire source** with the complete contents of
+1. Back up the working place and **Stop Play**.
+2. Open **StarterPlayer → StarterPlayerScripts → Realm** (the **LocalScript**).
+3. Replace its **entire source** with
    [`roblox/StarterPlayerScripts/Realm.client.lua`](../roblox/StarterPlayerScripts/Realm.client.lua).
-   On GitHub, use **Raw** or the file's copy button. Copy Luau source only, without
-   Markdown fences. Do not append the new code or create a second LocalScript.
-4. Keep **Config**, **RealmState**, **World**, and the server **Realm** exactly as
-   they are in your working physical Sprint version. Keep the client enabled and
-   named Realm. Keep HTTP Requests and Studio API Services access disabled.
-5. Press **Play**, not Run. Open **Output**, including **Client** messages, and
-   look for `[Riftbound camera]`. Stream View is the default unless your existing
-   RiftboundStreamCamera player attribute disables it. The button reads ROAM VIEW
-   while Stream View is active; clicking it switches to normal camera controls.
-6. For a new install or a version older than physical Sprint, use all five complete
-   files in [MANUAL_STUDIO_SETUP.md](../MANUAL_STUDIO_SETUP.md) instead. That document
-   contains full, unescaped source blocks identical to the actual files. Your
-   working physical Sprint place needs only the one replacement above.
+   Use GitHub's Raw/copy button; copy actual Luau only, without Markdown fences.
+   Do not append code or add a second client script.
+4. Leave **Config**, **RealmState**, **World**, and **ServerScriptService → Realm**
+   unchanged. There are no new dependencies, scripts, remotes or installers.
+   Keep persistence, HTTP/API access and TikTok integration disabled.
+5. Press **Play**, open **Client Output**, and test the two camera modes. The button
+   labeled **ROAM VIEW** means Stream View is currently active; clicking it enters
+   Roam. The **STREAM VIEW** button switches back to the fixed camera.
 
-There are no new module dependencies or remotes. The client still waits for the
-server-created ReplicatedStorage.Riftbound Snapshot/Action/Notice RemoteEvents.
+All four server source files are unchanged. NPC physics, observations/finish times,
+automatic rounds, earnings, scores, leaderboards and their HUD positions are intact.
 
-## What the investigation established
+## What the two changes test
 
-The supplied World.cameraBounds returns the same box whenever physicalSprint is
-true: X -26..26, Y 54..88, Z -82..76, yaw 60°. RealmState keeps physicalSprint true
-through gathering, voting, storm/race and result for Sprint. Automated execution of
-those actual modules verified that behavior across two rounds and checked all 155
-course BaseParts plus racer/jump envelopes against that box. No server edit is
-needed for this version.
+**Large ward shell:** World builds Starlight ward as a 110-stud sphere centered at
+(0,35,0). Its top reaches Y=90, overlapping the raised course. The previous focus
+(0,71,-3) is inside it; the reported camera (223.2,342,125.8) is outside it. A ray
+hit at 350.6 studs does not establish visual occlusion: Roblox raycasts can hit
+fully transparent parts, and the server normally makes this shell transparent
+outside its ward effect. The 155-part count describes the course, not this separate
+shell. Its rendering remains a hypothesis to test.
 
-With correct inputs, the previous camera math also placed the camera well above
-the map, not underneath it. Code review and executable tests found failure paths:
+The client now sets **only that shell's LocalTransparencyModifier=1** in Stream
+View. It saves and restores the previous modifier in Roam View, on replacement/
+detachment, or when the HUD is disabled. Server Transparency/vote/effect state is
+untouched. Subsequent server opacity changes cannot expose the shell in Stream
+View. Other decorations are not hidden or moved.
 
-- No validation for missing/partial/inverted/NaN/infinite/oversized bounds. A finite
-  oversized test box drove the old distance loop to approximately 13,150 studs;
-  an unsuccessful fit was still returned as a valid camera view.
-- Before bounds arrived, the default view targeted the original lower island,
-  rather than the raised physical course. Bounds corrections were ignored while
-  physicalSprint stayed unchanged.
-- The render loop restored neither FieldOfViewMode nor Camera.Focus. Replacement
-  cameras, resizing and competing camera scripts could leave inconsistent state.
-- Persistent was described as a visibility guarantee. Its presence alone does
-  not show whether the course has replicated on the current client or whether
-  opaque geometry sits between the lens and the arena.
+**Camera construction/framing:** Sprint now uses a direct CFrame.lookAt(position,
+aimPoint) with **no subsequent local CFrame translation**. Its fixed aim point is
+**(0,70,60), on the course start area**, not the previous geometric center. Looking
+at that on-course point lets the rest of the route recede into the clear upper
+area while preserving the existing lower leaderboard panels. Yaw and elevation
+are both **25 degrees**, with **vertical FOV 60**. It never tracks NPCs or changes
+for results. Viewport/bounds fitting adjusts only distance.
 
-These are confirmed code paths, **not proof of the exact cause in your Studio
-session**. The new diagnostics distinguish framing, absent/transparent geometry
-and foreground obstructions. Roblox Studio was not available for this work.
+At 1080×1920 the mathematical fit is approximately **272 studs from the aim point**
+(position about **104,185,284**), or **326 studs from the geometric course center**.
+At 390×844 it is approximately **328 studs from the aim point** (about
+**126,209,329**), or **381 studs from the geometric center**. These are computed
+reference values, not observed Studio measurements. The changed aim point means
+the new fitted-distance number should not alone be compared with the old 372.
+The camera is also closer to the unchanged geometric center.
 
-## Fixed camera behavior
+Sprint keeps bounded fitting (160–600 studs), finite input checks and the existing
+position safety guard. Invalid snapshots use the known course box. The server's
+bounds/yaw remain unchanged; its yaw=60 is the old suggested view, while the new
+client uses its own fixed 25-degree heading. A zero/unusable viewport uses the
+390×844 fallback and refits when usable. The older non-Sprint island camera is
+preserved separately, including its original HUD framing.
 
-The camera keeps the **course center (0, 71, -3)**, **yaw 60°**, **elevation 52°**
-and **vertical FOV 50°**. No racer tracking, result zoom, orbit or interpolation
-moves it through geometry. Only viewport fitting or validated conservative bounds
-padding changes distance. All phases use the same center and heading.
+## Actual-camera and obstruction diagnostics
 
-Every snapshot is checked for finite ordered coordinates, course coverage, bounded
-padding and the expected heading. Bad/missing data uses the known Skybridge box;
-the legacy lower-arena view is selected only when the server explicitly reports
-physicalSprint=false. Valid padding is symmetric so it cannot shift the center.
+Temporary `[Riftbound camera]` logs run every ten seconds and on phase/bounds/mode
+changes. They now report:
 
-The fit projects all eight envelope corners into the existing clear gameplay
-rectangle, separate from the HUD edge panels. The fit is bounded to 120–850 studs;
-it cannot grow into an unlimited zoom-out. A second position guard rejects values
-below maxY+24, above Y=900, beyond X/Z ±700 or farther than 950 studs from focus.
-It reconstructs a known fallback instead of clamping coordinates independently.
+- **Actual** Camera.CFrame position, LookVector and UpVector, actual Camera.Focus
+  position, FOV/mode, fit flag and course part/anchor counts.
+- `aimDot` between the actual look direction and actual focus direction. Sprint
+  should report about **1.000000**, with `focusError=0.000`.
+- `preApplyPositionDrift` and `preApplyAimDrift`: differences before this script
+  restores the frame. Nonzero values can identify another camera controller.
+- Raw ray hit toward the actual focus, and `filteredRay` with the locally hidden
+  ward excluded. A raw ward hit can remain even while its visual is hidden.
+  Filtering removes only that shell; it is not a general visibility oracle.
+- Ward server/local opacity, camera/focus containment in the ward sphere, and
+  `largeGeometryAtLens`. For other large parts this is a conservative bounding-box
+  containment check, not exact mesh-volume collision testing. A name here merits
+  inspection in Studio; the camera does not dynamically chase around it.
 
-The render binding runs at RenderPriority.Last and reapplies Scriptable,
-FieldOfViewMode.Vertical, FOV, CFrame and Focus. Viewport changes are also detected
-in the render loop, and replacement CurrentCamera instances are rebound. Roam View
-restores the saved FOV/mode and character camera subject.
+The new pose is outside all authored large-part bounds in the arithmetic tests.
+This does not test actual engine rendering, animated occlusion or custom geometry.
 
-A usable viewport is at least 64×64, at most 32768 per axis, with aspect ratio
-between 1:4 and 4:1. Zero/nonfinite/transient/extreme viewports receive the known
-390×844 camera fallback; the client refits as soon as a usable viewport returns.
-It does not promise to fit the entire course into a one-pixel or extreme-aspect
-viewport. Ten supported sizes, including 9:16 and 2160×3840, are checked numerically.
+The existing geometry/streaming checks remain. Persistent is a replication policy,
+not proof of visibility. Native streaming requests run only if streaming is enabled
+and local course geometry is missing, with the existing three-attempt limit. Your
+reported complete geometry does not trigger that recovery. No external HTTP,
+TikTok connection or persistence call is added.
 
-## Streaming is checked separately
+## Controlled Studio verification and hypothesis isolation
 
-The server's RiftboundRealm Model already uses ModelStreamingMode.Persistent.
-This update leaves that policy and gameplay geometry alone. The client checks
-SkybridgeSprint's actual BaseParts, opacity and six named start/finish/podium
-anchors. The diagnostic readiness threshold is the current build's 155 parts.
-If you customize the course, review this diagnostic count as well as its bounds.
+1. With defaults (`STREAM_HIDE_WARD=true`), observe gathering, voting, a race,
+   podium results and reset. Check all five racers, full course, gate and podium
+   at 1080×1920 and 390×844, plus the actual capture window. Confirm normal scores,
+   earnings and automatic rounds. Switch Roam/Stream repeatedly.
+2. Check Output for actual Focus (0,70,60), FOV 60, aimDot≈1, zero focus error,
+   six projected anchors, 155 opaque course parts and no large geometry at the lens.
+   If Stream View is still black, the change has **not** been visually validated;
+   retain these logs, especially any lens enclosure or camera drift.
+3. To isolate the ward hypothesis, **Stop Play** and change only
+   `local STREAM_HIDE_WARD = true` near the top of the client to **false**. Play again
+   with the same camera/window, compare Stream View, and include a ward-active
+   voting/racing phase. A ward ray hit alone is insufficient; compare rendering
+   and logged opacity. Restore true after the comparison if hiding helps.
+4. If both mask settings render correctly with the new direct camera, that supports
+   the framing/distance change as a contributor but does not isolate which camera
+   parameter mattered. If hiding is required for visibility, that supports a ward
+   rendering contribution. Both defaults change together, so a successful first
+   test alone cannot identify the original cause.
+5. Keep `CAMERA_DIAGNOSTICS=true` while investigating. Set it false after the Studio
+   check to silence temporary prints; camera control and local masking still work.
 
-If Workspace.StreamingEnabled is true and geometry is missing/partial, the client
-can request **native Roblox geometry streaming** at the fixed course focus using
-Player.RequestStreamAroundAsync. It permits one in-flight call, passes a five-second
-timeout, waits at least 15 seconds between attempts, and attempts at most three
-requests per Stream View session. Monitoring runs every ten seconds, so actual
-retries can be farther apart. Returning successfully is **not** considered proof
-that geometry loaded; part/anchor counts are checked again. Engine call completion
-is governed by Roblox; the client does not launch additional calls while one waits.
-
-This is an internal Roblox streaming request, not custom HTTP or a TikTok bridge.
-No request runs when streaming is disabled or the course is already complete.
-For the initial local fallback playtest, set **Workspace.StreamingEnabled=false**
-in Studio Properties **before Play** and **Config.LoadAvatarAppearances=false** if
-you also want zero authored appearance requests. The optional generated place
-already has streaming disabled. Neither change is required for the camera fix.
-
-## Temporary diagnostic logs
-
-Logs appear at most every ten seconds during Stream View, plus the next frame
-after phase changes, bounds-validation changes or re-entering Stream View. Typical
-390×844 output has camera position near **(263, 402, 149)**, focus **(0, 71, -3)**,
-distance about **448**, fit=true and vertical FOV 50. These values were calculated
-with mocked geometry; they are reference values, not Studio observations.
-
-The log includes:
-
-- phase, viewport, lens coordinates, focus, fitted distance, fit flag, FOV/mode;
-- validated bounds, heading, fallback reason, and a separate received-bounds line;
-- StreamingEnabled, realm presence, model streaming policy, course part/opaque
-  counts, anchors present/projected, native request count and geometry status;
-- the first native raycast hit from the lens toward the focus, including distance.
-  A floor hit near the focus is normal. A foreground hit near the lens identifies
-  something to inspect; the camera does not dynamically chase or move through it.
-
-Interpret the output as follows:
-
-| Evidence | What it tells you |
-| --- | --- |
-| fit=true, six anchors projected, 155 opaque parts | Numeric framing and expected local course geometry are present; investigate real render/lighting/occlusion if still black. |
-| model policy Persistent, parts=0 or anchors missing | The policy alone did not establish local geometry availability. |
-| parts=155, opaque=0 | Geometry exists but is transparent or locally hidden; changing camera persistence cannot fix opacity. |
-| fallback reason | Supplied bounds were missing or rejected; the known course view is used instead. |
-| native request returned | Only the request completed; the subsequent geometry counts determine readiness. |
-| ray hit very near the lens | Inspect that foreground object and its position/size/transparency in Studio. |
-| ray=unavailable | The diagnostic raycast could not execute; this does not stop the camera/game. |
-
-After the Studio check, change `local CAMERA_DIAGNOSTICS = true` near the top of the
-client to **false** to stop temporary prints. Geometry monitoring and bounded
-streaming recovery still function; this flag only disables logs.
-
-## Automated checks and remaining Studio playtest
-
-`npm run check` runs the full existing suite, added camera regressions and builds
-all complete raw-source deliverables. `npm run check:luau` compiles all five raw
-files and their five XML equivalents with the official native Luau compiler.
-
-Added tests execute the actual camera math/full client with mocked Instances,
-CFrames, projections and services. They cover ten supported resolutions, corrupt
-bounds, all-phase server bounds, same-activity updates, full-course corners,
-viewport recovery, replacement cameras, Roam controls, FOV/Focus overrides,
-missing/partial/transparent geometry, mock ray hits and streaming-request limits/
-failure behavior. Existing race/economy/leaderboard tests remain active, including
-multiple automatic rounds with a command-following movement stub.
-
-**No Studio rendering, physics, actual raycast, native geometry streaming or asset
-loading was tested in this Linux environment.** In Windows/macOS Studio:
-
-1. In Stream View, watch gathering → voting → race → podium → reset for at least
-   three rounds. The entire course, five racers, gate and podium should stay
-   visible; results should not move the camera. Verify times/income/standings.
-2. Try 390×844, 720×1280, 1080×1920, 2160×3840, landscape and the actual 9:16 capture.
-   Confirm all scenery is visible within the clear gameplay area, and check actual
-   fonts/label occlusion visually. The HUD layout and label rules were not changed.
-3. Resize/minimize/restore, respawn, switch Roam/Stream repeatedly, and test with
-   your other camera scripts enabled. Check Client Output when an issue occurs.
-4. Stop Play, test StreamingEnabled off, then on, and move the player body far from
-   the arena. The frame should remain fixed; inspect local part/anchor counts and
-   request logs to confirm actual replication. Do not rely solely on Persistent.
-5. If black returns despite six projected anchors and opaque geometry, keep the
-   latest diagnostic block and inspect its near-lens ray hit, actual Lighting/
-   Atmosphere settings, and any other scripts modifying transparency or cameras.
-   Those external conditions cannot be established by the mocked checks.
+Automated checks execute the actual client with mocked engine objects, project all
+course-envelope corners at ten resolutions, and test direct alignment, closer
+positions, bounds, phase stability, Roam/restoration, late wards, masks on/off,
+ray exclusions, lens enclosures and drift logs. Existing multi-round physics-command,
+economy and standings tests remain. Native Luau compilation covers the five raw
+files and their five exported XML equivalents. **No Roblox Studio rendering, real
+physics, actual native raycast, streaming or asset-loading test was performed.**

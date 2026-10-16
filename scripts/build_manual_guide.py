@@ -84,9 +84,14 @@ in separate bottom panels, and reuses the bottom round dock for results. Stream
 view hides duplicate world/scenery boards and limits projected avatar labels to
 four names/two earnings rows. Roam view restores nearby world boards. The fixed
 camera validates every bounds snapshot, stays above/outside the course, limits
-distance to 850 studs, and restores vertical FOV and Focus every render frame.
+Sprint distance to 600 studs, and restores vertical FOV and Focus every render frame.
+Sprint aims directly at the start area with FOV 60, yaw/elevation 25 degrees and
+zero local CFrame translation. The Starlight ward shell is hidden locally in Stream
+View and its prior local opacity restored in Roam View; server effects are unchanged.
 Temporary `[Riftbound camera]` diagnostics check actual local geometry as well as
-the streaming policy. Missing geometry with engine streaming enabled can trigger
+the streaming policy, actual CFrame/Focus, foreground rays and lens enclosures.
+See docs/CAMERA_FIX.md for the ward/camera hypotheses and their Studio A/B check.
+Missing geometry with engine streaming enabled can trigger
 at most three native Roblox stream requests per Stream View session; none run
 when streaming is disabled or the course is present. No external bridge is used.
 

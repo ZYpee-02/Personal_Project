@@ -130,5 +130,15 @@ policy. Streaming request success/failure, cooldown, attempt limits and disabled
 already-loaded cases use mocks only. A mocked foreground hit checks ray diagnostics.
 The existing multi-round server/World/client test continues exercising the race.
 
+The follow-up direct-camera/ward tests check zero Sprint translation, actual
+look-at alignment/Focus, a closer position relative to both the aim point and the
+geometric course center, and all eight course corners inside the unchanged clear
+HUD rectangle. The authored large geometry does not enclose the new lens position
+in these arithmetic tests. Ward masking/restoration is checked across phases,
+server opacity changes, Roam switches, disabled HUDs and late/replaced geometry.
+Further tests exercise the ward-mask A/B flag, raw versus excluded-shell mock
+raycasts, large lens enclosures and camera drift reporting. These mocks do not
+establish whether the ward actually caused the user's rendered black screen.
+
 These are mathematical/logic checks. No real streaming request, raycast, rendering,
 camera controller conflict or Studio visual/physics playtest was performed here.

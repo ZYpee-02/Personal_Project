@@ -99,11 +99,19 @@ The portrait edge HUD retains separate Top Earners/round panels and a lower resu
 dock. Sprint rows show actual seconds or checkpoints/DNF. Name/earnings labels are
 bounded and culled in screen space. A fixed diagonal view fits the whole course,
 jumper envelope and podium into the clear center, including landscape center crops.
-The fixed camera stays centered at (0, 71, -3), with yaw 60° and elevation 52°.
-It rejects malformed bounds, caps fitting at 850 studs, and reapplies Scriptable,
-vertical FOV 50° and Focus after the default camera updates. Validated bounds are
-checked on every snapshot. Diagnostic logs report position, received/used bounds,
-local geometry counts, projected anchors and foreground ray hits.
+The revised Stream View aims directly at a fixed point on the start area
+(0, 70, 60), with yaw/elevation 25° and vertical FOV 60°. This puts the receding
+course above the existing lower HUD without a post-lookAt CFrame translation.
+The normal 9:16 fit is about 272 studs from that aim point, or 326 from the course's
+geometric center. Sprint fitting is capped at 600 studs; bounds remain validated
+every snapshot. Scriptable, FOV/mode and actual Focus are restored each frame.
+
+Stream View locally hides only the large Starlight ward shell and restores its
+previous local opacity in Roam View. Server effects/vote state are unchanged.
+Diagnostics report actual position/look/up/Focus, camera drift, raw/ward-excluded
+rays and lens-enclosing large geometry. Set STREAM_HIDE_WARD=false in the client
+to isolate the ward hypothesis with the closer camera. This is a testable correction,
+not a confirmed Studio visual fix; see [the camera guide](docs/CAMERA_FIX.md).
 
 The realm uses ModelStreamingMode.Persistent, but that policy alone does not prove
 the client has its geometry. When engine streaming is enabled and course parts are

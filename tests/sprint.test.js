@@ -206,7 +206,7 @@ for _,size in ipairs({{320,568},{390,844},{720,1280},{1080,1920},{1920,1080},{84
     local d,shift,up,back,cy,cx,cz,yaw=arenaCamera(w,h,box)
     local focus=Vector3.new(cx,cy,cz)
     camera.CFrame=CFrame.lookAt(focus+Vector3.new(math.sin(yaw)*back*d,up*d,math.cos(yaw)*back*d),focus)*CFrame.new(0,-shift,0)
-    setViewport(w,h); camera.FieldOfView=50
+    setViewport(w,h); camera.FieldOfView=60
     local s,ox,oy=viewportLayout(w,h); local area=screenRect(Layout.arena,s,ox,oy)
     for _,x in ipairs({box.minX,box.maxX}) do for _,y in ipairs({box.minY,box.maxY}) do for _,z in ipairs({box.minZ,box.maxZ}) do
         local point,onScreen=camera:WorldToViewportPoint(Vector3.new(x,y,z))

@@ -38,7 +38,7 @@ end
 
 for (const [w,h] of resolutions) {
   test(`fixed camera contains the entire course and rejects corrupt bounds at ${w}x${h}`, () => runLua(presentationEngine + mathSource + geometryAssertions + `
-setViewport(${w},${h}); camera.FieldOfView=50
+setViewport(${w},${h}); camera.FieldOfView=60
 local cases={
     {"missing"},{"empty",{}},{"wrong type","bad"},{"boolean",false},
     {"NaN",{minX=0/0,maxX=26,minY=54,maxY=88,minZ=-82,maxZ=76,yaw=60}},
@@ -54,8 +54,8 @@ local cases={
 }
 for _,item in ipairs(cases) do
     local d,shift,up,back,cy,cx,cz,yaw,box,reason,fitted=arenaCamera(${w},${h},item[2],true)
-    assert(d>=120 and d<=850 and fitted,item[1].." failed bounded fit")
-    assert(cy==71 and cx==0 and cz==-3 and yaw==math.rad(60),"fixed course center/heading changed")
+    assert(d>=160 and d<=600 and fitted,item[1].." failed bounded fit")
+    assert(cy==70 and cx==0 and cz==60 and yaw==math.rad(25),"fixed course center/heading changed")
     if item[1]~="correct" then assert(string.find(reason,"fallback",1,true),"bad bounds not identified") end
     local focus=Vector3.new(cx,cy,cz)
     camera.CFrame=CFrame.lookAt(focus+Vector3.new(math.sin(yaw)*back*d,up*d,math.cos(yaw)*back*d),focus)*CFrame.new(0,-shift,0)
@@ -67,7 +67,7 @@ end
 test('zero, nonfinite, tiny and extreme viewports yield a bounded fallback instead of an exponential zoom', () => runLua(presentationEngine + mathSource + `
 for _,size in ipairs({{0,0},{0,844},{390,0},{0/0,844},{math.huge,844},{1,1},{1,10000},{10000,1},{40000,40000}}) do
     local d,shift,up,back,cy,cx,cz,yaw,box,reason,fitted=arenaCamera(size[1],size[2],nil,true)
-    assert(finite(d) and finite(shift) and d<850 and cy==71 and cx==0 and cz==-3 and not fitted)
+    assert(finite(d) and finite(shift) and d<600 and cy==70 and cx==0 and cz==60 and not fitted)
 end
 `));
 
@@ -144,9 +144,9 @@ for _,time in ipairs({12,20,100,110}) do
     camera.CameraType=Enum.CameraType.Custom
     renderStep(0.13)
     assertFraming(390,844)
-    assert(camera.CameraType==Enum.CameraType.Scriptable and camera.FieldOfView==50
+    assert(camera.CameraType==Enum.CameraType.Scriptable and camera.FieldOfView==60
         and camera.FieldOfViewMode==Enum.FieldOfViewMode.Vertical)
-    assert((camera.Focus.Position-Vector3.new(0,71,-3)).Magnitude<0.00001)
+    assert((camera.Focus.Position-Vector3.new(0,70,60)).Magnitude<0.00001)
     assert((camera.CFrame.Position-baseline).Magnitude<0.00001,"phase moved the fixed spectator view")
 end
 assert(logged("phase=voting") and logged("phase=storm") and logged("phase=result"))
@@ -184,7 +184,7 @@ local course=workspace.RiftboundRealm.SkybridgeSprint
 course.Parent=nil -- model policy still Persistent, but geometry missing on this mock client
 local requests=0
 function methods:RequestStreamAroundAsync(focus,timeout)
-    assert(self==player and focus.X==0 and focus.Y==71 and focus.Z==-3 and timeout==5)
+    assert(self==player and focus.X==0 and focus.Y==70 and focus.Z==60 and timeout==5)
     requests=requests+1
 end
 for _,time in ipairs({0,10,20,30,40,50,60,70}) do
@@ -233,3 +233,122 @@ assert(logged("parts=155 opaque=0") and logged("geometry=MISSING/PARTIAL"))
 assert(logged("ray=Foreground blocker at 1.0 studs"))
 assertFraming(390,844)
 `));
+
+test('closer Sprint camera directly looks at its on-course focus with zero local translation at ten viewports', () => runLua(clientScene + `
+publish(courseBox)
+for _,size in ipairs({${sizes}}) do
+    setViewport(size[1],size[2]); renderStep(0.13)
+    local d,shift,up,back,cy,cx,cz,yaw=arenaCamera(size[1],size[2],courseBox,true)
+    assert(shift==0,"Sprint retained a local CFrame offset")
+    local aim=Vector3.new(0,70,60)
+    local expected=CFrame.lookAt(aim+Vector3.new(math.sin(yaw)*back*d,up*d,math.cos(yaw)*back*d),aim)
+    assert((camera.CFrame.Position-expected.Position).Magnitude<0.0001)
+    assert(camera.CFrame.LookVector:Dot((aim-camera.CFrame.Position)*(1/d))>0.99999,"actual CFrame misses actual Focus")
+    assert((camera.Focus.Position-aim).Magnitude<0.0001)
+    assertFraming(size[1],size[2])
+    for _,object in ipairs(workspace.RiftboundRealm:GetDescendants()) do
+        if object:IsA("BasePart") and object.Size.Magnitude>=20 then
+            assert(not containsPartBounds(object,camera.CFrame.Position),"lens inside "..object.Name)
+        end
+    end
+end
+setViewport(1080,1920)
+assert((camera.CFrame.Position-camera.Focus.Position).Magnitude<280,"normal 9:16 view is not closer than the previous 372-stud view")
+assert((camera.CFrame.Position-Vector3.new(0,71,-3)).Magnitude<335,"camera did not move closer to the geometric course center")
+setViewport(390,844)
+assert((camera.CFrame.Position-camera.Focus.Position).Magnitude<335,"phone portrait view is not closer than the previous 448-stud view")
+assert((camera.CFrame.Position-Vector3.new(0,71,-3)).Magnitude<390)
+assert(logged("aimDot=1.000000 focusError=0.000"))
+`));
+
+test('ward masking is local, survives replicated phase changes, and restores the original modifier in Roam', () => runLua(clientScene + `
+local ward=workspace.RiftboundRealm["Starlight ward"]
+assert(ward.LocalTransparencyModifier==1,"Stream View did not mask ward")
+assert(containsPartBounds(ward,Vector3.new(0,71,-3)),"old focus was not inside the ward shell")
+assert(not containsPartBounds(ward,Vector3.new(223.2,342,125.8)),"reported old camera was inside the ward")
+assert(not containsPartBounds(ward,camera.CFrame.Position))
+canvas.CameraToggle.Activated:Fire()
+assert(ward.LocalTransparencyModifier==0 and camera.CameraType==Enum.CameraType.Custom)
+ward.LocalTransparencyModifier=0.25 -- preserve an existing local presentation setting
+canvas.CameraToggle.Activated:Fire()
+assert(ward.LocalTransparencyModifier==1)
+for _,time in ipairs({0,12,20,100,110}) do
+    now=time; state:tick(time); state:advance(time)
+    local snapshot=state:snapshot(time)
+    World.render(snapshot,time); World.animate(time)
+    local transparency,position=ward.Transparency,ward.CFrame.Position
+    publish(courseBox)
+    assert(ward.LocalTransparencyModifier==1)
+    assert(ward.Transparency==transparency and (ward.CFrame.Position-position).Magnitude==0,"client changed server ward presentation/state")
+end
+canvas.CameraToggle.Activated:Fire()
+assert(ward.LocalTransparencyModifier==0.25,"Roam failed to restore prior local modifier")
+canvas.CameraToggle.Activated:Fire()
+playerGui.RiftboundHUD.Enabled=false
+renderStep(0.13)
+assert(ward.LocalTransparencyModifier==0.25,"disabled HUD retained the Stream View mask")
+`));
+
+test('late or replaced ward geometry is masked without affecting other scenery or the saved Roam setting', () => runLua(clientScene + `
+local old=workspace.RiftboundRealm["Starlight ward"]
+local rift=workspace.RiftboundRealm["Storm rift"]
+local initialRiftModifier=rift.LocalTransparencyModifier
+old.Parent=nil
+renderStep(0.13)
+assert(old.LocalTransparencyModifier==0,"detached ward retained a stale local mask")
+local ward=instance("Part","Starlight ward")
+ward.Size=Vector3.new(110,110,110); ward.CFrame=CFrame.new(0,35,0)
+ward.Shape=Enum.PartType.Ball; ward.Transparency=0.88; ward.LocalTransparencyModifier=0.35
+ward.Parent=workspace.RiftboundRealm
+renderStep(0.13)
+assert(ward.LocalTransparencyModifier==1 and rift.LocalTransparencyModifier==initialRiftModifier)
+canvas.CameraToggle.Activated:Fire()
+assert(ward.LocalTransparencyModifier==0.35 and ward.Transparency==0.88)
+`));
+
+test('camera diagnostics distinguish raw ward hits, excluded-shell rays, lens enclosures and external camera drift', () => runLua(clientScene + `
+RaycastParams={new=function() return {} end}
+local ward=workspace.RiftboundRealm["Starlight ward"]
+local start=workspace.RiftboundRealm.SkybridgeSprint["START platform"]
+function methods:Raycast(origin,direction,params)
+    if params then
+        assert(params.FilterType==Enum.RaycastFilterType.Exclude and params.FilterDescendantsInstances[1]==ward)
+        return {Instance=start,Position=origin+direction*0.95}
+    end
+    return {Instance=ward,Position=origin+direction*0.9}
+end
+local blocker=instance("Part","Lens enclosure",workspace.RiftboundRealm)
+blocker.Size=Vector3.new(30,30,30); blocker.CFrame=CFrame.new(camera.CFrame.Position)
+blocker.Transparency,blocker.LocalTransparencyModifier=0,0
+camera.CFrame=CFrame.lookAt(Vector3.new(0,-100,0),Vector3.new(0,-100,1))
+publish(courseBox) -- resize reapplies before render; inject a later competing controller next
+now=10
+camera.CFrame=CFrame.lookAt(Vector3.new(0,-100,0),Vector3.new(0,-100,1))
+renderStep(0.13)
+assert(logged("ray=Starlight ward at ") and logged("filteredRay=START platform at "))
+assert(logged("largeGeometryAtLens=Lens enclosure"))
+local driftFound=false
+for _,line in ipairs(logs) do
+    local drift=string.match(line,"preApplyPositionDrift=([%d%.]+)")
+    if drift and tonumber(drift)>100 then driftFound=true end
+end
+assert(driftFound,"another controller's camera movement was not reported")
+assertFraming(390,844)
+ward.Parent=nil; now=20; renderStep(0.13)
+assert(logged("ward=absent largeGeometryAtLens=Lens enclosure"),"other large geometry was only logged while the ward existed")
+`));
+
+test('ward hypothesis can be isolated by disabling only the local mask while retaining the direct camera', () => {
+  const unmaskedClient = client.replace('local STREAM_HIDE_WARD = true', 'local STREAM_HIDE_WARD = false');
+  runLua(presentationEngine + modules + mathSource + geometryAssertions + `
+print=function() end
+World.build(Config)
+local ward=workspace.RiftboundRealm["Starlight ward"]
+ward.LocalTransparencyModifier=0.4
+;(function() ${unmaskedClient} end)()
+renderStep(0.13)
+assert(ward.LocalTransparencyModifier==0.4,"ward test toggle still modifies ward")
+assertFraming(390,844)
+assert((camera.Focus.Position-Vector3.new(0,70,60)).Magnitude<0.0001)
+`);
+});
