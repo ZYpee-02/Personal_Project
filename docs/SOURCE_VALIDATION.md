@@ -1,7 +1,8 @@
 # Raw Luau source validation
 
-Current release: physical Skybridge Sprint. All five files changed; follow
-[SPRINT_REPLACEMENT.md](SPRINT_REPLACEMENT.md). Native Roblox appearance loading is
+Current update: fixed spectator camera for physical Skybridge Sprint. Only the
+client changed; follow [CAMERA_FIX.md](CAMERA_FIX.md). Fresh installs still use all
+five files and [SPRINT_REPLACEMENT.md](SPRINT_REPLACEMENT.md). Native appearance loading is
 optional and guarded; no persistence/custom HTTP/TikTok code is enabled.
 
 The manual game consists of exactly:
@@ -110,3 +111,24 @@ rounds with a command-following movement stub. Root samples and stubbed movement
 are **not actual Roblox physics**. No native appearance requests were made by these
 tests. Real R6 avatar assets, collision/jump traversal, streaming, rendering,
 occlusion, model scaling and performance require Windows/macOS Studio playtesting.
+
+## Fixed spectator camera regression checks
+
+`tests/camera.test.js` executes the actual camera math and full client with the
+documented engine mocks. Ten viewport sizes include 1080×1920, 2160×3840, portrait,
+landscape and 1:4/4:1 edges. Tests project all eight course-envelope corners into
+the unobstructed gameplay rectangle and check finite positions, height, distance,
+heading and center. Corrupt/missing/undersized/inverted/NaN/infinite/oversized bounds
+fall back safely. Unusable viewports get bounded fallback positions.
+
+Actual RealmState/World code verifies identical server bounds through all round
+phases, all 155 built course BaseParts inside the bounds, and racing jump envelopes.
+Full-client tests cover same-activity bounds corrections, phase stability, conflicting
+camera CFrames/FOV modes, Focus, zero-size viewport recovery, replacement cameras and
+Roam toggles. Partial/missing/transparent geometry is distinguished from a Persistent
+policy. Streaming request success/failure, cooldown, attempt limits and disabled/
+already-loaded cases use mocks only. A mocked foreground hit checks ray diagnostics.
+The existing multi-round server/World/client test continues exercising the race.
+
+These are mathematical/logic checks. No real streaming request, raycast, rendering,
+camera controller conflict or Studio visual/physics playtest was performed here.

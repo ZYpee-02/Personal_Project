@@ -25,6 +25,12 @@ FORBIDDEN = re.compile(
 
 
 def audit(text, label):
+    stream_calls = re.findall(r"\w+:RequestStreamAroundAsync\s*\(", text)
+    if stream_calls and (not str(label).endswith("Realm.client.lua") or len(stream_calls) != 1
+                         or "workspace.StreamingEnabled and missingGeometry" not in text
+                         or "streamRequests < 3" not in text
+                         or "player:RequestStreamAroundAsync(requestFocus, 5)" not in text):
+        raise ValueError("Native geometry streaming is allowed only in the bounded spectator client")
     avatar_calls = re.findall(r"(\w+):((?:GetHumanoidDescriptionFromUserIdAsync|CreateHumanoidModelFromDescriptionAsync))\s*\(", text)
     if avatar_calls and (not str(label).endswith("World.lua") or "settings.LoadAvatarAppearances ~= true" not in text):
         raise ValueError("Appearance APIs are allowed only in the guarded World loader")

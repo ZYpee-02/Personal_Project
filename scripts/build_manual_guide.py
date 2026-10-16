@@ -10,11 +10,16 @@ intro = '''# Riftbound Live: Skybridge Sprint complete raw scripts and manual re
 Use the Script Editor and Explorer. Do not paste this document or any script into
 the Command Bar. There is no generated installer or serialized source wrapper.
 
-**Skybridge Sprint update:** Replace the ENTIRE source of **all five** existing
-instances below together. All five changed. Keep names/types/parents; do not mix
-versions or add duplicates. Restore custom HostUserIds afterward. Follow
-`docs/SPRINT_REPLACEMENT.md` for exact replacement and physics playtesting.
-The older presentation/startup guides document previous updates only.
+**Fixed spectator camera update:** If physical Skybridge Sprint already runs,
+replace ONLY the entire **Realm.client.lua** source in the existing **Realm
+LocalScript under StarterPlayer → StarterPlayerScripts**. Keep the other four
+scripts and your Config settings. Follow `docs/CAMERA_FIX.md` for exact replacement,
+diagnostic log interpretation and the remaining Studio visual/streaming checks.
+
+For a fresh install or an upgrade from BEFORE physical Sprint, install all five
+complete sources below together; follow `docs/SPRINT_REPLACEMENT.md` for the
+gameplay upgrade. Keep names/types/parents and avoid duplicate scripts. The steps
+below describe a fresh install, not a requirement to reset your working server.
 
 ## Step-by-step
 
@@ -77,8 +82,13 @@ Check the server Realm is enabled with RunContext Legacy, and has no duplicates.
 The presentation update keeps a clear central arena area, puts both leaderboards
 in separate bottom panels, and reuses the bottom round dock for results. Stream
 view hides duplicate world/scenery boards and limits projected avatar labels to
-four names/two earnings rows. Roam view restores nearby world boards. Camera
-distance fits the full Sprint course (or the legacy arena) and stays outside it; no result zoom or central winner banner is used.
+four names/two earnings rows. Roam view restores nearby world boards. The fixed
+camera validates every bounds snapshot, stays above/outside the course, limits
+distance to 850 studs, and restores vertical FOV and Focus every render frame.
+Temporary `[Riftbound camera]` diagnostics check actual local geometry as well as
+the streaming policy. Missing geometry with engine streaming enabled can trigger
+at most three native Roblox stream requests per Stream View session; none run
+when streaming is disabled or the course is present. No external bridge is used.
 
 All game data is in memory, with `PersistenceEnabled = false`. There are no
 save-service, custom HTTP or TikTok calls. LoadAvatarAppearances=true permits two

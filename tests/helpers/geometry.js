@@ -49,7 +49,7 @@ UDim2 = {
     fromScale = function(x,y) return {X=UDim.new(x,0),Y=UDim.new(y,0)} end,
 }
 Color3 = { fromRGB = function(...) return {...} end, fromHSV = function(...) return {...} end }
-Enum = setmetatable({RenderPriority={Camera={Value=200}}}, {__index=function(t,key)
+Enum = setmetatable({RenderPriority={Camera={Value=200},Last={Value=2000}}}, {__index=function(t,key)
     local category=setmetatable({}, {__index=function(_, item) return key.."."..item end}); rawset(t,key,category); return category
 end})
 `;

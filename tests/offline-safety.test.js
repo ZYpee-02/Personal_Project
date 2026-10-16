@@ -29,7 +29,7 @@ test('all five game scripts exclude persistence/custom HTTP; optional native ava
 test('offline exporter rejects privileged/network APIs and nonlocal require calls', () => {
   execFileSync('python3', ['-c', `
 from scripts.offline_sources import audit
-bad = ['game:GetService("DataStoreService")', 'game:GetService("HttpService")', 'game:GetService("InsertService")', 'require(1234)', 'require(otherModule)', 'loadstring("code")', 'https://example.com', 'Players:GetUserIdFromNameAsync("Alice")', 'game:GetService("UnlistedService")', 'Players:GetHumanoidDescriptionFromUserIdAsync(1)', 'Players:CreateHumanoidModelFromDescriptionAsync(description, rigType)']
+bad = ['game:GetService("DataStoreService")', 'game:GetService("HttpService")', 'game:GetService("InsertService")', 'require(1234)', 'require(otherModule)', 'loadstring("code")', 'https://example.com', 'Players:GetUserIdFromNameAsync("Alice")', 'game:GetService("UnlistedService")', 'Players:GetHumanoidDescriptionFromUserIdAsync(1)', 'Players:CreateHumanoidModelFromDescriptionAsync(description, rigType)', 'player:RequestStreamAroundAsync(focus, 5)']
 for code in bad:
     try:
         audit(code, 'test')

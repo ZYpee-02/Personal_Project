@@ -19,6 +19,15 @@ ReplicatedStorage, RunService, Lighting and TweenService. The client waits for t
 server-created Riftbound folder and Snapshot, Action and Notice RemoteEvents.
 These synchronize clients within Roblox; they do not contact external services.
 
+The fixed spectator client can also use Player.RequestStreamAroundAsync for native
+Roblox geometry streaming. It is guarded by Workspace.StreamingEnabled and actual
+missing/partial course geometry, with one in-flight request, a timeout argument of
+five seconds, a minimum retry interval of 15 seconds, and at most three attempts
+per Stream View session. It never calls custom HTTP, TikTok or persistence services.
+Disable Workspace.StreamingEnabled in Studio Properties before Play for zero
+authored geometry-streaming requests (the optional generated place already does).
+The request finishing is not treated as proof that geometry replicated.
+
 During Play, World builds its own geometry and lighting and creates avatars from
 local Parts. `LoadAvatarAppearances=true` additionally allows two guarded native
 Roblox calls: GetHumanoidDescriptionFromUserIdAsync and
@@ -49,7 +58,7 @@ These are checks for this authored source, not a guarantee for arbitrary untrust
 or obfuscated code. Actual Roblox rendering, physics, UI and avatar scaling must
 be playtested in Studio. Keep HTTP Requests and Studio API Services access disabled
 and follow `docs/SPRINT_REPLACEMENT.md`. Studio/the Roblox engine may use normal
-services. Native appearance requests are the explicitly permitted exception;
+services. The documented native appearance/geometry APIs are permitted;
 custom HTTP and real TikTok networking remain disabled.
 
 
