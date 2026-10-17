@@ -1,3 +1,5 @@
+> Historical v11 flow. The current [v13 setup](SOLO_ENTRANCE_REPLACEMENT.md) preserves closed-window registration but finishes every accepted solo entrance and physical grid walk before launch.
+
 # Riftbound Live v11 — fresh registration and cinematic tournament
 
 The shared v10 track is unchanged. This update changes race entry, presentation

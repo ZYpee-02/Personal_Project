@@ -1,3 +1,5 @@
+> Historical v12 camera update. For the current individual FIFO entrances and physical grid walks, use [the v13 five-source replacement](SOLO_ENTRANCE_REPLACEMENT.md).
+
 # Riftbound Live v12 — cinematic racing broadcast
 
 This update changes **only Realm.client.lua** among the five game scripts. The

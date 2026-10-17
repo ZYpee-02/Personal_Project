@@ -4,6 +4,7 @@ import {runLua} from './helpers/lua.js';
 const read=n=>readFileSync(new URL(`../roblox/ServerScriptService/${n}`,import.meta.url),'utf8');
 const setup=`
 local Config=(function() ${read('Config.lua')} end)()
+Config.SoloEntrances=false -- v11 isolated-domain/shot regression; production requires the v13 preparation gate
 local Realm=(function() ${read('RealmState.lua')} end)()
 local function fresh() return Realm.new(Config,0) end
 local function join(s,name,at,id,round)

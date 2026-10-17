@@ -132,6 +132,9 @@ local world = {
     end,
     animate = function() frames = frames + 1 end,
     loadAppearance = function() end,
+    preparationStep = function(state,time)
+        if state.entrance and state.entrance.stage=='walking' then state:gridArrived(state.entrance.names[1],state.round,state.entrance.sequence,time,0) end
+    end,
     cameraBounds = function() end,
     courseInfo = function() return {checkpoints=48} end,
     resolveUsername = function() return 123 end,

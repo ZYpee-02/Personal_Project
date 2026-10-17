@@ -18,7 +18,10 @@ return {
     SprintRaceSeconds = 120,
     SprintWalkSpeed = 12.5, -- Shared skyway: physical travel, not a finish timer.
     ResolveViewerUsernames = true, -- Verified JOIN uses native Roblox account lookup.
-    EntranceSeconds = 4, -- Normal individual montage; bursts group three for 2.5s.
+    SoloEntrances = true, -- Required: one complete introduction, then physical grid arrival.
+    EntranceSeconds = 4.5, -- Each accepted racer gets the full duration; never grouped.
+    PreparationWalkSpeed = 18, -- Pre-race only; every racer keeps the same race WalkSpeed.
+    PreparationMoveTimeoutSeconds = 18, -- stalled walks recover; never advance by a timer.
     SprintFinishBonus = 40,
     LoadAvatarAppearances = true, -- false disables outfits; OFFLINE JOIN also skips account lookup.
     AppearanceTimeoutSeconds = 8,

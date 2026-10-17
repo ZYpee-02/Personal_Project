@@ -6,6 +6,7 @@ const read=p=>readFileSync(new URL('../roblox/'+p,import.meta.url),'utf8');
 const client=read('StarterPlayerScripts/Realm.client.lua');
 const base=presentationEngine+`
 local Config=(function() ${read('ServerScriptService/Config.lua')} end)()
+Config.SoloEntrances=false -- v11 isolated-domain/shot regression; production requires the v13 preparation gate
 Config.LoadAvatarAppearances=false
 local Realm=(function() ${read('ServerScriptService/RealmState.lua')} end)()
 local World=(function() ${read('ServerScriptService/World.lua')} end)()

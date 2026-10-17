@@ -78,8 +78,8 @@ local function initialize()
     stage("Requiring World")
     local World = require(script.Parent.World)
     assert(type(World) == "table", "World must return its module table")
-    for _, name in ipairs({ "build", "render", "animate", "offlineAvatar", "arrive", "sprintStep", "loadAppearance", "cameraBounds", "courseInfo", "resolveUsername", "validUsername" }) do
-        assert(type(World[name]) == "function", "World is missing " .. name .. "(). Replace the entire World ModuleScript with the Phase 2 file.")
+    for _, name in ipairs({ "build", "render", "animate", "offlineAvatar", "arrive", "sprintStep", "loadAppearance", "cameraBounds", "courseInfo", "resolveUsername", "validUsername", "preparationStep" }) do
+        assert(type(World[name]) == "function", "World is missing " .. name .. "(). Replace the entire World ModuleScript with the current solo-entrance file.")
     end
     stage("Validating Config")
     -- Phase 1 Config tables lacked these fields. Supply only missing values; never hide invalid explicit values.
@@ -91,7 +91,7 @@ local function initialize()
         AutoSimulateGifts = false, DemoPowerups = true, DemoGiftSeconds = 18, StreamCameraDefault = true, HostUserIds = {},
         BaseMoneyPerSecond = 5, VoteMoneyPerSecond = 3, WinMoneyPerSecond = 2,
         MaxMoneyPerSecond = 100, MaxBalance = 1000000000, MaxCrew = 40, MaxQueuedArrivals = 30,
-        PersistenceEnabled = false, AutoJoinPlayers = false, SprintOnly = true, SprintCompetitors = 20, SprintRaceSeconds = 120, SprintWalkSpeed = 12.5, ResolveViewerUsernames = true, EntranceSeconds = 4,
+        PersistenceEnabled = false, AutoJoinPlayers = false, SprintOnly = true, SprintCompetitors = 20, SprintRaceSeconds = 120, SprintWalkSpeed = 12.5, ResolveViewerUsernames = true, EntranceSeconds = 4.5, SoloEntrances = true, PreparationWalkSpeed = 18, PreparationMoveTimeoutSeconds = 18,
         RegistrationSeconds = 30, MinimumRacers = 2, StartCountdownSeconds = 4, MaxSessionMembers = 500,
         SprintFinishBonus = 40, LoadAvatarAppearances = false, AppearanceTimeoutSeconds = 8,
         DemoAppearanceUserIds = { 1, 156, 261, 2, 3 },
@@ -100,6 +100,7 @@ local function initialize()
     assert(Config.AutoActivities == true, "AutoActivities must stay true for the automatic tournament")
     assert(Config.SprintOnly == true, "SprintOnly must stay true for the physical Skybridge tournament")
     assert(Config.AutoJoinPlayers == false, "AutoJoinPlayers must stay false; viewers must register freshly each round")
+    assert(Config.SoloEntrances == true, "SoloEntrances must stay true; all accepted racers need an individual introduction and physical grid arrival")
     assert(Config.PersistenceEnabled == false, "PersistenceEnabled must stay false; this game has no save implementation")
     local function range(name, minimum, maximum)
         local value = Config[name]
@@ -109,7 +110,9 @@ local function initialize()
     for _, name in ipairs({ "GatheringSeconds", "VotingSeconds", "StormSeconds", "ResultSeconds" }) do range(name, 0.1, 3600) end
     range("SprintRaceSeconds", 120, 120)
     range("SprintWalkSpeed", 10, 14)
-    range("EntranceSeconds", 3, 5)
+    range("EntranceSeconds", 4, 5)
+    range("PreparationWalkSpeed", 10, 20)
+    range("PreparationMoveTimeoutSeconds", 10, 30)
     assert(workspace.StreamingEnabled ~= true, "For this playtest, Stop Play and set Workspace.StreamingEnabled=false in Properties.")
     range("RegistrationSeconds", 5, 120)
     range("MinimumRacers", 2, 20)
@@ -139,7 +142,7 @@ local function initialize()
     for i = 1, 3 do assert(type(Config.RoundPrizes[i]) == "number" and Config.RoundPrizes[i] >= 0 and Config.RoundPrizes[i] <= 1000000, "RoundPrizes needs three finite nonnegative amounts") end
     stage("Creating RealmState")
     local state = Realm.new(Config, os.clock())
-    for _, name in ipairs({ "tick", "advance", "snapshot", "addCrew", "vote", "gift", "follow", "bless", "recordCheckpoint", "raceDistance", "raceComplete", "raceDNF", "queueEntrance", "advanceEntrances", "nextCohort", "registrationCheck", "register", "unregister", "activatePowerup" }) do
+    for _, name in ipairs({ "tick", "advance", "snapshot", "addCrew", "vote", "gift", "follow", "bless", "recordCheckpoint", "raceDistance", "raceComplete", "raceDNF", "queueEntrance", "advanceEntrances", "nextCohort", "registrationCheck", "register", "unregister", "activatePowerup", "avatarPrepared", "gridArrived", "preparationReady" }) do
         assert(type(state[name]) == "function", "RealmState is missing " .. name .. "(). Replace its complete Phase 2 source.")
     end
     local initial = state:snapshot(os.clock())
@@ -159,6 +162,7 @@ local function initialize()
 
     local function publish()
         local now = os.clock()
+        if World.preparationStep then World.preparationStep(state,now) end
         local snapshot = state:snapshot(now)
         snapshot.persistence, snapshot.bridge = "memory only", "offline simulator"
         snapshot.demo, snapshot.streamCamera = demoEnabled == true, Config.StreamCameraDefault
@@ -185,8 +189,8 @@ local function initialize()
         local ok,issue=state:registrationCheck(username,event.roundId,event.submittedAt,os.clock(),event.eventId)
         if not ok then return false,issue end
         if not World.validUsername(username) then return false,"Enter a Roblox username, not a display name." end
-        local userId=type(event.appearanceUserId)=="number" and event.appearanceUserId or 0
-        if userId==0 and event.offline~=true then
+        local userId=0
+        if event.offline~=true then
             userId,issue=World.resolveUsername(username)
             if not userId then return false,issue end
         end
@@ -195,8 +199,8 @@ local function initialize()
         local registered,member=state:register(username,userId,event.roundId,event.submittedAt,os.clock(),event.eventId)
         if not registered then return false,member end
         local model=World.offlineAvatar(member.username)
-        World.arrive(model,member.slot,member.username)
-        World.loadAppearance(member.username,userId)
+        World.arrive(model,member.slot,member.username,state.round,member.reservedGrid)
+        World.loadAppearance(member.username,event.offline and event.appearanceUserId or userId)
         state:advanceEntrances(os.clock())
         return true,member.username.." registered for round "..event.roundId..(event.offline and " / OFFLINE" or " / ROBLOX")
     end
@@ -301,6 +305,16 @@ local function initialize()
                 local event=envelope(kind and "powerup" or action=="withdraw" and "withdraw" or "register",payload,roundId,{offline=action=="offlineJoin",kind=kind})
                 local ok,issue=enqueue(event,function(_,message) notify(player,message) end)
                 if not ok then notify(player,issue) end
+            elseif action=="batchJoin" then
+                local count=tonumber(payload)
+                if count~=2 and count~=5 and count~=10 and count~=20 then notify(player,"Choose 2, 5, 10 or 20 offline registrations.");return end
+                local accepted=0
+                for i=1,count do
+                    local name="Test_Racer"..i
+                    local ok=enqueue(envelope("register",name,roundId,{offline=true}),function(_,message) notify(player,message) end)
+                    if ok then accepted=accepted+1 end
+                end
+                notify(player,accepted.." simultaneous OFFLINE requests queued; slots reserve on acceptance.")
             elseif action=="demoToggle" then
                 if Config.DemoStudioOnly and not RunService:IsStudio() then notify(player,"Demo testing is Studio-only.");return end
                 demoEnabled=not demoEnabled
@@ -360,7 +374,10 @@ local function initialize()
         raceAccumulator = raceAccumulator + dt
         if running and raceAccumulator >= 0.05 then
             raceAccumulator = 0
-            if not guarded("Observing physical Sprint", function() World.sprintStep(state, os.clock()) end) then return end
+            if not guarded("Observing physical Sprint", function()
+                if World.preparationStep then World.preparationStep(state,os.clock()) end
+                World.sprintStep(state, os.clock())
+            end) then return end
         end
         if running and sceneAccumulator >= 1 / Config.SceneUpdatesPerSecond then
             sceneAccumulator = 0
@@ -369,7 +386,7 @@ local function initialize()
     end))
 
     task.spawn(function()
-        local lastSnapshot = 0
+        local lastSnapshot, lastEntry = 0, ""
         while running do
             if not guarded("Advancing rounds / rendering snapshot", function()
                 local now = os.clock()
@@ -377,7 +394,7 @@ local function initialize()
                 state:advanceEntrances(now)
                 local previousPhase=state.phase
                 local changed = state:advance(now)
-                if changed and (state.phase=="countdown" or state.phase=="result" or previousPhase=="result") then
+                if changed and (state.phase=="preparing" or state.phase=="countdown" or state.phase=="result" or previousPhase=="result") then
                     -- Cancel pending old-window tasks as well as presentation queues.
                     for i=#tasks,1,-1 do
                         local item=tasks[i]
@@ -387,7 +404,10 @@ local function initialize()
                         end
                     end
                 end
-                if changed or now - lastSnapshot >= Config.SnapshotSeconds then
+                local entry=state.entrance
+                local entryKey=entry and (entry.sequence.."/"..(entry.stage or "intro")) or ""
+                if changed or entryKey~=lastEntry or now - lastSnapshot >= Config.SnapshotSeconds then
+                    lastEntry=entryKey
                     publish()
                     lastSnapshot = now
                 end

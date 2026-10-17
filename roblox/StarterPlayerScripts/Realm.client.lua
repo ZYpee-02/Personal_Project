@@ -456,7 +456,10 @@ for i,item in ipairs({{"TRAIL VISUAL","powerupTrail"},{"SHIELD VISUAL","powerupS
     button(controls,"Powerup"..i,item[1],{x=16+(i-1)*137,y=252,w=126,h=38},function() actionRemote:FireServer(item[2],input.Text,latestState and latestState.round or 0) end)
 end
 button(controls, "VerifiedJoin", "ROBLOX JOIN / VERIFY ACCOUNT", { x = 16, y = 300, w = 400, h = 32 }, function() actionRemote:FireServer("join", input.Text, latestState and latestState.round or 0) end)
-text(controls, "Hint2", "Offline join = stand-in. Roblox join = account lookup.", { x = 16, y = 342, w = 400, h = 24 }, 13, muted)
+for i,count in ipairs({2,5,10,20}) do
+    local batch=button(controls,"Batch"..count,"JOIN "..count,{x=16+(i-1)*102,y=340,w=94,h=24},function() actionRemote:FireServer("batchJoin",tostring(count),latestState and latestState.round or 0) end)
+    batch.TextSize=12
+end
 button(controls,"Withdraw","WITHDRAW ENTRY",{x=16,y=368,w=194,h=32},function() actionRemote:FireServer("withdraw",input.Text,latestState and latestState.round or 0) end)
 button(controls,"TestStale","TEST STALE ROUND",{x=222,y=368,w=194,h=32},function() actionRemote:FireServer("offlineJoin",input.Text,(latestState and latestState.round or 0)-1) end)
 local renderCheckButton
@@ -751,6 +754,32 @@ local function broadcastPlan(state, now, liveTime, position, realm)
         plan.key="launch/"..state.round.."/"..angle
         plan.shot=({"starting grid / FRONT","starting grid / SIDE","starting grid / REAR"})[angle+1]
         use(state.nextCohort or {});plan.yaw=plan.yaw+angle*90;plan.elevation=42;plan.wide=true
+    elseif state.preparation and (state.phase=="registration" or state.phase=="preparing") then
+        local entry=state.entrance
+        if entry and entry.roundId==state.round then
+            local age=math.max(0,liveTime-entry.startedAt)
+            local view=entry.stage=="intro" and math.min(2,math.floor(age/((entry.endsAt-entry.startedAt)/3))) or 1
+            use({entry.names[1]})
+            plan.key="solo/"..state.round.."/"..entry.sequence.."/"..entry.stage.."/"..view
+            plan.shot=entry.stage=="intro" and ({"solo entrance / FRONT","solo entrance / SIDE","solo entrance / CLOSE-UP"})[view+1] or "walking to starting grid"
+            plan.yaw=plan.yaw+(view==1 and 70 or 0)
+            plan.close=entry.stage=="intro" and view==2
+            plan.elevation=plan.close and 40 or 34
+            plan.caption=entry.names[1]
+        else
+            local ready={}
+            for _,member in ipairs(state.members) do if member.registered and member.preparationStatus=="ready" then ready[#ready+1]=member.username end end
+            if #ready>0 then
+                if now>=b.nextIntro or not position(b.gridSubject) then b.gridSubject=leastSeen(ready,b.coverage,1)[1];b.nextIntro=now+4;b.introBeat=(b.introBeat or 0)+1 end
+                use({b.gridSubject});plan.key="grid-warmup/"..state.round.."/"..b.introBeat
+                plan.shot,plan.caption="starting grid / warm-up",b.gridSubject
+                plan.yaw=plan.yaw+20
+            else
+                plan.key,plan.shot,plan.wide="lobby/"..state.round,"waiting lobby",true
+                plan.targets={Vector3.new(-64,80,66),Vector3.new(0,68,55)}
+                plan.yaw=-12+math.sin(now*.09)*18;plan.elevation=38
+            end
+        end
     elseif state.phase=="registration" then
         local roster=state.registration.roster
         if #roster==0 then
@@ -1024,7 +1053,7 @@ local function updateDirector(now, dt)
                 end
             end
             local visible={};for i=1,#targets do if plan.names[i] then visible[#visible+1]=plan.names[i] end end
-            if state.phase=="registration" and #visible>0 then
+            if state.phase=="registration" and not state.preparation and #visible>0 then
                 local duration=#state.registration.roster>=6 and 2 or 2.5
                 local index=math.floor(math.max(0,now-(broadcast.introStarted or now))/(duration/#visible))%#visible+1
                 broadcastCaption=visible[index] -- One full username at a time, never three truncated names.
@@ -1146,7 +1175,7 @@ snapshotRemote.OnClientEvent:Connect(function(state)
     competitorPanel.Title.Text = state.physicalSprint and "SPRINT / TIME" or "ROUND LEADERS / PT"
     phase.Text = state.activity.name
     stats.Text = string.format("%s / %d TRAVELERS / %d SHARDS", state.demo and "DEMO" or "LOCAL CREW", #state.crew, state.wins)
-    timingLabel.Text = ({ registration="JOIN CLOSES",countdown="GET READY",gathering = "NEXT ROUND", voting = "STARTS IN", storm = "TIME LEFT", result = "NEXT UP" })[state.phase]
+    timingLabel.Text = ({ registration="JOIN CLOSES",preparing="PREPARING",countdown="GET READY",gathering = "NEXT ROUND", voting = "STARTS IN", storm = "TIME LEFT", result = "NEXT UP" })[state.phase]
     for i = 1, 5 do
         local earner = state.leaderboard[i]
         earners[i].name.Text = earner and (i .. ". " .. earner.username) or (i .. ". Waiting")
@@ -1190,11 +1219,23 @@ snapshotRemote.OnClientEvent:Connect(function(state)
             timingLabel.Text=reg.endsAt==0 and "NEED "..reg.minimum or "JOIN CLOSES"
             instruction.Text="COMMENT YOUR ROBLOX USERNAME TO JOIN!"
             roundStatus.Text=reg.count.."/"..reg.capacity.." REGISTERED / SUBMIT AGAIN EACH ROUND"
+            if state.preparation then
+                local prep=state.preparation
+                roundStatus.Text=string.format("%d/%d READY / %d PENDING / %s",prep.ready,prep.total,prep.pending,prep.current~="" and prep.current or "WAITING")
+            end
             competitorPanel.Title.Text="REGISTERED / "..reg.count
             for i=1,5 do
                 competitors[i].name.Text=reg.roster[i] and (i..". "..reg.roster[i]) or (i..". Open slot")
-                competitors[i].score.Text=reg.roster[i] and "READY" or "—"
+                local status="QUEUED"
+                for _,member in ipairs(state.members) do if member.username==reg.roster[i] then status=member.preparationStatus and string.upper(member.preparationStatus) or "READY";break end end
+                competitors[i].score.Text=reg.roster[i] and status or "—"
             end
+        elseif state.phase=="preparing" then
+            local prep=state.preparation
+            phase.Text="ROSTER LOCKED / PREPARING RACERS"
+            instruction.Text="REGISTRATION CLOSED / ALL ENTRANCES FINISH BEFORE GO"
+            roundStatus.Text=string.format("%d/%d READY / %d PENDING / %s",prep.ready,prep.total,prep.pending,prep.current)
+            stats.Text=string.format("ROUND %d / CLOSED / %d/%d RACERS",state.round,reg.count,reg.capacity)
         elseif state.phase=="countdown" then
             phase.Text="ROSTER LOCKED / GET READY"
             instruction.Text="REGISTRATION CLOSED / ENTER AGAIN NEXT ROUND"
@@ -1419,9 +1460,9 @@ local function cameraDiagnostics(now)
         end)
     end
     if not CAMERA_DIAGNOSTICS or not camera then return end
-    print(string.format("[Riftbound camera] presentation=broadcast-v12 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
+    print(string.format("[Riftbound camera] presentation=solo-entrances-v13 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
         tostring(STREAM_DAYLIGHT and streamCamera and gui.Enabled), Lighting.ClockTime, Lighting.Brightness, Lighting.ExposureCompensation))
-    print(string.format("[Riftbound render] revision=broadcast-v12 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
+    print(string.format("[Riftbound render] revision=solo-entrances-v13 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
         directorShot, tostring(STREAM_CLEAR_EFFECTS), tostring(renderCheckEnabled), parts > 0 and minOpacity or 0, parts > 0 and sumOpacity / parts or 0, maxOpacity, maximumPositionDrift, maximumAimDrift))
     local atmosphereCount, effectCount, enclosureCount = 0, 0, 0
     for _, record in pairs(suspendedEffects) do
@@ -1565,7 +1606,7 @@ bindCamera()
 local labelAccumulator = 0
 RunService:BindToRenderStep("RiftboundPortraitCamera", Enum.RenderPriority.Last.Value, function(dt)
     if latestState then
-        local waiting=latestState.registration and latestState.phase=="registration" and latestState.registration.endsAt==0
+        local waiting=latestState.registration and (latestState.phase=="registration" and latestState.registration.endsAt==0 or latestState.phase=="preparing")
         timer.Text=waiting and "—" or tostring(math.max(0,math.ceil(latestState.seconds-(os.clock()-receivedAt))))
     end
     handoff.BackgroundTransparency=streamCamera and math.max(.9,1-math.max(0,handoffUntil-os.clock())/.18*.1) or 1
@@ -1586,14 +1627,21 @@ RunService:BindToRenderStep("RiftboundPortraitCamera", Enum.RenderPriority.Last.
         if latestState and latestState.registration then
             local state=latestState
             local remaining=math.max(0,math.ceil(state.deadline-liveTime))
-            if state.phase=="countdown" then
+            if state.preparation and state.entrance and (state.phase=="registration" or state.phase=="preparing") then
+                local entry=state.entrance
+                if entry.stage=="intro" and liveTime<entry.endsAt then
+                    noticeText.Text=liveTime-entry.startedAt<1.1 and "NEW CHALLENGER!" or entry.names[1]
+                    noticeText.TextSize=#noticeText.Text>16 and 20 or 24
+                else noticeText.Text,noticeText.TextSize=entry.names[1].." / TO THE GRID",18 end
+                notice.Visible=true;tournamentActive=true
+            elseif state.phase=="countdown" then
                 noticeText.Text,noticeText.TextSize,notice.Visible=remaining>3 and "READY" or tostring(math.max(1,remaining)),28,true
                 tournamentActive=true
             elseif state.phase=="storm" and liveTime-state.activityStarted<1.8 then
                 noticeText.Text,noticeText.TextSize,notice.Visible="GO!",28,true;tournamentActive=true
             elseif state.highlight and directorShot=="power-up / "..state.highlight.kind and liveTime<state.highlight.endsAt then
                 noticeText.Text,noticeText.TextSize,notice.Visible=state.highlight.username.." / "..string.upper(state.highlight.kind),22,true;tournamentActive=true
-            elseif broadcastCaption and os.clock()>noticeUntil and (state.phase=="registration" or state.phase=="storm") then
+            elseif broadcastCaption and os.clock()>noticeUntil and (state.phase=="registration" or state.phase=="preparing" or state.phase=="storm") then
                 local size=state.phase=="registration" and #broadcastCaption>16 and 20 or #broadcastCaption>34 and 18 or 22
                 noticeText.Text,noticeText.TextSize,notice.Visible=broadcastCaption,size,true;tournamentActive=true
             elseif state.phase=="registration" and not entryActive and os.clock()>noticeUntil then

@@ -1,31 +1,39 @@
-# Riftbound Live v12 — cinematic racing broadcast
+# Riftbound Live v13 — individual entrances and physical race preparation
 
-This update changes **only Realm.client.lua** among the five game scripts. The
-shared v10 course, server, registration rules, physical navigation and economy
-are unchanged. It uses original Roblox presentation, with no imported show assets.
+This release replaces grouped introductions with **one full 4.5-second introduction
+per accepted racer**, followed by an observed physical walk to a reserved grid
+position. Registration still closes on its 30-second deadline. A separate locked
+preparation phase finishes all accepted entrances and walks before READY/3/2/1/GO.
 
-## Exact Studio replacement
+The shared v10 Skybridge course builder, checkpoint geometry, forks and obstacle
+motion remain byte-identical. A separate **ChallengerLobby** adds a waiting terrace,
+Star Gate floor and two shallow approach ramps connecting to the existing rear
+start apron. No race-road mesh, obstacle or checkpoint was redesigned.
 
-If you already installed the v11 registration tournament:
+## Exact Roblox Studio replacement
 
-1. Stop Play and save your place.
-2. Open the complete [Realm.client.lua](roblox/StarterPlayerScripts/Realm.client.lua)
-   on GitHub and select **Raw**. Copy the entire source.
-3. Replace the entire source of the **LocalScript named Realm** under
-   **StarterPlayer → StarterPlayerScripts**. Keep exactly one client Realm.
-   Edit the saved template, not Players → your player → PlayerScripts.
-4. Leave Config, RealmState, World and the server Realm unchanged. Keep
-   **Workspace.StreamingEnabled=false**, save, then start a fresh **Play**.
-5. Client Output should report **presentation=broadcast-v12**. The unchanged
-   course still reports **show-v10-shared-road**. ROAM VIEW is the manual override;
-   STREAM VIEW resumes the director. HOLD CAMERA remains available in Test Tools.
+Stop Play, save a backup, and replace **all five complete raw sources together**.
+On GitHub select **Raw** for each file and replace its entire source:
 
-For an older installation without fresh round registration, first install the
-[five tournament sources](docs/TOURNAMENT_REGISTRATION_REPLACEMENT.md), using
-the current client above. MANUAL_STUDIO_SETUP.md contains all five complete raw
-sources. No new ModuleScript, plugin or installer is needed. Preserve intentional
-HostUserIds/economy settings. DataStore access and HTTP/TikTok integration remain
-disabled. A GitHub push does not update an open Roblox Studio place automatically.
+| File | Studio parent → instance name | Instance type |
+| --- | --- | --- |
+| [Config.lua](roblox/ServerScriptService/Config.lua) | ServerScriptService → Config | ModuleScript |
+| [RealmState.lua](roblox/ServerScriptService/RealmState.lua) | ServerScriptService → RealmState | ModuleScript |
+| [World.lua](roblox/ServerScriptService/World.lua) | ServerScriptService → World | ModuleScript |
+| [Realm.server.lua](roblox/ServerScriptService/Realm.server.lua) | ServerScriptService → Realm | Script, Enabled, RunContext Legacy |
+| [Realm.client.lua](roblox/StarterPlayerScripts/Realm.client.lua) | StarterPlayer → StarterPlayerScripts → Realm | LocalScript, Enabled |
+
+Keep exactly one instance of each. Edit StarterPlayerScripts in the saved place,
+not the runtime Players/PlayerScripts copy. Preserve your HostUserIds and deliberate
+economy settings. Keep **SoloEntrances=true**, **AutoActivities=true**,
+**SprintOnly=true**, **AutoJoinPlayers=false**, **PersistenceEnabled=false** and
+**Workspace.StreamingEnabled=false**. Save, then start a fresh **Play**.
+
+Expect server `[Riftbound] Ready` and client **presentation=solo-entrances-v13**.
+The course revision deliberately stays **show-v10-shared-road**. The complete
+five-source manual is also in MANUAL_STUDIO_SETUP.md. No extra game module or
+Command Bar installer is needed. GitHub updates do not modify an open Studio place.
+Real TikTok networking and DataStore access remain disabled.
 
 
 The sections below contain the complete current raw Luau sources.
@@ -55,7 +63,10 @@ return {
     SprintRaceSeconds = 120,
     SprintWalkSpeed = 12.5, -- Shared skyway: physical travel, not a finish timer.
     ResolveViewerUsernames = true, -- Verified JOIN uses native Roblox account lookup.
-    EntranceSeconds = 4, -- Normal individual montage; bursts group three for 2.5s.
+    SoloEntrances = true, -- Required: one complete introduction, then physical grid arrival.
+    EntranceSeconds = 4.5, -- Each accepted racer gets the full duration; never grouped.
+    PreparationWalkSpeed = 18, -- Pre-race only; every racer keeps the same race WalkSpeed.
+    PreparationMoveTimeoutSeconds = 18, -- stalled walks recover; never advance by a timer.
     SprintFinishBonus = 40,
     LoadAvatarAppearances = true, -- false disables outfits; OFFLINE JOIN also skips account lookup.
     AppearanceTimeoutSeconds = 8,
@@ -112,6 +123,7 @@ function Realm.new(config, now)
         local minimum,capacity=config.MinimumRacers or 2,config.SprintCompetitors or 20
         assert(type(minimum)=="number" and minimum>=2 and minimum==math.floor(minimum),"MinimumRacers must be a whole number of at least 2")
         assert(type(capacity)=="number" and capacity>=minimum and capacity<=20 and capacity==math.floor(capacity),"SprintCompetitors must fit MinimumRacers through 20")
+        if config.SoloEntrances then assert(type(config.EntranceSeconds)=="number" and config.EntranceSeconds>=4 and config.EntranceSeconds<=5,"Individual introductions must last 4–5 seconds") end
     end
     local state = setmetatable({
         config = config,
@@ -119,7 +131,7 @@ function Realm.new(config, now)
         deadline = now + config.GatheringSeconds,
         round = 0,
         crew = {},
-        crewOrder = {},
+        crewOrder = {}, userKeys = {},
         votes = {},
         totals = { ward = 0, sail = 0 },
         wins = 0,
@@ -153,6 +165,7 @@ function Realm.new(config, now)
         state.roster, state.registrations, state.registrationEvents, state.lockedRoster = {}, {}, {}, {}
         state.powerupEvents, state.highlightQueue, state.raceHistory = {}, {}, {}
         state.powerupSequence = 0
+        state.registrationIdentities, state.registrationNames = {}, {}
         state.message = "WAITING FOR CHALLENGERS / COMMENT YOUR ROBLOX USERNAME TO JOIN!"
     end
     return state
@@ -189,6 +202,9 @@ function Realm:registrationCheck(username, roundId, submittedAt, now, eventId)
     end
     if not eventKey(eventId) or self.registrationEvents[eventId] then return false,"A unique event ID is required; replayed entry rejected." end
     if type(username)~="string" or #username<3 or #username>20 or not string.match(username,"^[%w_]+$") then return false,"Enter a Roblox username." end
+    local _,underscores=string.gsub(username,"_","")
+    if underscores>1 or string.sub(username,1,1)=="_" or string.sub(username,-1)=="_" then return false,"Use at most one internal underscore in a Roblox username." end
+    if self.config.SoloEntrances and self.registrationNames[string.lower(username)] then return false,"That username already entered this registration window." end
     if self.registrations[string.lower(username)] then return false,"Already registered for this round." end
     if #self.roster >= (self.config.SprintCompetitors or 20) then return false,"All competitor slots are filled for this round." end
     return true
@@ -196,15 +212,38 @@ end
 function Realm:register(username, userId, roundId, submittedAt, now, eventId)
     local ok,issue=self:registrationCheck(username,roundId,submittedAt,now,eventId)
     if not ok then return false,issue end
+    if not finite(userId) or userId<0 or userId~=math.floor(userId) or userId>=9007199254740991 then return false,"Invalid canonical Roblox user ID." end
+    local known=self.crew[string.lower(username)]
+    local canonicalId=userId>0 and userId or known and known.userId or 0
+    local identity=canonicalId>0 and ("user:"..string.format("%.0f",canonicalId)) or ("offline:"..string.lower(username))
+    if self.registrationIdentities[identity] then return false,"That Roblox account already entered this registration window." end
     local key=string.lower(username)
+    local oldKey=userId>0 and self.userKeys[userId]
+    if oldKey and self.registrations[oldKey] then return false,"That Roblox account is already registered." end
+    if oldKey and oldKey~=key then
+        if self.crew[key] then return false,"Username conflicts with an existing session identity." end
+        self.crew[key]=self.crew[oldKey];self.crew[oldKey]=nil
+        for i,k in ipairs(self.crewOrder) do if k==oldKey then self.crewOrder[i]=key end end
+        self.crew[key].username=username
+    end
     local member=self.crew[key]
+    if member and member.userId and member.userId>0 and userId>0 and member.userId~=userId then return false,"That username belongs to another session identity." end
     if not member then
         local added; added,member=self:addCrew(username,userId)
         if not added then return false,member end
     elseif userId and userId>0 then member.userId=userId end
+    if userId>0 then self.userKeys[userId]=key end
+    self.registrationIdentities[identity],self.registrationNames[key]=true,true
     self.registrationEvents[eventId]=true
     self.registrations[key]=true;self.roster[#self.roster+1]=key
     member.registeredRound,member.registrationSlot=self.round,#self.roster
+    if self.config.SoloEntrances then
+        local occupied={};for _,name in ipairs(self.roster) do local slot=self.crew[name].reservedGrid;if name~=key and slot then occupied[slot]=true end end
+        local slot=1;while occupied[slot] do slot=slot+1 end
+        member.reservedGrid,member.preparationStatus,member.introductionCount=slot,"queued",0
+        member.avatarReady=userId==0 or self.config.LoadAvatarAppearances~=true
+        member.preparationRecoveries,member.gridReadyAt=0,nil
+    end
     member.activityEntered,member.score,member.distance,member.finishedAt=false,0,0,0
     member.raceStatus,member.placement,member.recoveries="registered",0,0
     member.route,member.effect,member.effectUntil="shared","",0
@@ -222,8 +261,12 @@ function Realm:unregister(username, roundId, now, eventId)
     if not key or not self.registrations[key] then return false,"That username is not registered." end
     self.registrationEvents[eventId]=true;self.registrations[key]=nil
     self.crew[key].registeredRound=nil;self.crew[key].entranceDone=true
+    if self.config.SoloEntrances then self.crew[key].preparationStatus,self.crew[key].reservedGrid=nil,nil end
     for i=#self.roster,1,-1 do if self.roster[i]==key then table.remove(self.roster,i) end end
     for i,name in ipairs(self.roster) do self.crew[name].registrationSlot=i end
+    if not self.config.SoloEntrances then
+        self.registrationIdentities[self.crew[key].userId>0 and ("user:"..string.format("%.0f",self.crew[key].userId)) or ("offline:"..key)]=nil
+    end
     for i=#self.entranceQueue,1,-1 do if string.lower(self.entranceQueue[i])==key then table.remove(self.entranceQueue,i) end end
     if self.entrance then
         for i=#self.entrance.names,1,-1 do if string.lower(self.entrance.names[i])==key then table.remove(self.entrance.names,i) end end
@@ -272,13 +315,39 @@ function Realm:queueEntrance(username)
     local member = self.crew[string.lower(username)]
     if not member or not member.entranceDone then return false end
     if self.registrationEnabled and (self.phase~="registration" or member.registeredRound~=self.round) then return false end
-    if #self.entranceQueue >= (self.config.MaxQueuedArrivals or 30) then return false end
+    local limit=self.config.SoloEntrances and (self.config.SprintCompetitors or 20) or (self.config.MaxQueuedArrivals or 30)
+    if #self.entranceQueue >= limit then return false end
     member.entranceDone = false
     table.insert(self.entranceQueue, member.username)
     return true
 end
 
 function Realm:advanceEntrances(now)
+    if self.registrationEnabled and self.config.SoloEntrances then
+        self:advanceHighlights(now)
+        if self.phase~="registration" and self.phase~="preparing" then return end
+        local entry=self.entrance
+        if entry then
+            local member=self.crew[string.lower(entry.names[1])]
+            if not member or member.registeredRound~=self.round then self.entrance=nil
+            elseif entry.stage=="intro" and now>=entry.endsAt then
+                entry.stage,entry.walkStartedAt="walking",now
+                member.entranceDone,member.preparationStatus=true,"walking"
+            end
+            return -- The next introduction waits for a real grid-arrival acknowledgement.
+        end
+        local name=self.entranceQueue[1]
+        if not name then return end
+        local member=self.crew[string.lower(name)]
+        if not member or member.registeredRound~=self.round then table.remove(self.entranceQueue,1);return end
+        if not member.avatarReady then return end -- bounded native appearance/fallback readiness
+        table.remove(self.entranceQueue,1)
+        self.entranceSequence=self.entranceSequence+1
+        member.preparationStatus,member.introductionCount="introducing",member.introductionCount+1
+        member.introductionStartedAt=now
+        self.entrance={sequence=self.entranceSequence,roundId=self.round,names={member.username},stage="intro",startedAt=now,endsAt=now+(self.config.EntranceSeconds or 4.5)}
+        return
+    end
     self:advanceHighlights(now)
     if self.registrationEnabled and self.phase~="registration" then self.entranceQueue,self.entrance={},nil;return end
     if self.entrance and now >= self.entrance.endsAt then
@@ -300,10 +369,31 @@ function Realm:advanceEntrances(now)
         endsAt = now + (count > 1 and 2.5 or (self.config.EntranceSeconds or 4)) }
 end
 
+-- Server-only physical observations; no client action exposes these acknowledgements.
+function Realm:avatarPrepared(username, roundId)
+    local member=type(username)=="string" and self.crew[string.lower(username)]
+    if roundId~=self.round or not member or member.registeredRound~=self.round or member.preparationStatus~="queued" then return false end
+    member.avatarReady=true;return true
+end
+function Realm:gridArrived(username, roundId, sequence, now, recoveries)
+    local entry=self.entrance
+    local member=type(username)=="string" and self.crew[string.lower(username)]
+    if not finite(now) or roundId~=self.round or not entry or entry.roundId~=roundId or entry.sequence~=sequence
+        or entry.stage~="walking" or entry.names[1]~=username or now<entry.endsAt
+        or not member or member.registeredRound~=roundId or member.preparationStatus~="walking" then return false end
+    member.preparationStatus,member.gridReadyAt,member.preparationRecoveries="ready",now,recoveries or 0
+    self.entrance=nil;return true
+end
+function Realm:preparationReady()
+    if #self.roster<(self.config.MinimumRacers or 2) or self.entrance or #self.entranceQueue>0 then return false end
+    for _,key in ipairs(self.roster) do if self.crew[key].preparationStatus~="ready" or self.crew[key].registeredRound~=self.round then return false end end
+    return true
+end
+
 function Realm:nextCohort()
     if self.registrationEnabled then
         local cohort={}
-        local names=self.phase=="registration" and self.roster or (self.phase=="countdown" or self.phase=="storm") and self.lockedRoster or {}
+        local names=self.phase=="registration" and self.roster or (self.phase=="preparing" or self.phase=="countdown" or self.phase=="storm") and self.lockedRoster or {}
         for _,key in ipairs(names) do if self.crew[key] then cohort[#cohort+1]=self.crew[key] end end
         return cohort
     end
@@ -339,7 +429,7 @@ end
 function Realm:enterActivity(member, now, grid)
     if self.registrationEnabled and not self.registrations[string.lower(member.username)] then return false end
     member.activityEntered, member.enteredAt, member.lastRacedRound = true, now, self.round
-    member.gridSlot = grid
+    member.gridSlot = self.config.SoloEntrances and member.reservedGrid or grid
     member.pace = self.activity.id == "sprint" and 0 or pace(member.username, self.round, self.activity.id)
     member.raceStatus = self.activity.id == "sprint" and "racing" or "waiting"
     member.checkpointAt = now
@@ -602,9 +692,20 @@ function Realm:advance(now)
         if self.deadline==0 or now<self.deadline then return false end
         self:tick(now)
         self.lockedRoster={};for _,key in ipairs(self.roster) do self.lockedRoster[#self.lockedRoster+1]=key end
+        if self.config.SoloEntrances and not self:preparationReady() then
+            self.phase,self.deadline="preparing",0
+            self.message="REGISTRATION CLOSED / FINISHING INDIVIDUAL ENTRANCES AND GRID WALKS"
+            return true
+        end
         clearPresentation(self)
         self.phase,self.deadline="countdown",now+(self.config.StartCountdownSeconds or 4)
         self.message="READY / ROSTER LOCKED / 3, 2, 1"
+        return true
+    elseif self.phase=="preparing" then
+        if not self:preparationReady() then return false end
+        self:tick(now)
+        self.phase,self.deadline="countdown",now+(self.config.StartCountdownSeconds or 4)
+        self.message="READY / ALL CHALLENGERS AT THE GRID / 3, 2, 1"
         return true
     elseif self.phase=="countdown" then
         if now<self.deadline then return false end
@@ -645,11 +746,14 @@ function Realm:advance(now)
         clearPresentation(self)
         self.round,self.phase,self.deadline,self.registrationOpenedAt=self.round+1,"registration",0,now
         self.roster,self.registrations,self.lockedRoster,self.registrationEvents,self.powerupEvents={},{},{},{},{}
+        self.registrationIdentities,self.registrationNames={},{}
         self.winners,self.votes,self.totals={}, {}, {ward=0,sail=0}
         self.activityEntrants,self.teamScore,self.teamTarget=0,0,0
         self.success,self.choice=false,"ward"
         for _,member in pairs(self.crew) do
             member.registeredRound,member.activityEntered,member.roundMoney=nil,false,0
+            member.preparationStatus,member.reservedGrid,member.avatarReady,member.gridReadyAt=nil,nil,nil,nil
+            member.introductionCount,member.preparationRecoveries=0,0
             member.score,member.distance,member.finishedAt,member.placement=0,0,0,0
             member.raceStatus,member.recoveries="waiting",0
         end
@@ -667,6 +771,9 @@ function Realm:snapshot(now)
         table.insert(crew, member.username)
         table.insert(members, {
             registered = member.registeredRound==self.round, registrationSlot = member.registrationSlot,
+            reservedGrid=member.reservedGrid, preparationStatus=member.preparationStatus,
+            introductionCount=member.introductionCount or 0, avatarReady=member.avatarReady,
+            preparationRecoveries=member.preparationRecoveries or 0,
             races = member.races or 0, finishes = member.finishes or 0, dnfs = member.dnfs or 0, bestTime = member.bestTime or 0,
             powerup = now<(member.powerupUntil or 0) and member.powerup or "", powerupUntil = member.powerupUntil or 0,
             powerupSequence = member.powerupSequence or 0,
@@ -694,7 +801,7 @@ function Realm:snapshot(now)
     local entrance
     if self.entrance then
         local names = {}; for _, name in ipairs(self.entrance.names) do names[#names + 1] = name end
-        entrance = { sequence = self.entrance.sequence, names = names, startedAt = self.entrance.startedAt, endsAt = self.entrance.endsAt }
+        entrance = { sequence = self.entrance.sequence, names = names, startedAt = self.entrance.startedAt, endsAt = self.entrance.endsAt, roundId=self.entrance.roundId,stage=self.entrance.stage,walkStartedAt=self.entrance.walkStartedAt }
     end
     local registration
     if self.registrationEnabled then
@@ -703,6 +810,12 @@ function Realm:snapshot(now)
             minimum=self.config.MinimumRacers or 2,endsAt=self.phase=="registration" and self.deadline or 0,
             openedAt=self.registrationOpenedAt,roster={}}
         for _,key in ipairs(self.roster) do registration.roster[#registration.roster+1]=self.crew[key].username end
+    end
+    local preparation
+    if self.registrationEnabled and self.config.SoloEntrances then
+        local ready=0;for _,key in ipairs(self.roster) do if self.crew[key].preparationStatus=="ready" then ready=ready+1 end end
+        preparation={roundId=self.round,ready=ready,total=#self.roster,pending=#self.entranceQueue,
+            current=self.entrance and self.entrance.names[1] or "",stage=self.entrance and self.entrance.stage or "waiting",soloSeconds=self.config.EntranceSeconds or 4.5}
     end
     local lastRace
     local history=self.raceHistory and self.raceHistory[#self.raceHistory]
@@ -717,7 +830,7 @@ function Realm:snapshot(now)
             roundId=self.highlight.roundId,startedAt=self.highlight.startedAt,endsAt=self.highlight.endsAt}
     end
     return {
-        registration=registration, highlight=highlight, highlightWaiting=self.highlightQueue and #self.highlightQueue or 0,
+        preparation=preparation, registration=registration, highlight=highlight, highlightWaiting=self.highlightQueue and #self.highlightQueue or 0,
         lastRace=lastRace,
         entrance = entrance, entranceWaiting = #self.entranceQueue, nextCohort = nextCohort,
         phase = self.phase, seconds = math.max(0, math.ceil(self.deadline - now)),
@@ -756,6 +869,7 @@ local monuments = {}
 local avatars = {}
 local scenery = { clouds = {}, runes = {}, ribbons = {}, particles = {}, stars = {}, shrines = {}, sprintObstacles = {}, sprintHurdles = {}, waterfalls = {} }
 local tournament = { braziers = {}, portal = {}, fireworks = {} }
+local preparationArea, portalEffects
 local fantasyFolder
 local settings = {}
 local sceneState
@@ -1091,9 +1205,11 @@ function World.loadAppearance(username, userId)
     if not record or record.appearanceAttempted or settings.LoadAvatarAppearances ~= true
         or type(userId) ~= "number" or userId < 1 or userId ~= math.floor(userId) then return end
     record.appearanceAttempted = true
+    record.appearanceFinished=false
     local deadline = os.clock() + (settings.AppearanceTimeoutSeconds or 8)
+    record.appearanceDeadline=deadline
     task.spawn(function()
-        if os.clock() > deadline or not root.Parent then return end
+        if os.clock() > deadline or not root.Parent then record.appearanceFinished=true;return end
         local description, model
         local ok, issue = pcall(function()
             -- Explicitly optional Roblox appearance APIs; no custom HTTP/TikTok.
@@ -1108,6 +1224,7 @@ function World.loadAppearance(username, userId)
                 model = nil
             end
         end)
+        record.appearanceFinished=true
         if description then description:Destroy() end
         if model then model:Destroy() end
         if not ok then warn("[Riftbound appearance] " .. username .. ": fallback kept (" .. tostring(issue) .. ")") end
@@ -1238,6 +1355,7 @@ function World.stepCourse(now)
     end
 end
 local function gridSlot(member, state, index)
+    if state.config.SoloEntrances and member.reservedGrid then return member.reservedGrid end
     return (((member.gridSlot or index)-1+(state.round-1)*7)%math.max(1,state.activityEntrants))+1
 end
 local function resetRacer(record, member, now)
@@ -1290,7 +1408,9 @@ function World.sprintStep(state, now)
                     local grid=gridSlot(member,state,index)
                     record.race={round=state.round,grid=grid,route="shared",lateral=((grid-1)%5-2)*8}
                     member.route="shared"
-                    physical(record,true);resetRacer(record,member,now)
+                    physical(record,true)
+                    record.model.Humanoid.WalkSpeed=settings.SprintWalkSpeed or 12.5
+                    resetRacer(record,member,now)
                 end
                 if member.raceStatus=="racing" then bodies[#bodies+1]={member=member,record=record,position=record.model.PrimaryPart.Position} end
             end
@@ -1388,6 +1508,33 @@ end
 
 -- Presentation is deliberately outside SkybridgeSprint: the road geometry and
 -- every collidable checkpoint/obstacle remain exactly as authored in v10.
+-- A separate lobby approach, outside SkybridgeSprint. The race road builder is untouched.
+function World.waitingPoint(slot)
+    return Vector3.new(-117+((slot-1)%5)*7,80,42+math.floor((slot-1)/5)*8)
+end
+local function buildPreparationArea()
+    if not settings.SoloEntrances then return end
+    preparationArea=Instance.new("Model");preparationArea.Name,preparationArea.Parent="ChallengerLobby",root
+    part("Waiting terrace",Vector3.new(45,3,40),CFrame.new(-103,75.5,54),colors.grass,Enum.Material.Grass,preparationArea)
+    part("Star Gate stage",Vector3.new(30,3,36),CFrame.new(-64,75.5,68),colors.stone,Enum.Material.Marble,preparationArea)
+    -- 18-stud-wide, shallow ramps meet the EXISTING rear start apron at y=65.
+    local points={Vector3.new(-64,80,86),Vector3.new(-44,74,94),Vector3.new(-28,68,94)}
+    for i=1,#points-1 do
+        local a,b=points[i]-Vector3.new(0,4,0),points[i+1]-Vector3.new(0,4,0)
+        local frame=CFrame.lookAt((a+b)*.5,b)
+        local ramp=part("Grid approach ramp "..i,Vector3.new(18,2,(b-a).Magnitude+.4),frame,colors.stone,Enum.Material.Slate,preparationArea)
+        ramp:SetAttribute("PreparationSurface",true)
+    end
+    portalEffects={}
+    for i,side in ipairs({-1,1}) do
+        local crystal=part("Challenger flame crystal",Vector3.new(1.5,4,1.5),CFrame.new(-64+side*10,79,66),colors.violet,Enum.Material.Neon,preparationArea)
+        crystal.CanCollide,crystal.CanTouch,crystal.CanQuery=false,false,false
+        local fire=Instance.new("Fire");fire.Enabled,fire.Size,fire.Heat,fire.Parent=false,6,0,crystal
+        local sparks=Instance.new("Sparkles");sparks.Enabled,sparks.Parent=false,crystal
+        local smoke=Instance.new("Smoke");smoke.Enabled,smoke.Size,smoke.Opacity,smoke.RiseVelocity,smoke.Parent=false,4,.08,3,crystal
+        portalEffects[i]={fire=fire,sparks=sparks,smoke=smoke,part=crystal}
+    end
+end
 local function buildTournamentPresentation()
     local folder=Instance.new("Folder");folder.Name,folder.Parent="TournamentPresentation",root
     local function prop(name,size,position,color)
@@ -1430,6 +1577,14 @@ local function animateTournament(state, now)
         entry.part.CFrame=CFrame.new(-64+math.cos(angle)*8,80+math.sin(angle)*8,65)*CFrame.Angles(0,0,-angle)
         entry.part.Transparency=state.entrance and .05 or .45+math.sin(now*2+angle)*.15
     end
+    if portalEffects then
+        local entering=state.entrance and (not state.entrance.stage or state.entrance.stage=="intro")
+        for i,effect in ipairs(portalEffects) do
+            local color=Color3.fromHSV(((state.entrance and state.entrance.sequence or 0)*.17+i*.2+now*.04)%1,.65,1)
+            effect.fire.Enabled,effect.smoke.Enabled,effect.sparks.Enabled=entering~=nil and entering~=false,entering~=nil and entering~=false,entering~=nil and entering~=false
+            effect.fire.Color,effect.sparks.SparkleColor,effect.part.Color=color,color,color
+        end
+    end
     for _,effect in ipairs(tournament.fireworks) do effect.Enabled=state.phase=="result" and #state.winners>0 end
 end
 
@@ -1461,6 +1616,7 @@ function World.build(config)
     glow.Intensity, glow.Size, glow.Threshold, glow.Parent = 0.45, 32, 1.3, Lighting
     buildSprint()
     buildTournamentPresentation()
+    buildPreparationArea()
     island(Vector3.new(0, 32, 0), 50)
     island(Vector3.new(87, 36, 21), 23)
     island(Vector3.new(-85, 28, -20), 21)
@@ -1668,9 +1824,9 @@ local function number(value)
     return tostring(math.floor(value))
 end
 
-function World.arrive(model, slot, username)
+function World.arrive(model, slot, username, roundId, waitingSlot)
     model.Name = "Traveler_" .. username
-    model:PivotTo(CFrame.new(World.entrancePoint(1, 1)))
+    model:PivotTo(CFrame.new(settings.SoloEntrances and roundId and World.waitingPoint(waitingSlot or slot) or World.entrancePoint(1, 1)))
     for _, p in ipairs(model:GetDescendants()) do
         if p:IsA("BasePart") then p.CanCollide = false end
         if p:IsA("Script") or p:IsA("LocalScript") or p:IsA("Tool") then p:Destroy() end
@@ -1698,7 +1854,7 @@ function World.arrive(model, slot, username)
     popText.TextWrapped, popText.TextTruncate, popText.Parent = false, Enum.TextTruncate.AtEnd, caption
     avatars[string.lower(username)] = {
         model = model, slot = slot, arrivedAt = os.clock(), frame = model:GetPivot(),
-        balance = 0, popText = popText, scale = 1, username = username,
+        balance = 0, popText = popText, scale = 1, username = username, roundId=roundId, waitingSlot=waitingSlot,
     }
     -- Staged actors use authored limb poses. Disable joints while anchored so
     -- native motors cannot snap them back; racing re-enables the whole rig.
@@ -1715,16 +1871,95 @@ local function track(distance, radius, count)
 end
 
 local function registeredGrid(member,state)
+    if state.preparation and member.reservedGrid then return World.sprintPoint(member.reservedGrid,0) end
     local count=state.registration and (state.phase=="storm" and #state.nextCohort or state.registration.count) or #state.nextCohort
     local index=member.registrationSlot or member.gridSlot or 1
     return World.sprintPoint(((index-1+(state.round-1)*7)%math.max(1,count))+1,0)
 end
+-- Physical preparation has no authority over checkpoints, finishes, money or the race clock.
+function World.preparationStep(state, now)
+    if not state.registrationEnabled or not state.config.SoloEntrances or (state.phase~="registration" and state.phase~="preparing" and state.phase~="countdown") then return end
+    for _,key in ipairs(state.roster) do
+        local member,record=state.crew[key],avatars[key]
+        if record and record.roundId==state.round then
+            record.preparationStatus=member.preparationStatus
+            if member.preparationStatus=="queued" and (not record.appearanceDeadline or
+                record.appearanceFinished and not record.pendingAppearance or now>=record.appearanceDeadline) then state:avatarPrepared(member.username,state.round) end
+        end
+    end
+    local entry=state.entrance
+    if not entry or entry.roundId~=state.round then return end
+    local key=string.lower(entry.names[1]);local member,record=state.crew[key],avatars[key]
+    if not record or record.roundId~=state.round or not record.model.PrimaryPart then return end
+    local model,main=record.model,record.model.PrimaryPart
+    local humanoid=model:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health<=0 then return end -- render replaces broken rigs with a fallback
+    record.preparationStatus=member.preparationStatus
+    if entry.stage=="intro" then
+        if record.introSequence~=entry.sequence then
+            if record.physical then physical(record,false) end
+            record.introSequence,record.introStartedAt=entry.sequence,entry.startedAt
+            record.frame=CFrame.lookAt(World.entrancePoint(1,1),World.entrancePoint(1,1)+Vector3.new(0,0,1))
+            model:PivotTo(record.frame)
+        end
+        return
+    end
+    if entry.stage~="walking" then return end
+    local grid=World.sprintPoint(member.reservedGrid,0)
+    if not record.walk or record.walk.sequence~=entry.sequence then
+        record.walk={sequence=entry.sequence,index=1,startedAt=now,lastMoved=now,lastPosition=main.Position,recoveries=0,
+            points={Vector3.new(-64,80,86),Vector3.new(-44,74,94),Vector3.new(-28,68,94),Vector3.new(grid.X,68,94),grid}}
+        physical(record,true)
+        humanoid.WalkSpeed,humanoid.AutoRotate=settings.PreparationWalkSpeed or 18,true
+        humanoid.Jump=false
+    end
+    local walk=record.walk
+    local moved=(main.Position-walk.lastPosition).Magnitude
+    if moved>.2 then walk.lastMoved,walk.lastPosition=now,main.Position end
+    if now-walk.lastMoved>3 or now-walk.startedAt>(settings.PreparationMoveTimeoutSeconds or 18) or main.Position.Y<60 or main.Position.Y>103 then
+        walk.recoveries=walk.recoveries+1
+        -- Last safe waypoint first; the final grid warp is a bounded RECOVERY only.
+        local rescue=walk.recoveries>=2 and grid or (walk.index>1 and walk.points[walk.index-1] or World.entrancePoint(1,1))
+        if walk.recoveries>=2 then walk.index=#walk.points end
+        model:PivotTo(CFrame.lookAt(rescue,rescue+Vector3.new(0,0,-1)))
+        main.AssemblyLinearVelocity,main.AssemblyAngularVelocity=Vector3.new(),Vector3.new()
+        walk.lastMoved,walk.lastPosition,walk.startedAt,walk.recoveredAt=now,rescue,now,now
+        model:SetAttribute("PreparationRecovery",walk.recoveries)
+    end
+    local target=walk.points[walk.index]
+    local delta=main.Position-target
+    local grounded=humanoid.FloorMaterial~=Enum.Material.Air
+    if not grounded and workspace.Raycast and RaycastParams then
+        local ok,hit=pcall(function()
+            local params=RaycastParams.new();params.FilterType=Enum.RaycastFilterType.Exclude;params.FilterDescendantsInstances={model}
+            return workspace:Raycast(main.Position,Vector3.new(0,-4.25,0),params)
+        end)
+        grounded=ok and hit~=nil
+    end
+    if Vector3.new(delta.X,0,delta.Z).Magnitude<=1.25 and math.abs(delta.Y)<=1.5 and grounded and (not walk.recoveredAt or now-walk.recoveredAt>=.3) then
+        if walk.index<#walk.points then walk.index=walk.index+1;target=walk.points[walk.index]
+        elseif state:gridArrived(member.username,state.round,entry.sequence,now,walk.recoveries) then
+            physical(record,false)
+            record.preparationStatus,record.frame="ready",CFrame.lookAt(main.Position,main.Position+Vector3.new(0,0,-1))
+            model:PivotTo(record.frame);return
+        end
+    end
+    if not walk.commandAt or now-walk.commandAt>=.25 then humanoid:MoveTo(target);walk.commandAt=now end
+end
+
 local function destination(member, state, now, scale)
     local y = 35 + 3 * scale
-    if state.entrance then
+    if state.entrance and (not state.entrance.stage or state.entrance.stage=="intro") then
         for index, name in ipairs(state.entrance.names) do
             if name == member.username then return World.entrancePoint(index, #state.entrance.names), true end
         end
+    end
+    if state.preparation and member.registered then
+        local record=avatars[string.lower(member.username)]
+        local status=record and record.preparationStatus or member.preparationStatus
+        if status=="queued" then return World.waitingPoint(member.reservedGrid),false end
+        if status=="introducing" then return World.entrancePoint(1,1),true end
+        return registeredGrid(member,state),false
     end
     if state.registration and member.registered and (state.phase=="registration" or state.phase=="countdown") then return registeredGrid(member,state),false end
     if member.entranceDone == false then return Vector3.new(-64 + ((member.slot - 1) % 5 - 2) * 5, 80, 82), false end
@@ -1795,12 +2030,15 @@ function World.render(state, now)
     for _, member in ipairs(state.members) do
         local key = string.lower(member.username)
         local record = avatars[key]
+        if record and state.preparation and member.preparationStatus~="queued" and record.pendingAppearance then
+            record.pendingAppearance:Destroy();record.pendingAppearance=nil
+        end
         if record and not (state.phase == "storm" and member.activityEntered) and (record.pendingAppearance or not record.model.PrimaryPart
             or not record.model:FindFirstChild("Head") or not record.model:FindFirstChildOfClass("Humanoid") or record.model.Humanoid.Health <= 0) then
             local replacement, old = record.pendingAppearance or World.offlineAvatar(member.username), record.model
             local balance, previousFrame = record.balance, old:GetPivot()
             local queuedGiant, deferredGiantUntil = record.queuedGiant, record.deferredGiantUntil
-            World.arrive(replacement, record.slot, member.username)
+            World.arrive(replacement, record.slot, member.username,record.roundId,record.waitingSlot)
             old:Destroy()
             record = avatars[key]
             record.frame = previousFrame
@@ -1810,12 +2048,13 @@ function World.render(state, now)
         end
         if record then
             local model = record.model
-            if state.registration and state.phase=="countdown" and member.registered and record.readyRound~=state.round then
+            if not state.preparation and state.registration and state.phase=="countdown" and member.registered and record.readyRound~=state.round then
                 local point=registeredGrid(member,state)
                 record.frame=CFrame.lookAt(point,point+Vector3.new(0,0,-1));model:PivotTo(record.frame)
                 record.readyRound=state.round
             end
-            if record.physical and not (state.phase == "storm" and state.activity.id == "sprint") then
+            local walking=state.preparation and member.preparationStatus=="walking"
+            if record.physical and not walking and not (state.phase == "storm" and state.activity.id == "sprint") then
                 record.frame = model.PrimaryPart.CFrame
                 physical(record, false)
             end
@@ -1830,12 +2069,13 @@ function World.render(state, now)
                 record.balance, record.nextPop = member.balance, now + 1.05
             end
             local racing = state.phase == "storm" and state.activity.id == "sprint"
-            if racing and member.effect == "giant" then record.queuedGiant = true end
-            if not racing and record.queuedGiant then
+            local protected=racing or state.preparation and member.registered and state.phase~="result"
+            if protected and member.effect == "giant" then record.queuedGiant = true end
+            if not protected and record.queuedGiant then
                 record.deferredGiantUntil, record.queuedGiant = now + 6, false
             end
             local giant = member.effect == "giant" or now < (record.deferredGiantUntil or 0)
-            local targetScale = giant and not racing and 1.85 or 1
+            local targetScale = giant and not protected and 1.85 or 1
             if record.scale ~= targetScale then model:ScaleTo(targetScale); record.scale = targetScale end
             model.GiftAura.Enabled = member.effect ~= "" or now < (record.deferredGiantUntil or 0)
             model.GiftAura.OutlineColor = member.effect == "aurora" and colors.violet or colors.gold
@@ -1886,17 +2126,23 @@ function World.animate(now)
         p.Transparency = storm and state.choice == "sail" and 0.4 or 1
         p.CFrame = CFrame.new((i - 7) * 8, 40 + (i % 4) * 4, ((now * 35 + i * 11) % 120) - 60)
     end
+    local soloEntry=state.preparation and state.entrance and state.entrance.stage=="intro"
     local celebration = state.phase == "result" and #state.winners > 0
     local gifted = state.blessing ~= ""
     for i, p in ipairs(scenery.particles) do
-        p.Transparency = (celebration or gifted) and 0.15 or 1
-        if celebration or gifted then
+        p.Transparency = (celebration or gifted or soloEntry) and 0.15 or 1
+        if celebration or gifted or soloEntry then
+            if soloEntry then
+                p.CFrame=CFrame.new(-64+math.cos(i*2.399+now)*7,77+((now*6+i)%12),66+math.sin(i*2.399+now)*5)
+                p.Color=Color3.fromHSV((i/36+state.entrance.sequence*.17)%1,.65,1)
+            else
             local a = i * 2.399 + now * 0.6
             local radius = celebration and (state.activity.id == "sprint" and 12 or 16) or 25
             local baseY = state.activity.id == "sprint" and 84 or 37
             local baseZ = state.activity.id == "sprint" and (celebration and -1115 or 0) or 10
             p.CFrame = CFrame.new(math.cos(a) * radius, baseY + ((now * (celebration and 8 or 5) + i * 2) % (state.activity.id == "sprint" and 18 or 30)), baseZ + math.sin(a) * radius)
             p.Color = Color3.fromHSV((i / 36 + now * 0.03) % 1, 0.5, 1)
+            end
         end
     end
     for _, member in ipairs(state.members) do
@@ -1909,7 +2155,7 @@ function World.animate(now)
             if not record.physical then record.model.PowerShield.CFrame=record.model.PrimaryPart.CFrame end
             record.model.PrimaryPart.PowerSparks.Enabled=power=="starburst"
             if power~="" then record.model.GiftAura.Enabled=true end
-            if state.activity.id == "sprint" and state.phase == "storm" and record.race and record.race.round == state.round then
+            if record.physical then
                 -- Physics owns the root. Only pose the massless limbs for walking.
                 local speed = record.model.PrimaryPart and record.model.PrimaryPart.AssemblyLinearVelocity.Magnitude or 0
                 local gait = speed > 1 and math.sin(now * 9) * 0.45 or 0
@@ -1925,9 +2171,12 @@ function World.animate(now)
             local target, winner = destination(member, state, now, record.scale)
             local age = now - record.arrivedAt
             local entering = false
-            for _, name in ipairs(state.entrance and state.entrance.names or {}) do if name == member.username then entering = true end end
+            if state.preparation then entering=record.preparationStatus=="introducing"
+            else for _, name in ipairs(state.entrance and state.entrance.names or {}) do if name == member.username then entering = true end end end
             if entering then
                 -- Hold a recognizable celebratory pose at the gate, never a race root.
+                local sequence=record.introSequence or 1
+                target=target+Vector3.new(0,0,math.min(2,math.max(0,now-(record.introStartedAt or now))*2))
                 record.frame = CFrame.lookAt(target, target + Vector3.new(0, 0, 1))
                 record.model.GiftAura.Enabled, record.model.GiftAura.OutlineColor = true, colors.mint
             end
@@ -1954,7 +2203,7 @@ function World.animate(now)
             local poseIndex=math.floor(now/3.5+member.slot)%5
             local poseNames={"wave","stretch","cheer","look around","celebrate"}
             if (state.registration and member.registered and not moving) or entering or winner then
-                local index=(winner or entering) and 3 or poseIndex+1
+                local index=entering and state.preparation and ((record.introSequence or 1)%5+1) or (winner or entering) and 3 or poseIndex+1
                 model:SetAttribute("RiftboundPose",poseNames[index])
                 local left,right=model["Left Arm"],model["Right Arm"]
                 local cheer=index==3 or index==5
@@ -2063,8 +2312,8 @@ local function initialize()
     stage("Requiring World")
     local World = require(script.Parent.World)
     assert(type(World) == "table", "World must return its module table")
-    for _, name in ipairs({ "build", "render", "animate", "offlineAvatar", "arrive", "sprintStep", "loadAppearance", "cameraBounds", "courseInfo", "resolveUsername", "validUsername" }) do
-        assert(type(World[name]) == "function", "World is missing " .. name .. "(). Replace the entire World ModuleScript with the Phase 2 file.")
+    for _, name in ipairs({ "build", "render", "animate", "offlineAvatar", "arrive", "sprintStep", "loadAppearance", "cameraBounds", "courseInfo", "resolveUsername", "validUsername", "preparationStep" }) do
+        assert(type(World[name]) == "function", "World is missing " .. name .. "(). Replace the entire World ModuleScript with the current solo-entrance file.")
     end
     stage("Validating Config")
     -- Phase 1 Config tables lacked these fields. Supply only missing values; never hide invalid explicit values.
@@ -2076,7 +2325,7 @@ local function initialize()
         AutoSimulateGifts = false, DemoPowerups = true, DemoGiftSeconds = 18, StreamCameraDefault = true, HostUserIds = {},
         BaseMoneyPerSecond = 5, VoteMoneyPerSecond = 3, WinMoneyPerSecond = 2,
         MaxMoneyPerSecond = 100, MaxBalance = 1000000000, MaxCrew = 40, MaxQueuedArrivals = 30,
-        PersistenceEnabled = false, AutoJoinPlayers = false, SprintOnly = true, SprintCompetitors = 20, SprintRaceSeconds = 120, SprintWalkSpeed = 12.5, ResolveViewerUsernames = true, EntranceSeconds = 4,
+        PersistenceEnabled = false, AutoJoinPlayers = false, SprintOnly = true, SprintCompetitors = 20, SprintRaceSeconds = 120, SprintWalkSpeed = 12.5, ResolveViewerUsernames = true, EntranceSeconds = 4.5, SoloEntrances = true, PreparationWalkSpeed = 18, PreparationMoveTimeoutSeconds = 18,
         RegistrationSeconds = 30, MinimumRacers = 2, StartCountdownSeconds = 4, MaxSessionMembers = 500,
         SprintFinishBonus = 40, LoadAvatarAppearances = false, AppearanceTimeoutSeconds = 8,
         DemoAppearanceUserIds = { 1, 156, 261, 2, 3 },
@@ -2085,6 +2334,7 @@ local function initialize()
     assert(Config.AutoActivities == true, "AutoActivities must stay true for the automatic tournament")
     assert(Config.SprintOnly == true, "SprintOnly must stay true for the physical Skybridge tournament")
     assert(Config.AutoJoinPlayers == false, "AutoJoinPlayers must stay false; viewers must register freshly each round")
+    assert(Config.SoloEntrances == true, "SoloEntrances must stay true; all accepted racers need an individual introduction and physical grid arrival")
     assert(Config.PersistenceEnabled == false, "PersistenceEnabled must stay false; this game has no save implementation")
     local function range(name, minimum, maximum)
         local value = Config[name]
@@ -2094,7 +2344,9 @@ local function initialize()
     for _, name in ipairs({ "GatheringSeconds", "VotingSeconds", "StormSeconds", "ResultSeconds" }) do range(name, 0.1, 3600) end
     range("SprintRaceSeconds", 120, 120)
     range("SprintWalkSpeed", 10, 14)
-    range("EntranceSeconds", 3, 5)
+    range("EntranceSeconds", 4, 5)
+    range("PreparationWalkSpeed", 10, 20)
+    range("PreparationMoveTimeoutSeconds", 10, 30)
     assert(workspace.StreamingEnabled ~= true, "For this playtest, Stop Play and set Workspace.StreamingEnabled=false in Properties.")
     range("RegistrationSeconds", 5, 120)
     range("MinimumRacers", 2, 20)
@@ -2124,7 +2376,7 @@ local function initialize()
     for i = 1, 3 do assert(type(Config.RoundPrizes[i]) == "number" and Config.RoundPrizes[i] >= 0 and Config.RoundPrizes[i] <= 1000000, "RoundPrizes needs three finite nonnegative amounts") end
     stage("Creating RealmState")
     local state = Realm.new(Config, os.clock())
-    for _, name in ipairs({ "tick", "advance", "snapshot", "addCrew", "vote", "gift", "follow", "bless", "recordCheckpoint", "raceDistance", "raceComplete", "raceDNF", "queueEntrance", "advanceEntrances", "nextCohort", "registrationCheck", "register", "unregister", "activatePowerup" }) do
+    for _, name in ipairs({ "tick", "advance", "snapshot", "addCrew", "vote", "gift", "follow", "bless", "recordCheckpoint", "raceDistance", "raceComplete", "raceDNF", "queueEntrance", "advanceEntrances", "nextCohort", "registrationCheck", "register", "unregister", "activatePowerup", "avatarPrepared", "gridArrived", "preparationReady" }) do
         assert(type(state[name]) == "function", "RealmState is missing " .. name .. "(). Replace its complete Phase 2 source.")
     end
     local initial = state:snapshot(os.clock())
@@ -2144,6 +2396,7 @@ local function initialize()
 
     local function publish()
         local now = os.clock()
+        if World.preparationStep then World.preparationStep(state,now) end
         local snapshot = state:snapshot(now)
         snapshot.persistence, snapshot.bridge = "memory only", "offline simulator"
         snapshot.demo, snapshot.streamCamera = demoEnabled == true, Config.StreamCameraDefault
@@ -2170,8 +2423,8 @@ local function initialize()
         local ok,issue=state:registrationCheck(username,event.roundId,event.submittedAt,os.clock(),event.eventId)
         if not ok then return false,issue end
         if not World.validUsername(username) then return false,"Enter a Roblox username, not a display name." end
-        local userId=type(event.appearanceUserId)=="number" and event.appearanceUserId or 0
-        if userId==0 and event.offline~=true then
+        local userId=0
+        if event.offline~=true then
             userId,issue=World.resolveUsername(username)
             if not userId then return false,issue end
         end
@@ -2180,8 +2433,8 @@ local function initialize()
         local registered,member=state:register(username,userId,event.roundId,event.submittedAt,os.clock(),event.eventId)
         if not registered then return false,member end
         local model=World.offlineAvatar(member.username)
-        World.arrive(model,member.slot,member.username)
-        World.loadAppearance(member.username,userId)
+        World.arrive(model,member.slot,member.username,state.round,member.reservedGrid)
+        World.loadAppearance(member.username,event.offline and event.appearanceUserId or userId)
         state:advanceEntrances(os.clock())
         return true,member.username.." registered for round "..event.roundId..(event.offline and " / OFFLINE" or " / ROBLOX")
     end
@@ -2286,6 +2539,16 @@ local function initialize()
                 local event=envelope(kind and "powerup" or action=="withdraw" and "withdraw" or "register",payload,roundId,{offline=action=="offlineJoin",kind=kind})
                 local ok,issue=enqueue(event,function(_,message) notify(player,message) end)
                 if not ok then notify(player,issue) end
+            elseif action=="batchJoin" then
+                local count=tonumber(payload)
+                if count~=2 and count~=5 and count~=10 and count~=20 then notify(player,"Choose 2, 5, 10 or 20 offline registrations.");return end
+                local accepted=0
+                for i=1,count do
+                    local name="Test_Racer"..i
+                    local ok=enqueue(envelope("register",name,roundId,{offline=true}),function(_,message) notify(player,message) end)
+                    if ok then accepted=accepted+1 end
+                end
+                notify(player,accepted.." simultaneous OFFLINE requests queued; slots reserve on acceptance.")
             elseif action=="demoToggle" then
                 if Config.DemoStudioOnly and not RunService:IsStudio() then notify(player,"Demo testing is Studio-only.");return end
                 demoEnabled=not demoEnabled
@@ -2345,7 +2608,10 @@ local function initialize()
         raceAccumulator = raceAccumulator + dt
         if running and raceAccumulator >= 0.05 then
             raceAccumulator = 0
-            if not guarded("Observing physical Sprint", function() World.sprintStep(state, os.clock()) end) then return end
+            if not guarded("Observing physical Sprint", function()
+                if World.preparationStep then World.preparationStep(state,os.clock()) end
+                World.sprintStep(state, os.clock())
+            end) then return end
         end
         if running and sceneAccumulator >= 1 / Config.SceneUpdatesPerSecond then
             sceneAccumulator = 0
@@ -2354,7 +2620,7 @@ local function initialize()
     end))
 
     task.spawn(function()
-        local lastSnapshot = 0
+        local lastSnapshot, lastEntry = 0, ""
         while running do
             if not guarded("Advancing rounds / rendering snapshot", function()
                 local now = os.clock()
@@ -2362,7 +2628,7 @@ local function initialize()
                 state:advanceEntrances(now)
                 local previousPhase=state.phase
                 local changed = state:advance(now)
-                if changed and (state.phase=="countdown" or state.phase=="result" or previousPhase=="result") then
+                if changed and (state.phase=="preparing" or state.phase=="countdown" or state.phase=="result" or previousPhase=="result") then
                     -- Cancel pending old-window tasks as well as presentation queues.
                     for i=#tasks,1,-1 do
                         local item=tasks[i]
@@ -2372,7 +2638,10 @@ local function initialize()
                         end
                     end
                 end
-                if changed or now - lastSnapshot >= Config.SnapshotSeconds then
+                local entry=state.entrance
+                local entryKey=entry and (entry.sequence.."/"..(entry.stage or "intro")) or ""
+                if changed or entryKey~=lastEntry or now - lastSnapshot >= Config.SnapshotSeconds then
+                    lastEntry=entryKey
                     publish()
                     lastSnapshot = now
                 end
@@ -2850,7 +3119,10 @@ for i,item in ipairs({{"TRAIL VISUAL","powerupTrail"},{"SHIELD VISUAL","powerupS
     button(controls,"Powerup"..i,item[1],{x=16+(i-1)*137,y=252,w=126,h=38},function() actionRemote:FireServer(item[2],input.Text,latestState and latestState.round or 0) end)
 end
 button(controls, "VerifiedJoin", "ROBLOX JOIN / VERIFY ACCOUNT", { x = 16, y = 300, w = 400, h = 32 }, function() actionRemote:FireServer("join", input.Text, latestState and latestState.round or 0) end)
-text(controls, "Hint2", "Offline join = stand-in. Roblox join = account lookup.", { x = 16, y = 342, w = 400, h = 24 }, 13, muted)
+for i,count in ipairs({2,5,10,20}) do
+    local batch=button(controls,"Batch"..count,"JOIN "..count,{x=16+(i-1)*102,y=340,w=94,h=24},function() actionRemote:FireServer("batchJoin",tostring(count),latestState and latestState.round or 0) end)
+    batch.TextSize=12
+end
 button(controls,"Withdraw","WITHDRAW ENTRY",{x=16,y=368,w=194,h=32},function() actionRemote:FireServer("withdraw",input.Text,latestState and latestState.round or 0) end)
 button(controls,"TestStale","TEST STALE ROUND",{x=222,y=368,w=194,h=32},function() actionRemote:FireServer("offlineJoin",input.Text,(latestState and latestState.round or 0)-1) end)
 local renderCheckButton
@@ -3145,6 +3417,32 @@ local function broadcastPlan(state, now, liveTime, position, realm)
         plan.key="launch/"..state.round.."/"..angle
         plan.shot=({"starting grid / FRONT","starting grid / SIDE","starting grid / REAR"})[angle+1]
         use(state.nextCohort or {});plan.yaw=plan.yaw+angle*90;plan.elevation=42;plan.wide=true
+    elseif state.preparation and (state.phase=="registration" or state.phase=="preparing") then
+        local entry=state.entrance
+        if entry and entry.roundId==state.round then
+            local age=math.max(0,liveTime-entry.startedAt)
+            local view=entry.stage=="intro" and math.min(2,math.floor(age/((entry.endsAt-entry.startedAt)/3))) or 1
+            use({entry.names[1]})
+            plan.key="solo/"..state.round.."/"..entry.sequence.."/"..entry.stage.."/"..view
+            plan.shot=entry.stage=="intro" and ({"solo entrance / FRONT","solo entrance / SIDE","solo entrance / CLOSE-UP"})[view+1] or "walking to starting grid"
+            plan.yaw=plan.yaw+(view==1 and 70 or 0)
+            plan.close=entry.stage=="intro" and view==2
+            plan.elevation=plan.close and 40 or 34
+            plan.caption=entry.names[1]
+        else
+            local ready={}
+            for _,member in ipairs(state.members) do if member.registered and member.preparationStatus=="ready" then ready[#ready+1]=member.username end end
+            if #ready>0 then
+                if now>=b.nextIntro or not position(b.gridSubject) then b.gridSubject=leastSeen(ready,b.coverage,1)[1];b.nextIntro=now+4;b.introBeat=(b.introBeat or 0)+1 end
+                use({b.gridSubject});plan.key="grid-warmup/"..state.round.."/"..b.introBeat
+                plan.shot,plan.caption="starting grid / warm-up",b.gridSubject
+                plan.yaw=plan.yaw+20
+            else
+                plan.key,plan.shot,plan.wide="lobby/"..state.round,"waiting lobby",true
+                plan.targets={Vector3.new(-64,80,66),Vector3.new(0,68,55)}
+                plan.yaw=-12+math.sin(now*.09)*18;plan.elevation=38
+            end
+        end
     elseif state.phase=="registration" then
         local roster=state.registration.roster
         if #roster==0 then
@@ -3418,7 +3716,7 @@ local function updateDirector(now, dt)
                 end
             end
             local visible={};for i=1,#targets do if plan.names[i] then visible[#visible+1]=plan.names[i] end end
-            if state.phase=="registration" and #visible>0 then
+            if state.phase=="registration" and not state.preparation and #visible>0 then
                 local duration=#state.registration.roster>=6 and 2 or 2.5
                 local index=math.floor(math.max(0,now-(broadcast.introStarted or now))/(duration/#visible))%#visible+1
                 broadcastCaption=visible[index] -- One full username at a time, never three truncated names.
@@ -3540,7 +3838,7 @@ snapshotRemote.OnClientEvent:Connect(function(state)
     competitorPanel.Title.Text = state.physicalSprint and "SPRINT / TIME" or "ROUND LEADERS / PT"
     phase.Text = state.activity.name
     stats.Text = string.format("%s / %d TRAVELERS / %d SHARDS", state.demo and "DEMO" or "LOCAL CREW", #state.crew, state.wins)
-    timingLabel.Text = ({ registration="JOIN CLOSES",countdown="GET READY",gathering = "NEXT ROUND", voting = "STARTS IN", storm = "TIME LEFT", result = "NEXT UP" })[state.phase]
+    timingLabel.Text = ({ registration="JOIN CLOSES",preparing="PREPARING",countdown="GET READY",gathering = "NEXT ROUND", voting = "STARTS IN", storm = "TIME LEFT", result = "NEXT UP" })[state.phase]
     for i = 1, 5 do
         local earner = state.leaderboard[i]
         earners[i].name.Text = earner and (i .. ". " .. earner.username) or (i .. ". Waiting")
@@ -3584,11 +3882,23 @@ snapshotRemote.OnClientEvent:Connect(function(state)
             timingLabel.Text=reg.endsAt==0 and "NEED "..reg.minimum or "JOIN CLOSES"
             instruction.Text="COMMENT YOUR ROBLOX USERNAME TO JOIN!"
             roundStatus.Text=reg.count.."/"..reg.capacity.." REGISTERED / SUBMIT AGAIN EACH ROUND"
+            if state.preparation then
+                local prep=state.preparation
+                roundStatus.Text=string.format("%d/%d READY / %d PENDING / %s",prep.ready,prep.total,prep.pending,prep.current~="" and prep.current or "WAITING")
+            end
             competitorPanel.Title.Text="REGISTERED / "..reg.count
             for i=1,5 do
                 competitors[i].name.Text=reg.roster[i] and (i..". "..reg.roster[i]) or (i..". Open slot")
-                competitors[i].score.Text=reg.roster[i] and "READY" or "—"
+                local status="QUEUED"
+                for _,member in ipairs(state.members) do if member.username==reg.roster[i] then status=member.preparationStatus and string.upper(member.preparationStatus) or "READY";break end end
+                competitors[i].score.Text=reg.roster[i] and status or "—"
             end
+        elseif state.phase=="preparing" then
+            local prep=state.preparation
+            phase.Text="ROSTER LOCKED / PREPARING RACERS"
+            instruction.Text="REGISTRATION CLOSED / ALL ENTRANCES FINISH BEFORE GO"
+            roundStatus.Text=string.format("%d/%d READY / %d PENDING / %s",prep.ready,prep.total,prep.pending,prep.current)
+            stats.Text=string.format("ROUND %d / CLOSED / %d/%d RACERS",state.round,reg.count,reg.capacity)
         elseif state.phase=="countdown" then
             phase.Text="ROSTER LOCKED / GET READY"
             instruction.Text="REGISTRATION CLOSED / ENTER AGAIN NEXT ROUND"
@@ -3813,9 +4123,9 @@ local function cameraDiagnostics(now)
         end)
     end
     if not CAMERA_DIAGNOSTICS or not camera then return end
-    print(string.format("[Riftbound camera] presentation=broadcast-v12 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
+    print(string.format("[Riftbound camera] presentation=solo-entrances-v13 daylight=%s clock=%.2f brightness=%.2f exposure=%.2f",
         tostring(STREAM_DAYLIGHT and streamCamera and gui.Enabled), Lighting.ClockTime, Lighting.Brightness, Lighting.ExposureCompensation))
-    print(string.format("[Riftbound render] revision=broadcast-v12 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
+    print(string.format("[Riftbound render] revision=solo-entrances-v13 shot=%s clearEffects=%s probes=%s effectiveOpacity min=%.3f mean=%.3f max=%.3f intervalPositionDrift=%.3f intervalAimDrift=%.6f",
         directorShot, tostring(STREAM_CLEAR_EFFECTS), tostring(renderCheckEnabled), parts > 0 and minOpacity or 0, parts > 0 and sumOpacity / parts or 0, maxOpacity, maximumPositionDrift, maximumAimDrift))
     local atmosphereCount, effectCount, enclosureCount = 0, 0, 0
     for _, record in pairs(suspendedEffects) do
@@ -3959,7 +4269,7 @@ bindCamera()
 local labelAccumulator = 0
 RunService:BindToRenderStep("RiftboundPortraitCamera", Enum.RenderPriority.Last.Value, function(dt)
     if latestState then
-        local waiting=latestState.registration and latestState.phase=="registration" and latestState.registration.endsAt==0
+        local waiting=latestState.registration and (latestState.phase=="registration" and latestState.registration.endsAt==0 or latestState.phase=="preparing")
         timer.Text=waiting and "—" or tostring(math.max(0,math.ceil(latestState.seconds-(os.clock()-receivedAt))))
     end
     handoff.BackgroundTransparency=streamCamera and math.max(.9,1-math.max(0,handoffUntil-os.clock())/.18*.1) or 1
@@ -3980,14 +4290,21 @@ RunService:BindToRenderStep("RiftboundPortraitCamera", Enum.RenderPriority.Last.
         if latestState and latestState.registration then
             local state=latestState
             local remaining=math.max(0,math.ceil(state.deadline-liveTime))
-            if state.phase=="countdown" then
+            if state.preparation and state.entrance and (state.phase=="registration" or state.phase=="preparing") then
+                local entry=state.entrance
+                if entry.stage=="intro" and liveTime<entry.endsAt then
+                    noticeText.Text=liveTime-entry.startedAt<1.1 and "NEW CHALLENGER!" or entry.names[1]
+                    noticeText.TextSize=#noticeText.Text>16 and 20 or 24
+                else noticeText.Text,noticeText.TextSize=entry.names[1].." / TO THE GRID",18 end
+                notice.Visible=true;tournamentActive=true
+            elseif state.phase=="countdown" then
                 noticeText.Text,noticeText.TextSize,notice.Visible=remaining>3 and "READY" or tostring(math.max(1,remaining)),28,true
                 tournamentActive=true
             elseif state.phase=="storm" and liveTime-state.activityStarted<1.8 then
                 noticeText.Text,noticeText.TextSize,notice.Visible="GO!",28,true;tournamentActive=true
             elseif state.highlight and directorShot=="power-up / "..state.highlight.kind and liveTime<state.highlight.endsAt then
                 noticeText.Text,noticeText.TextSize,notice.Visible=state.highlight.username.." / "..string.upper(state.highlight.kind),22,true;tournamentActive=true
-            elseif broadcastCaption and os.clock()>noticeUntil and (state.phase=="registration" or state.phase=="storm") then
+            elseif broadcastCaption and os.clock()>noticeUntil and (state.phase=="registration" or state.phase=="preparing" or state.phase=="storm") then
                 local size=state.phase=="registration" and #broadcastCaption>16 and 20 or #broadcastCaption>34 and 18 or 22
                 noticeText.Text,noticeText.TextSize,notice.Visible=broadcastCaption,size,true;tournamentActive=true
             elseif state.phase=="registration" and not entryActive and os.clock()>noticeUntil then

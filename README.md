@@ -1,9 +1,11 @@
-# Riftbound Live — cinematic racing broadcast
+# Riftbound Live — solo entrances and physical race preparation
 
-The v12 director adds fair racer introductions, front/rear/side/low-angle pack
-shots, 4–8-second broadcast changes and queued event highlights.
-[Client replacement instructions](docs/BROADCAST_CAMERA_REPLACEMENT.md) explain
-the one-file update from v11 and required Studio visual checks.
+Every accepted racer now receives one full 4.5-second FIFO Star Gate introduction,
+then physically runs to a reserved grid position before the next solo starts.
+Registration closes on time; accepted preparation continues with the roster locked.
+The existing cinematic race broadcast resumes at GO.
+[Current five-source replacement instructions](docs/SOLO_ENTRANCE_REPLACEMENT.md)
+include offline batches for 2/5/10/20 racers and the required native Studio checks.
 
 The existing wide, shared v10 fantasy skyway is unchanged. Viewers register
 freshly for every round, watch their avatars emote in the lobby, launch through a
@@ -16,7 +18,7 @@ cancels it. Closing locks the roster; late entries are rejected rather than queu
 for another race. Everyone must submit again next round. Money and historical
 statistics remain in the separate session ledger.
 
-[Complete five-source replacement instructions](docs/TOURNAMENT_REGISTRATION_REPLACEMENT.md)
+[Complete five-source replacement instructions](docs/SOLO_ENTRANCE_REPLACEMENT.md)
 include exact Studio parents/types, offline controls and the future scoped event
 contract. MANUAL_STUDIO_SETUP.md contains all five complete raw Luau source blocks.
 GitHub pushes do not automatically update an open Studio place.
@@ -38,9 +40,9 @@ Physical shared-road navigation, two alternate routes, checkpoints, actual finis
 times, DNFs, fictional earnings and session leaderboards are preserved. The course
 builder is fingerprinted against v10. Keep Workspace.StreamingEnabled=false;
 DataStoreService, custom HTTP and real TikTok networking remain disabled.
-Client marker: **broadcast-v12**; course marker: **show-v10-shared-road**.
+Client marker: **solo-entrances-v13**; course marker: **show-v10-shared-road**.
 
-[Broadcast tests and limitations](docs/BROADCAST_TEST_RESULTS.md) distinguish cloud
+[Preparation tests and limitations](docs/SOLO_ENTRANCE_TEST_RESULTS.md) distinguish cloud
 state/geometry/contact/projection checks from required native Studio visual,
 Humanoid physics and 15–20-racer performance playtests.
 

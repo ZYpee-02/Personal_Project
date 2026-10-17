@@ -8,6 +8,7 @@ local monuments = {}
 local avatars = {}
 local scenery = { clouds = {}, runes = {}, ribbons = {}, particles = {}, stars = {}, shrines = {}, sprintObstacles = {}, sprintHurdles = {}, waterfalls = {} }
 local tournament = { braziers = {}, portal = {}, fireworks = {} }
+local preparationArea, portalEffects
 local fantasyFolder
 local settings = {}
 local sceneState
@@ -343,9 +344,11 @@ function World.loadAppearance(username, userId)
     if not record or record.appearanceAttempted or settings.LoadAvatarAppearances ~= true
         or type(userId) ~= "number" or userId < 1 or userId ~= math.floor(userId) then return end
     record.appearanceAttempted = true
+    record.appearanceFinished=false
     local deadline = os.clock() + (settings.AppearanceTimeoutSeconds or 8)
+    record.appearanceDeadline=deadline
     task.spawn(function()
-        if os.clock() > deadline or not root.Parent then return end
+        if os.clock() > deadline or not root.Parent then record.appearanceFinished=true;return end
         local description, model
         local ok, issue = pcall(function()
             -- Explicitly optional Roblox appearance APIs; no custom HTTP/TikTok.
@@ -360,6 +363,7 @@ function World.loadAppearance(username, userId)
                 model = nil
             end
         end)
+        record.appearanceFinished=true
         if description then description:Destroy() end
         if model then model:Destroy() end
         if not ok then warn("[Riftbound appearance] " .. username .. ": fallback kept (" .. tostring(issue) .. ")") end
@@ -490,6 +494,7 @@ function World.stepCourse(now)
     end
 end
 local function gridSlot(member, state, index)
+    if state.config.SoloEntrances and member.reservedGrid then return member.reservedGrid end
     return (((member.gridSlot or index)-1+(state.round-1)*7)%math.max(1,state.activityEntrants))+1
 end
 local function resetRacer(record, member, now)
@@ -542,7 +547,9 @@ function World.sprintStep(state, now)
                     local grid=gridSlot(member,state,index)
                     record.race={round=state.round,grid=grid,route="shared",lateral=((grid-1)%5-2)*8}
                     member.route="shared"
-                    physical(record,true);resetRacer(record,member,now)
+                    physical(record,true)
+                    record.model.Humanoid.WalkSpeed=settings.SprintWalkSpeed or 12.5
+                    resetRacer(record,member,now)
                 end
                 if member.raceStatus=="racing" then bodies[#bodies+1]={member=member,record=record,position=record.model.PrimaryPart.Position} end
             end
@@ -640,6 +647,33 @@ end
 
 -- Presentation is deliberately outside SkybridgeSprint: the road geometry and
 -- every collidable checkpoint/obstacle remain exactly as authored in v10.
+-- A separate lobby approach, outside SkybridgeSprint. The race road builder is untouched.
+function World.waitingPoint(slot)
+    return Vector3.new(-117+((slot-1)%5)*7,80,42+math.floor((slot-1)/5)*8)
+end
+local function buildPreparationArea()
+    if not settings.SoloEntrances then return end
+    preparationArea=Instance.new("Model");preparationArea.Name,preparationArea.Parent="ChallengerLobby",root
+    part("Waiting terrace",Vector3.new(45,3,40),CFrame.new(-103,75.5,54),colors.grass,Enum.Material.Grass,preparationArea)
+    part("Star Gate stage",Vector3.new(30,3,36),CFrame.new(-64,75.5,68),colors.stone,Enum.Material.Marble,preparationArea)
+    -- 18-stud-wide, shallow ramps meet the EXISTING rear start apron at y=65.
+    local points={Vector3.new(-64,80,86),Vector3.new(-44,74,94),Vector3.new(-28,68,94)}
+    for i=1,#points-1 do
+        local a,b=points[i]-Vector3.new(0,4,0),points[i+1]-Vector3.new(0,4,0)
+        local frame=CFrame.lookAt((a+b)*.5,b)
+        local ramp=part("Grid approach ramp "..i,Vector3.new(18,2,(b-a).Magnitude+.4),frame,colors.stone,Enum.Material.Slate,preparationArea)
+        ramp:SetAttribute("PreparationSurface",true)
+    end
+    portalEffects={}
+    for i,side in ipairs({-1,1}) do
+        local crystal=part("Challenger flame crystal",Vector3.new(1.5,4,1.5),CFrame.new(-64+side*10,79,66),colors.violet,Enum.Material.Neon,preparationArea)
+        crystal.CanCollide,crystal.CanTouch,crystal.CanQuery=false,false,false
+        local fire=Instance.new("Fire");fire.Enabled,fire.Size,fire.Heat,fire.Parent=false,6,0,crystal
+        local sparks=Instance.new("Sparkles");sparks.Enabled,sparks.Parent=false,crystal
+        local smoke=Instance.new("Smoke");smoke.Enabled,smoke.Size,smoke.Opacity,smoke.RiseVelocity,smoke.Parent=false,4,.08,3,crystal
+        portalEffects[i]={fire=fire,sparks=sparks,smoke=smoke,part=crystal}
+    end
+end
 local function buildTournamentPresentation()
     local folder=Instance.new("Folder");folder.Name,folder.Parent="TournamentPresentation",root
     local function prop(name,size,position,color)
@@ -682,6 +716,14 @@ local function animateTournament(state, now)
         entry.part.CFrame=CFrame.new(-64+math.cos(angle)*8,80+math.sin(angle)*8,65)*CFrame.Angles(0,0,-angle)
         entry.part.Transparency=state.entrance and .05 or .45+math.sin(now*2+angle)*.15
     end
+    if portalEffects then
+        local entering=state.entrance and (not state.entrance.stage or state.entrance.stage=="intro")
+        for i,effect in ipairs(portalEffects) do
+            local color=Color3.fromHSV(((state.entrance and state.entrance.sequence or 0)*.17+i*.2+now*.04)%1,.65,1)
+            effect.fire.Enabled,effect.smoke.Enabled,effect.sparks.Enabled=entering~=nil and entering~=false,entering~=nil and entering~=false,entering~=nil and entering~=false
+            effect.fire.Color,effect.sparks.SparkleColor,effect.part.Color=color,color,color
+        end
+    end
     for _,effect in ipairs(tournament.fireworks) do effect.Enabled=state.phase=="result" and #state.winners>0 end
 end
 
@@ -713,6 +755,7 @@ function World.build(config)
     glow.Intensity, glow.Size, glow.Threshold, glow.Parent = 0.45, 32, 1.3, Lighting
     buildSprint()
     buildTournamentPresentation()
+    buildPreparationArea()
     island(Vector3.new(0, 32, 0), 50)
     island(Vector3.new(87, 36, 21), 23)
     island(Vector3.new(-85, 28, -20), 21)
@@ -920,9 +963,9 @@ local function number(value)
     return tostring(math.floor(value))
 end
 
-function World.arrive(model, slot, username)
+function World.arrive(model, slot, username, roundId, waitingSlot)
     model.Name = "Traveler_" .. username
-    model:PivotTo(CFrame.new(World.entrancePoint(1, 1)))
+    model:PivotTo(CFrame.new(settings.SoloEntrances and roundId and World.waitingPoint(waitingSlot or slot) or World.entrancePoint(1, 1)))
     for _, p in ipairs(model:GetDescendants()) do
         if p:IsA("BasePart") then p.CanCollide = false end
         if p:IsA("Script") or p:IsA("LocalScript") or p:IsA("Tool") then p:Destroy() end
@@ -950,7 +993,7 @@ function World.arrive(model, slot, username)
     popText.TextWrapped, popText.TextTruncate, popText.Parent = false, Enum.TextTruncate.AtEnd, caption
     avatars[string.lower(username)] = {
         model = model, slot = slot, arrivedAt = os.clock(), frame = model:GetPivot(),
-        balance = 0, popText = popText, scale = 1, username = username,
+        balance = 0, popText = popText, scale = 1, username = username, roundId=roundId, waitingSlot=waitingSlot,
     }
     -- Staged actors use authored limb poses. Disable joints while anchored so
     -- native motors cannot snap them back; racing re-enables the whole rig.
@@ -967,16 +1010,95 @@ local function track(distance, radius, count)
 end
 
 local function registeredGrid(member,state)
+    if state.preparation and member.reservedGrid then return World.sprintPoint(member.reservedGrid,0) end
     local count=state.registration and (state.phase=="storm" and #state.nextCohort or state.registration.count) or #state.nextCohort
     local index=member.registrationSlot or member.gridSlot or 1
     return World.sprintPoint(((index-1+(state.round-1)*7)%math.max(1,count))+1,0)
 end
+-- Physical preparation has no authority over checkpoints, finishes, money or the race clock.
+function World.preparationStep(state, now)
+    if not state.registrationEnabled or not state.config.SoloEntrances or (state.phase~="registration" and state.phase~="preparing" and state.phase~="countdown") then return end
+    for _,key in ipairs(state.roster) do
+        local member,record=state.crew[key],avatars[key]
+        if record and record.roundId==state.round then
+            record.preparationStatus=member.preparationStatus
+            if member.preparationStatus=="queued" and (not record.appearanceDeadline or
+                record.appearanceFinished and not record.pendingAppearance or now>=record.appearanceDeadline) then state:avatarPrepared(member.username,state.round) end
+        end
+    end
+    local entry=state.entrance
+    if not entry or entry.roundId~=state.round then return end
+    local key=string.lower(entry.names[1]);local member,record=state.crew[key],avatars[key]
+    if not record or record.roundId~=state.round or not record.model.PrimaryPart then return end
+    local model,main=record.model,record.model.PrimaryPart
+    local humanoid=model:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health<=0 then return end -- render replaces broken rigs with a fallback
+    record.preparationStatus=member.preparationStatus
+    if entry.stage=="intro" then
+        if record.introSequence~=entry.sequence then
+            if record.physical then physical(record,false) end
+            record.introSequence,record.introStartedAt=entry.sequence,entry.startedAt
+            record.frame=CFrame.lookAt(World.entrancePoint(1,1),World.entrancePoint(1,1)+Vector3.new(0,0,1))
+            model:PivotTo(record.frame)
+        end
+        return
+    end
+    if entry.stage~="walking" then return end
+    local grid=World.sprintPoint(member.reservedGrid,0)
+    if not record.walk or record.walk.sequence~=entry.sequence then
+        record.walk={sequence=entry.sequence,index=1,startedAt=now,lastMoved=now,lastPosition=main.Position,recoveries=0,
+            points={Vector3.new(-64,80,86),Vector3.new(-44,74,94),Vector3.new(-28,68,94),Vector3.new(grid.X,68,94),grid}}
+        physical(record,true)
+        humanoid.WalkSpeed,humanoid.AutoRotate=settings.PreparationWalkSpeed or 18,true
+        humanoid.Jump=false
+    end
+    local walk=record.walk
+    local moved=(main.Position-walk.lastPosition).Magnitude
+    if moved>.2 then walk.lastMoved,walk.lastPosition=now,main.Position end
+    if now-walk.lastMoved>3 or now-walk.startedAt>(settings.PreparationMoveTimeoutSeconds or 18) or main.Position.Y<60 or main.Position.Y>103 then
+        walk.recoveries=walk.recoveries+1
+        -- Last safe waypoint first; the final grid warp is a bounded RECOVERY only.
+        local rescue=walk.recoveries>=2 and grid or (walk.index>1 and walk.points[walk.index-1] or World.entrancePoint(1,1))
+        if walk.recoveries>=2 then walk.index=#walk.points end
+        model:PivotTo(CFrame.lookAt(rescue,rescue+Vector3.new(0,0,-1)))
+        main.AssemblyLinearVelocity,main.AssemblyAngularVelocity=Vector3.new(),Vector3.new()
+        walk.lastMoved,walk.lastPosition,walk.startedAt,walk.recoveredAt=now,rescue,now,now
+        model:SetAttribute("PreparationRecovery",walk.recoveries)
+    end
+    local target=walk.points[walk.index]
+    local delta=main.Position-target
+    local grounded=humanoid.FloorMaterial~=Enum.Material.Air
+    if not grounded and workspace.Raycast and RaycastParams then
+        local ok,hit=pcall(function()
+            local params=RaycastParams.new();params.FilterType=Enum.RaycastFilterType.Exclude;params.FilterDescendantsInstances={model}
+            return workspace:Raycast(main.Position,Vector3.new(0,-4.25,0),params)
+        end)
+        grounded=ok and hit~=nil
+    end
+    if Vector3.new(delta.X,0,delta.Z).Magnitude<=1.25 and math.abs(delta.Y)<=1.5 and grounded and (not walk.recoveredAt or now-walk.recoveredAt>=.3) then
+        if walk.index<#walk.points then walk.index=walk.index+1;target=walk.points[walk.index]
+        elseif state:gridArrived(member.username,state.round,entry.sequence,now,walk.recoveries) then
+            physical(record,false)
+            record.preparationStatus,record.frame="ready",CFrame.lookAt(main.Position,main.Position+Vector3.new(0,0,-1))
+            model:PivotTo(record.frame);return
+        end
+    end
+    if not walk.commandAt or now-walk.commandAt>=.25 then humanoid:MoveTo(target);walk.commandAt=now end
+end
+
 local function destination(member, state, now, scale)
     local y = 35 + 3 * scale
-    if state.entrance then
+    if state.entrance and (not state.entrance.stage or state.entrance.stage=="intro") then
         for index, name in ipairs(state.entrance.names) do
             if name == member.username then return World.entrancePoint(index, #state.entrance.names), true end
         end
+    end
+    if state.preparation and member.registered then
+        local record=avatars[string.lower(member.username)]
+        local status=record and record.preparationStatus or member.preparationStatus
+        if status=="queued" then return World.waitingPoint(member.reservedGrid),false end
+        if status=="introducing" then return World.entrancePoint(1,1),true end
+        return registeredGrid(member,state),false
     end
     if state.registration and member.registered and (state.phase=="registration" or state.phase=="countdown") then return registeredGrid(member,state),false end
     if member.entranceDone == false then return Vector3.new(-64 + ((member.slot - 1) % 5 - 2) * 5, 80, 82), false end
@@ -1047,12 +1169,15 @@ function World.render(state, now)
     for _, member in ipairs(state.members) do
         local key = string.lower(member.username)
         local record = avatars[key]
+        if record and state.preparation and member.preparationStatus~="queued" and record.pendingAppearance then
+            record.pendingAppearance:Destroy();record.pendingAppearance=nil
+        end
         if record and not (state.phase == "storm" and member.activityEntered) and (record.pendingAppearance or not record.model.PrimaryPart
             or not record.model:FindFirstChild("Head") or not record.model:FindFirstChildOfClass("Humanoid") or record.model.Humanoid.Health <= 0) then
             local replacement, old = record.pendingAppearance or World.offlineAvatar(member.username), record.model
             local balance, previousFrame = record.balance, old:GetPivot()
             local queuedGiant, deferredGiantUntil = record.queuedGiant, record.deferredGiantUntil
-            World.arrive(replacement, record.slot, member.username)
+            World.arrive(replacement, record.slot, member.username,record.roundId,record.waitingSlot)
             old:Destroy()
             record = avatars[key]
             record.frame = previousFrame
@@ -1062,12 +1187,13 @@ function World.render(state, now)
         end
         if record then
             local model = record.model
-            if state.registration and state.phase=="countdown" and member.registered and record.readyRound~=state.round then
+            if not state.preparation and state.registration and state.phase=="countdown" and member.registered and record.readyRound~=state.round then
                 local point=registeredGrid(member,state)
                 record.frame=CFrame.lookAt(point,point+Vector3.new(0,0,-1));model:PivotTo(record.frame)
                 record.readyRound=state.round
             end
-            if record.physical and not (state.phase == "storm" and state.activity.id == "sprint") then
+            local walking=state.preparation and member.preparationStatus=="walking"
+            if record.physical and not walking and not (state.phase == "storm" and state.activity.id == "sprint") then
                 record.frame = model.PrimaryPart.CFrame
                 physical(record, false)
             end
@@ -1082,12 +1208,13 @@ function World.render(state, now)
                 record.balance, record.nextPop = member.balance, now + 1.05
             end
             local racing = state.phase == "storm" and state.activity.id == "sprint"
-            if racing and member.effect == "giant" then record.queuedGiant = true end
-            if not racing and record.queuedGiant then
+            local protected=racing or state.preparation and member.registered and state.phase~="result"
+            if protected and member.effect == "giant" then record.queuedGiant = true end
+            if not protected and record.queuedGiant then
                 record.deferredGiantUntil, record.queuedGiant = now + 6, false
             end
             local giant = member.effect == "giant" or now < (record.deferredGiantUntil or 0)
-            local targetScale = giant and not racing and 1.85 or 1
+            local targetScale = giant and not protected and 1.85 or 1
             if record.scale ~= targetScale then model:ScaleTo(targetScale); record.scale = targetScale end
             model.GiftAura.Enabled = member.effect ~= "" or now < (record.deferredGiantUntil or 0)
             model.GiftAura.OutlineColor = member.effect == "aurora" and colors.violet or colors.gold
@@ -1138,17 +1265,23 @@ function World.animate(now)
         p.Transparency = storm and state.choice == "sail" and 0.4 or 1
         p.CFrame = CFrame.new((i - 7) * 8, 40 + (i % 4) * 4, ((now * 35 + i * 11) % 120) - 60)
     end
+    local soloEntry=state.preparation and state.entrance and state.entrance.stage=="intro"
     local celebration = state.phase == "result" and #state.winners > 0
     local gifted = state.blessing ~= ""
     for i, p in ipairs(scenery.particles) do
-        p.Transparency = (celebration or gifted) and 0.15 or 1
-        if celebration or gifted then
+        p.Transparency = (celebration or gifted or soloEntry) and 0.15 or 1
+        if celebration or gifted or soloEntry then
+            if soloEntry then
+                p.CFrame=CFrame.new(-64+math.cos(i*2.399+now)*7,77+((now*6+i)%12),66+math.sin(i*2.399+now)*5)
+                p.Color=Color3.fromHSV((i/36+state.entrance.sequence*.17)%1,.65,1)
+            else
             local a = i * 2.399 + now * 0.6
             local radius = celebration and (state.activity.id == "sprint" and 12 or 16) or 25
             local baseY = state.activity.id == "sprint" and 84 or 37
             local baseZ = state.activity.id == "sprint" and (celebration and -1115 or 0) or 10
             p.CFrame = CFrame.new(math.cos(a) * radius, baseY + ((now * (celebration and 8 or 5) + i * 2) % (state.activity.id == "sprint" and 18 or 30)), baseZ + math.sin(a) * radius)
             p.Color = Color3.fromHSV((i / 36 + now * 0.03) % 1, 0.5, 1)
+            end
         end
     end
     for _, member in ipairs(state.members) do
@@ -1161,7 +1294,7 @@ function World.animate(now)
             if not record.physical then record.model.PowerShield.CFrame=record.model.PrimaryPart.CFrame end
             record.model.PrimaryPart.PowerSparks.Enabled=power=="starburst"
             if power~="" then record.model.GiftAura.Enabled=true end
-            if state.activity.id == "sprint" and state.phase == "storm" and record.race and record.race.round == state.round then
+            if record.physical then
                 -- Physics owns the root. Only pose the massless limbs for walking.
                 local speed = record.model.PrimaryPart and record.model.PrimaryPart.AssemblyLinearVelocity.Magnitude or 0
                 local gait = speed > 1 and math.sin(now * 9) * 0.45 or 0
@@ -1177,9 +1310,12 @@ function World.animate(now)
             local target, winner = destination(member, state, now, record.scale)
             local age = now - record.arrivedAt
             local entering = false
-            for _, name in ipairs(state.entrance and state.entrance.names or {}) do if name == member.username then entering = true end end
+            if state.preparation then entering=record.preparationStatus=="introducing"
+            else for _, name in ipairs(state.entrance and state.entrance.names or {}) do if name == member.username then entering = true end end end
             if entering then
                 -- Hold a recognizable celebratory pose at the gate, never a race root.
+                local sequence=record.introSequence or 1
+                target=target+Vector3.new(0,0,math.min(2,math.max(0,now-(record.introStartedAt or now))*2))
                 record.frame = CFrame.lookAt(target, target + Vector3.new(0, 0, 1))
                 record.model.GiftAura.Enabled, record.model.GiftAura.OutlineColor = true, colors.mint
             end
@@ -1206,7 +1342,7 @@ function World.animate(now)
             local poseIndex=math.floor(now/3.5+member.slot)%5
             local poseNames={"wave","stretch","cheer","look around","celebrate"}
             if (state.registration and member.registered and not moving) or entering or winner then
-                local index=(winner or entering) and 3 or poseIndex+1
+                local index=entering and state.preparation and ((record.introSequence or 1)%5+1) or (winner or entering) and 3 or poseIndex+1
                 model:SetAttribute("RiftboundPose",poseNames[index])
                 local left,right=model["Left Arm"],model["Right Arm"]
                 local cheer=index==3 or index==5

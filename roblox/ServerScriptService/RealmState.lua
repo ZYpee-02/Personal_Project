@@ -23,6 +23,7 @@ function Realm.new(config, now)
         local minimum,capacity=config.MinimumRacers or 2,config.SprintCompetitors or 20
         assert(type(minimum)=="number" and minimum>=2 and minimum==math.floor(minimum),"MinimumRacers must be a whole number of at least 2")
         assert(type(capacity)=="number" and capacity>=minimum and capacity<=20 and capacity==math.floor(capacity),"SprintCompetitors must fit MinimumRacers through 20")
+        if config.SoloEntrances then assert(type(config.EntranceSeconds)=="number" and config.EntranceSeconds>=4 and config.EntranceSeconds<=5,"Individual introductions must last 4–5 seconds") end
     end
     local state = setmetatable({
         config = config,
@@ -30,7 +31,7 @@ function Realm.new(config, now)
         deadline = now + config.GatheringSeconds,
         round = 0,
         crew = {},
-        crewOrder = {},
+        crewOrder = {}, userKeys = {},
         votes = {},
         totals = { ward = 0, sail = 0 },
         wins = 0,
@@ -64,6 +65,7 @@ function Realm.new(config, now)
         state.roster, state.registrations, state.registrationEvents, state.lockedRoster = {}, {}, {}, {}
         state.powerupEvents, state.highlightQueue, state.raceHistory = {}, {}, {}
         state.powerupSequence = 0
+        state.registrationIdentities, state.registrationNames = {}, {}
         state.message = "WAITING FOR CHALLENGERS / COMMENT YOUR ROBLOX USERNAME TO JOIN!"
     end
     return state
@@ -100,6 +102,9 @@ function Realm:registrationCheck(username, roundId, submittedAt, now, eventId)
     end
     if not eventKey(eventId) or self.registrationEvents[eventId] then return false,"A unique event ID is required; replayed entry rejected." end
     if type(username)~="string" or #username<3 or #username>20 or not string.match(username,"^[%w_]+$") then return false,"Enter a Roblox username." end
+    local _,underscores=string.gsub(username,"_","")
+    if underscores>1 or string.sub(username,1,1)=="_" or string.sub(username,-1)=="_" then return false,"Use at most one internal underscore in a Roblox username." end
+    if self.config.SoloEntrances and self.registrationNames[string.lower(username)] then return false,"That username already entered this registration window." end
     if self.registrations[string.lower(username)] then return false,"Already registered for this round." end
     if #self.roster >= (self.config.SprintCompetitors or 20) then return false,"All competitor slots are filled for this round." end
     return true
@@ -107,15 +112,38 @@ end
 function Realm:register(username, userId, roundId, submittedAt, now, eventId)
     local ok,issue=self:registrationCheck(username,roundId,submittedAt,now,eventId)
     if not ok then return false,issue end
+    if not finite(userId) or userId<0 or userId~=math.floor(userId) or userId>=9007199254740991 then return false,"Invalid canonical Roblox user ID." end
+    local known=self.crew[string.lower(username)]
+    local canonicalId=userId>0 and userId or known and known.userId or 0
+    local identity=canonicalId>0 and ("user:"..string.format("%.0f",canonicalId)) or ("offline:"..string.lower(username))
+    if self.registrationIdentities[identity] then return false,"That Roblox account already entered this registration window." end
     local key=string.lower(username)
+    local oldKey=userId>0 and self.userKeys[userId]
+    if oldKey and self.registrations[oldKey] then return false,"That Roblox account is already registered." end
+    if oldKey and oldKey~=key then
+        if self.crew[key] then return false,"Username conflicts with an existing session identity." end
+        self.crew[key]=self.crew[oldKey];self.crew[oldKey]=nil
+        for i,k in ipairs(self.crewOrder) do if k==oldKey then self.crewOrder[i]=key end end
+        self.crew[key].username=username
+    end
     local member=self.crew[key]
+    if member and member.userId and member.userId>0 and userId>0 and member.userId~=userId then return false,"That username belongs to another session identity." end
     if not member then
         local added; added,member=self:addCrew(username,userId)
         if not added then return false,member end
     elseif userId and userId>0 then member.userId=userId end
+    if userId>0 then self.userKeys[userId]=key end
+    self.registrationIdentities[identity],self.registrationNames[key]=true,true
     self.registrationEvents[eventId]=true
     self.registrations[key]=true;self.roster[#self.roster+1]=key
     member.registeredRound,member.registrationSlot=self.round,#self.roster
+    if self.config.SoloEntrances then
+        local occupied={};for _,name in ipairs(self.roster) do local slot=self.crew[name].reservedGrid;if name~=key and slot then occupied[slot]=true end end
+        local slot=1;while occupied[slot] do slot=slot+1 end
+        member.reservedGrid,member.preparationStatus,member.introductionCount=slot,"queued",0
+        member.avatarReady=userId==0 or self.config.LoadAvatarAppearances~=true
+        member.preparationRecoveries,member.gridReadyAt=0,nil
+    end
     member.activityEntered,member.score,member.distance,member.finishedAt=false,0,0,0
     member.raceStatus,member.placement,member.recoveries="registered",0,0
     member.route,member.effect,member.effectUntil="shared","",0
@@ -133,8 +161,12 @@ function Realm:unregister(username, roundId, now, eventId)
     if not key or not self.registrations[key] then return false,"That username is not registered." end
     self.registrationEvents[eventId]=true;self.registrations[key]=nil
     self.crew[key].registeredRound=nil;self.crew[key].entranceDone=true
+    if self.config.SoloEntrances then self.crew[key].preparationStatus,self.crew[key].reservedGrid=nil,nil end
     for i=#self.roster,1,-1 do if self.roster[i]==key then table.remove(self.roster,i) end end
     for i,name in ipairs(self.roster) do self.crew[name].registrationSlot=i end
+    if not self.config.SoloEntrances then
+        self.registrationIdentities[self.crew[key].userId>0 and ("user:"..string.format("%.0f",self.crew[key].userId)) or ("offline:"..key)]=nil
+    end
     for i=#self.entranceQueue,1,-1 do if string.lower(self.entranceQueue[i])==key then table.remove(self.entranceQueue,i) end end
     if self.entrance then
         for i=#self.entrance.names,1,-1 do if string.lower(self.entrance.names[i])==key then table.remove(self.entrance.names,i) end end
@@ -183,13 +215,39 @@ function Realm:queueEntrance(username)
     local member = self.crew[string.lower(username)]
     if not member or not member.entranceDone then return false end
     if self.registrationEnabled and (self.phase~="registration" or member.registeredRound~=self.round) then return false end
-    if #self.entranceQueue >= (self.config.MaxQueuedArrivals or 30) then return false end
+    local limit=self.config.SoloEntrances and (self.config.SprintCompetitors or 20) or (self.config.MaxQueuedArrivals or 30)
+    if #self.entranceQueue >= limit then return false end
     member.entranceDone = false
     table.insert(self.entranceQueue, member.username)
     return true
 end
 
 function Realm:advanceEntrances(now)
+    if self.registrationEnabled and self.config.SoloEntrances then
+        self:advanceHighlights(now)
+        if self.phase~="registration" and self.phase~="preparing" then return end
+        local entry=self.entrance
+        if entry then
+            local member=self.crew[string.lower(entry.names[1])]
+            if not member or member.registeredRound~=self.round then self.entrance=nil
+            elseif entry.stage=="intro" and now>=entry.endsAt then
+                entry.stage,entry.walkStartedAt="walking",now
+                member.entranceDone,member.preparationStatus=true,"walking"
+            end
+            return -- The next introduction waits for a real grid-arrival acknowledgement.
+        end
+        local name=self.entranceQueue[1]
+        if not name then return end
+        local member=self.crew[string.lower(name)]
+        if not member or member.registeredRound~=self.round then table.remove(self.entranceQueue,1);return end
+        if not member.avatarReady then return end -- bounded native appearance/fallback readiness
+        table.remove(self.entranceQueue,1)
+        self.entranceSequence=self.entranceSequence+1
+        member.preparationStatus,member.introductionCount="introducing",member.introductionCount+1
+        member.introductionStartedAt=now
+        self.entrance={sequence=self.entranceSequence,roundId=self.round,names={member.username},stage="intro",startedAt=now,endsAt=now+(self.config.EntranceSeconds or 4.5)}
+        return
+    end
     self:advanceHighlights(now)
     if self.registrationEnabled and self.phase~="registration" then self.entranceQueue,self.entrance={},nil;return end
     if self.entrance and now >= self.entrance.endsAt then
@@ -211,10 +269,31 @@ function Realm:advanceEntrances(now)
         endsAt = now + (count > 1 and 2.5 or (self.config.EntranceSeconds or 4)) }
 end
 
+-- Server-only physical observations; no client action exposes these acknowledgements.
+function Realm:avatarPrepared(username, roundId)
+    local member=type(username)=="string" and self.crew[string.lower(username)]
+    if roundId~=self.round or not member or member.registeredRound~=self.round or member.preparationStatus~="queued" then return false end
+    member.avatarReady=true;return true
+end
+function Realm:gridArrived(username, roundId, sequence, now, recoveries)
+    local entry=self.entrance
+    local member=type(username)=="string" and self.crew[string.lower(username)]
+    if not finite(now) or roundId~=self.round or not entry or entry.roundId~=roundId or entry.sequence~=sequence
+        or entry.stage~="walking" or entry.names[1]~=username or now<entry.endsAt
+        or not member or member.registeredRound~=roundId or member.preparationStatus~="walking" then return false end
+    member.preparationStatus,member.gridReadyAt,member.preparationRecoveries="ready",now,recoveries or 0
+    self.entrance=nil;return true
+end
+function Realm:preparationReady()
+    if #self.roster<(self.config.MinimumRacers or 2) or self.entrance or #self.entranceQueue>0 then return false end
+    for _,key in ipairs(self.roster) do if self.crew[key].preparationStatus~="ready" or self.crew[key].registeredRound~=self.round then return false end end
+    return true
+end
+
 function Realm:nextCohort()
     if self.registrationEnabled then
         local cohort={}
-        local names=self.phase=="registration" and self.roster or (self.phase=="countdown" or self.phase=="storm") and self.lockedRoster or {}
+        local names=self.phase=="registration" and self.roster or (self.phase=="preparing" or self.phase=="countdown" or self.phase=="storm") and self.lockedRoster or {}
         for _,key in ipairs(names) do if self.crew[key] then cohort[#cohort+1]=self.crew[key] end end
         return cohort
     end
@@ -250,7 +329,7 @@ end
 function Realm:enterActivity(member, now, grid)
     if self.registrationEnabled and not self.registrations[string.lower(member.username)] then return false end
     member.activityEntered, member.enteredAt, member.lastRacedRound = true, now, self.round
-    member.gridSlot = grid
+    member.gridSlot = self.config.SoloEntrances and member.reservedGrid or grid
     member.pace = self.activity.id == "sprint" and 0 or pace(member.username, self.round, self.activity.id)
     member.raceStatus = self.activity.id == "sprint" and "racing" or "waiting"
     member.checkpointAt = now
@@ -513,9 +592,20 @@ function Realm:advance(now)
         if self.deadline==0 or now<self.deadline then return false end
         self:tick(now)
         self.lockedRoster={};for _,key in ipairs(self.roster) do self.lockedRoster[#self.lockedRoster+1]=key end
+        if self.config.SoloEntrances and not self:preparationReady() then
+            self.phase,self.deadline="preparing",0
+            self.message="REGISTRATION CLOSED / FINISHING INDIVIDUAL ENTRANCES AND GRID WALKS"
+            return true
+        end
         clearPresentation(self)
         self.phase,self.deadline="countdown",now+(self.config.StartCountdownSeconds or 4)
         self.message="READY / ROSTER LOCKED / 3, 2, 1"
+        return true
+    elseif self.phase=="preparing" then
+        if not self:preparationReady() then return false end
+        self:tick(now)
+        self.phase,self.deadline="countdown",now+(self.config.StartCountdownSeconds or 4)
+        self.message="READY / ALL CHALLENGERS AT THE GRID / 3, 2, 1"
         return true
     elseif self.phase=="countdown" then
         if now<self.deadline then return false end
@@ -556,11 +646,14 @@ function Realm:advance(now)
         clearPresentation(self)
         self.round,self.phase,self.deadline,self.registrationOpenedAt=self.round+1,"registration",0,now
         self.roster,self.registrations,self.lockedRoster,self.registrationEvents,self.powerupEvents={},{},{},{},{}
+        self.registrationIdentities,self.registrationNames={},{}
         self.winners,self.votes,self.totals={}, {}, {ward=0,sail=0}
         self.activityEntrants,self.teamScore,self.teamTarget=0,0,0
         self.success,self.choice=false,"ward"
         for _,member in pairs(self.crew) do
             member.registeredRound,member.activityEntered,member.roundMoney=nil,false,0
+            member.preparationStatus,member.reservedGrid,member.avatarReady,member.gridReadyAt=nil,nil,nil,nil
+            member.introductionCount,member.preparationRecoveries=0,0
             member.score,member.distance,member.finishedAt,member.placement=0,0,0,0
             member.raceStatus,member.recoveries="waiting",0
         end
@@ -578,6 +671,9 @@ function Realm:snapshot(now)
         table.insert(crew, member.username)
         table.insert(members, {
             registered = member.registeredRound==self.round, registrationSlot = member.registrationSlot,
+            reservedGrid=member.reservedGrid, preparationStatus=member.preparationStatus,
+            introductionCount=member.introductionCount or 0, avatarReady=member.avatarReady,
+            preparationRecoveries=member.preparationRecoveries or 0,
             races = member.races or 0, finishes = member.finishes or 0, dnfs = member.dnfs or 0, bestTime = member.bestTime or 0,
             powerup = now<(member.powerupUntil or 0) and member.powerup or "", powerupUntil = member.powerupUntil or 0,
             powerupSequence = member.powerupSequence or 0,
@@ -605,7 +701,7 @@ function Realm:snapshot(now)
     local entrance
     if self.entrance then
         local names = {}; for _, name in ipairs(self.entrance.names) do names[#names + 1] = name end
-        entrance = { sequence = self.entrance.sequence, names = names, startedAt = self.entrance.startedAt, endsAt = self.entrance.endsAt }
+        entrance = { sequence = self.entrance.sequence, names = names, startedAt = self.entrance.startedAt, endsAt = self.entrance.endsAt, roundId=self.entrance.roundId,stage=self.entrance.stage,walkStartedAt=self.entrance.walkStartedAt }
     end
     local registration
     if self.registrationEnabled then
@@ -614,6 +710,12 @@ function Realm:snapshot(now)
             minimum=self.config.MinimumRacers or 2,endsAt=self.phase=="registration" and self.deadline or 0,
             openedAt=self.registrationOpenedAt,roster={}}
         for _,key in ipairs(self.roster) do registration.roster[#registration.roster+1]=self.crew[key].username end
+    end
+    local preparation
+    if self.registrationEnabled and self.config.SoloEntrances then
+        local ready=0;for _,key in ipairs(self.roster) do if self.crew[key].preparationStatus=="ready" then ready=ready+1 end end
+        preparation={roundId=self.round,ready=ready,total=#self.roster,pending=#self.entranceQueue,
+            current=self.entrance and self.entrance.names[1] or "",stage=self.entrance and self.entrance.stage or "waiting",soloSeconds=self.config.EntranceSeconds or 4.5}
     end
     local lastRace
     local history=self.raceHistory and self.raceHistory[#self.raceHistory]
@@ -628,7 +730,7 @@ function Realm:snapshot(now)
             roundId=self.highlight.roundId,startedAt=self.highlight.startedAt,endsAt=self.highlight.endsAt}
     end
     return {
-        registration=registration, highlight=highlight, highlightWaiting=self.highlightQueue and #self.highlightQueue or 0,
+        preparation=preparation, registration=registration, highlight=highlight, highlightWaiting=self.highlightQueue and #self.highlightQueue or 0,
         lastRace=lastRace,
         entrance = entrance, entranceWaiting = #self.entranceQueue, nextCohort = nextCohort,
         phase = self.phase, seconds = math.max(0, math.ceil(self.deadline - now)),

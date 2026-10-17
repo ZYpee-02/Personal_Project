@@ -11,6 +11,7 @@ const mathSource=client.split('-- BEGIN PRESENTATION MATH')[1].split('\n').slice
 const base=presentationEngine+`
 local Config=(function() ${config} end)()
 Config.RegistrationSeconds=nil -- legacy-domain regression fixture; production server always supplies 30s
+Config.EntranceSeconds=4 -- retain the earlier unscoped entrance snapshot contract
 Config.LoadAvatarAppearances=false
 local Realm=(function() ${domain} end)()
 local World=(function() ${world} end)()

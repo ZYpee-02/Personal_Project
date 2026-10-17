@@ -271,7 +271,7 @@ end)
 ;(function() ${server} end)()
 assert(remotes:GetAttribute("Ready"))
 ;(function() ${client} end)()
-for step=1,10200 do
+for step=1,13800 do
     now=step*0.05
     -- This is explicit mocked movement, not Roblox collision/jump simulation.
     for _,model in ipairs(workspace.RiftboundRealm:GetChildren()) do
@@ -300,6 +300,11 @@ assert(playerGui.RiftboundHUD.VerticalStreamCanvas.RoundLeaders.Title.Text=="SPR
 snapshotConnection:Disconnect()
 local nofinish=Realm.new(Config,0)
 for i=1,5 do assert(nofinish:register('Racer_'..i,0,nofinish.round,0,0,'register:'..i)) end
+local preparedAt=0
+for i=1,5 do
+ nofinish:advanceEntrances(preparedAt);local e=nofinish.entrance;preparedAt=e.endsAt;nofinish:advanceEntrances(preparedAt)
+ assert(nofinish:gridArrived('Racer_'..i,nofinish.round,e.sequence,preparedAt,0));preparedAt=preparedAt+.1
+end
 nofinish:advance(30);nofinish:advance(34);nofinish:advance(154)
 local snapshot=nofinish:snapshot(154); snapshot.demo=true; snapshot.cameraBounds=World.cameraBounds(snapshot)
 remotes.Snapshot.OnClientEvent:Fire(snapshot)

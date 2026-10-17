@@ -25,6 +25,7 @@ local world = {
     offlineAvatar = function() return instance("Model", "StandIn") end,
     arrive = function() end,
     sprintStep = function() end,
+    preparationStep = function() end,
     loadAppearance = function() end,
     cameraBounds = function() end,
     courseInfo = function() return {checkpoints=48} end,
@@ -111,7 +112,7 @@ expectFailed("Checking ModuleScript Config", "Duplicate ModuleScripts named Conf
 test('Phase 1 Config missing new settings gets safe defaults, while invalid explicit settings fail clearly', () => {
   runLua(environment + `Config.SceneUpdatesPerSecond = nil; Config.SnapshotSeconds = nil; Config.AutoActivities = nil` + boot + `
 assert(storage.Riftbound:GetAttribute("Ready") and Config.SceneUpdatesPerSecond == 12 and Config.AutoActivities)`);
-  for (const [field, value] of [['GatheringSeconds', '0'], ['SceneUpdatesPerSecond', '"12"'], ['PersistenceEnabled', 'true'], ['RegistrationSeconds','0'], ['MinimumRacers','1'], ['SprintCompetitors','1'], ['AutoJoinPlayers','true'], ['AutoActivities','false'], ['SprintOnly','false']]) {
+  for (const [field, value] of [['GatheringSeconds', '0'], ['SceneUpdatesPerSecond', '"12"'], ['PersistenceEnabled', 'true'], ['RegistrationSeconds','0'], ['MinimumRacers','1'], ['SprintCompetitors','1'], ['AutoJoinPlayers','true'], ['AutoActivities','false'], ['SprintOnly','false'], ['SoloEntrances','false'], ['EntranceSeconds','3.5'], ['PreparationWalkSpeed','0']]) {
     runLua(environment + `Config.${field} = ${value}` + boot + `
 expectFailed("Validating Config", "${field}"); assert(buildCalls == 0 and #jobs == 0)`);
   }

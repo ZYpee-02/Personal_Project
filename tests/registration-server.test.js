@@ -30,6 +30,9 @@ task={spawn=function(fn,...)
 end,wait=function(seconds) return coroutine.yield(seconds or .03) end}
 local world={
  build=function() end,animate=function() end,
+ preparationStep=function(state,time)
+    if state.entrance and state.entrance.stage=='walking' then state:gridArrived(state.entrance.names[1],state.round,state.entrance.sequence,time,0) end
+ end,
  render=function(s) latest=s;captured[#captured+1]=s end,
  offlineAvatar=function() return {Destroy=function() end} end,
  arrive=function() arrivals=arrivals+1 end,
@@ -114,4 +117,28 @@ storage.Riftbound.Action.OnServerEvent:Fire(host,'demoToggle','')
 advanceTo(150)
 assert(actualState.phase=='registration' and #actualState.roster==0 and actualState.deadline==0)
 local prior=arrivals;advanceTo(500);assert(arrivals==prior)
+`));
+
+for (const count of [2,5,10,20]) test(`host offline batch ${count} reserves only this round, respects capacity and rejects batches after closure`,()=>runLua(scene.replace('Config.SprintCompetitors=3','Config.SprintCompetitors=20')+`
+advanceTo(.1)
+storage.Riftbound.Action.OnServerEvent:Fire(host,'batchJoin','${count}',actualState.round)
+advanceTo(10)
+assert(#actualState.roster==${count} and arrivals==${count} and lookups==0)
+for i=1,${count} do assert(actualState.crew['test_racer'..i].registeredRound==actualState.round) end
+local deadline=actualState.deadline;advanceTo(deadline+.3)
+assert(latest.registration.locked and #actualState.lockedRoster==${count})
+storage.Riftbound.Action.OnServerEvent:Fire(host,'batchJoin','20',actualState.round)
+advanceTo(now+2)
+assert(arrivals==${count} and #actualState.roster==${count})
+`));
+
+test('real registration entrypoint derives canonical identity from verification and rejects alias IDs supplied through another username',()=>runLua(scene+`
+advanceTo(.1)
+local first=event('Verified_One','verify:1');first.offline=false;first.appearanceUserId=999
+submit(first);advanceTo(2)
+assert(answers['verify:1'].ok and actualState.crew.verified_one.userId==123)
+local alias=event('Verified_Alias','verify:2');alias.offline=false
+submit(alias);advanceTo(3)
+assert(not answers['verify:2'].ok and #actualState.roster==1 and not actualState.crew.verified_alias)
+assert(lookups==2 and arrivals==1)
 `));

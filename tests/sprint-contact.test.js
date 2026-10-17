@@ -6,6 +6,7 @@ import { presentationEngine } from './helpers/presentation-engine.js';
 const read = name => readFileSync(new URL(`../roblox/ServerScriptService/${name}`, import.meta.url), 'utf8');
 const scene = presentationEngine + `
 local Config=(function() ${read('Config.lua')} end)()
+Config.SoloEntrances=false -- v11 isolated-domain/shot regression; production requires the v13 preparation gate
 Config.LoadAvatarAppearances=false
 local Realm=(function() ${read('RealmState.lua')} end)()
 local World=(function() ${read('World.lua')} end)()
